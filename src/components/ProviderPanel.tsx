@@ -2,7 +2,10 @@ import { useState } from 'react';
 import type { ProviderStatus } from '../types/status';
 import { statusColor, statusLabel, statusTextColor } from '../utils/statusHelpers';
 import { RegionTable } from './RegionTable';
+import { FlatServiceList } from './FlatServiceList';
 import { ErrorState } from './ErrorState';
+import { OCI_CRITICAL_SERVICES } from '../utils/ociServices';
+import { GCP_CRITICAL_SERVICES } from '../utils/gcpServices';
 
 interface Props {
   provider: ProviderStatus;
@@ -75,7 +78,11 @@ export function ProviderPanel({ provider, defaultExpanded = false }: Props) {
             </div>
           )}
 
-          {provider.regions.length > 0 ? (
+          {provider.provider === 'oci' ? (
+            <FlatServiceList services={OCI_CRITICAL_SERVICES} status={provider.overallStatus} />
+          ) : provider.provider === 'gcp' && provider.regions.length === 0 ? (
+            <FlatServiceList services={GCP_CRITICAL_SERVICES} status={provider.overallStatus} />
+          ) : provider.regions.length > 0 ? (
             <RegionTable provider={provider} />
           ) : provider.activeIncidents.length === 0 && !provider.fetchError ? (
             <div className="rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800/40 px-3 py-2">

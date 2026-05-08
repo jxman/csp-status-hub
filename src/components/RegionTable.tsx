@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { ProviderStatus, ServiceStatus, StatusLevel } from '../types/status';
 import { statusColor, statusLabel, statusTextColor } from '../utils/statusHelpers';
 import { AWS_CRITICAL_SERVICE_IDS, AWS_SERVICE_NAMES } from '../utils/awsServices';
+import { GCP_CRITICAL_SERVICE_IDS, GCP_SERVICE_NAMES } from '../utils/gcpServices';
 
 interface Props {
   provider: ProviderStatus;
@@ -18,22 +19,24 @@ function ServiceLine({ service }: { service: ServiceStatus }) {
   );
 }
 
-function buildAwsServiceList(feedServices: ServiceStatus[]): ServiceStatus[] {
+function buildServiceList(
+  feedServices: ServiceStatus[],
+  criticalIds: string[],
+  nameMap: Record<string, string>
+): ServiceStatus[] {
   const feedMap = new Map(feedServices.map((s) => [s.serviceId, s]));
 
-  // Critical services always shown — operational unless feed says otherwise
-  const critical: ServiceStatus[] = AWS_CRITICAL_SERVICE_IDS.map((id) =>
+  const critical: ServiceStatus[] = criticalIds.map((id) =>
     feedMap.get(id) ?? {
       serviceId: id,
-      serviceName: AWS_SERVICE_NAMES[id] ?? id,
+      serviceName: nameMap[id] ?? id,
       status: 'operational' as StatusLevel,
       incidents: [],
     }
   );
-  const criticalIds = new Set(AWS_CRITICAL_SERVICE_IDS);
 
-  // Non-critical services from the feed that aren't in the critical list
-  const others = feedServices.filter((s) => !criticalIds.has(s.serviceId));
+  const criticalSet = new Set(criticalIds);
+  const others = feedServices.filter((s) => !criticalSet.has(s.serviceId));
 
   return [...critical, ...others];
 }
@@ -44,12 +47,20 @@ interface RegionRowProps {
   geographicArea: string;
   overallStatus: StatusLevel;
   services: ServiceStatus[];
-  isAws: boolean;
+  provider: ProviderStatus['provider'];
 }
 
-function RegionRow({ regionName, geographicArea, overallStatus, services, isAws }: RegionRowProps) {
+function RegionRow({ regionName, geographicArea, overallStatus, services, provider }: RegionRowProps) {
   const [open, setOpen] = useState(false);
-  const displayServices = isAws ? buildAwsServiceList(services) : services;
+
+  let displayServices: ServiceStatus[];
+  if (provider === 'aws') {
+    displayServices = buildServiceList(services, AWS_CRITICAL_SERVICE_IDS, AWS_SERVICE_NAMES);
+  } else if (provider === 'gcp') {
+    displayServices = buildServiceList(services, GCP_CRITICAL_SERVICE_IDS, GCP_SERVICE_NAMES);
+  } else {
+    displayServices = services;
+  }
 
   return (
     <div className="border-b border-gray-100 dark:border-gray-800 last:border-0">
@@ -95,8 +106,6 @@ function RegionRow({ regionName, geographicArea, overallStatus, services, isAws 
 }
 
 export function RegionTable({ provider }: Props) {
-  const isAws = provider.provider === 'aws';
-
   return (
     <div className="rounded-lg border border-gray-100 dark:border-gray-800 overflow-hidden">
       {provider.regions.map((region) => (
@@ -107,7 +116,7 @@ export function RegionTable({ provider }: Props) {
           geographicArea={region.geographicArea}
           overallStatus={region.overallStatus}
           services={region.services}
-          isAws={isAws}
+          provider={provider.provider}
         />
       ))}
     </div>
