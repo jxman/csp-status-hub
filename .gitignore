@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Vercel
+.vercel/
+
+# System
+.DS_Store
+
+# Dev screenshots (working files, not source)
+*.png
+
+# IDE
+.vscode/
+.idea/
+
+# Playwright MCP working files
+.playwright-mcp/
+
+# Logs
+*.log
+npm-debug.log*
