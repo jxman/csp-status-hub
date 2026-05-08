@@ -25,6 +25,9 @@ dist/
 # Playwright MCP working files
 .playwright-mcp/
 
+# Temporary files (screenshots, local scratch)
+.tmp/
+
 # Logs
 *.log
 npm-debug.log*
