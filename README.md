@@ -4,6 +4,8 @@ Real-time operational status dashboard for AWS, GCP, OCI, and Azure in a single 
 
 Auto-refreshes every 60 seconds. Shows active incidents, per-service health, and links through to official vendor status pages.
 
+> **Status:** Live on Vercel — [cloud-status-hub.vercel.app](https://cloud-status-hub.vercel.app)
+
 ---
 
 ## Architecture
