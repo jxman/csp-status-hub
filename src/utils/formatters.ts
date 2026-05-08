@@ -34,7 +34,3 @@ export function formatRelative(iso: string): string {
   }
 }
 
-export function formatCountdown(ms: number): string {
-  const s = Math.max(0, Math.ceil(ms / 1000));
-  return `${s}s`;
-}

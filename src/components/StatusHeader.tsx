@@ -1,26 +1,14 @@
-import { useEffect, useState } from 'react';
-import { formatRelative, formatCountdown } from '../utils/formatters';
+import { formatRelative } from '../utils/formatters';
 
 interface Props {
   lastRefreshedAt: string | null;
   onRefresh: () => void;
   isRefreshing: boolean;
-  canRefresh: boolean;
-  cooldownUntil: number;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
 }
 
-export function StatusHeader({ lastRefreshedAt, onRefresh, isRefreshing, canRefresh, cooldownUntil, theme, onToggleTheme }: Props) {
-  const [, setTick] = useState(0);
-
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  const cooldownMs = Math.max(0, cooldownUntil - Date.now());
-
+export function StatusHeader({ lastRefreshedAt, onRefresh, isRefreshing, theme, onToggleTheme }: Props) {
   return (
     <header className="flex items-center justify-between px-6 py-4 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
       <div className="flex items-center gap-3">
@@ -38,7 +26,7 @@ export function StatusHeader({ lastRefreshedAt, onRefresh, isRefreshing, canRefr
 
         <button
           onClick={onRefresh}
-          disabled={!canRefresh || isRefreshing}
+          disabled={isRefreshing}
           className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium
             bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600
             text-gray-700 dark:text-white
@@ -49,8 +37,6 @@ export function StatusHeader({ lastRefreshedAt, onRefresh, isRefreshing, canRefr
               <span className="inline-block w-3.5 h-3.5 border-2 border-gray-400 border-t-gray-700 dark:border-white/30 dark:border-t-white rounded-full animate-spin" />
               Refreshing…
             </>
-          ) : !canRefresh ? (
-            `Refresh in ${formatCountdown(cooldownMs)}`
           ) : (
             'Refresh Now'
           )}

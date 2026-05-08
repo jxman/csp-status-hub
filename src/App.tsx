@@ -23,7 +23,7 @@ function LoadingSkeleton() {
 }
 
 export default function App() {
-  const { dashboard, isRefreshing, lastSuccessfulRefresh, canRefresh, cooldownUntil, manualRefresh } = useStatusPolling();
+  const { dashboard, isRefreshing, lastSuccessfulRefresh, manualRefresh } = useStatusPolling();
   const { theme, toggle } = useTheme();
 
   return (
@@ -32,8 +32,6 @@ export default function App() {
         lastRefreshedAt={lastSuccessfulRefresh}
         onRefresh={manualRefresh}
         isRefreshing={isRefreshing}
-        canRefresh={canRefresh}
-        cooldownUntil={cooldownUntil}
         theme={theme}
         onToggleTheme={toggle}
       />

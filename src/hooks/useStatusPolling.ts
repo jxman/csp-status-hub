@@ -6,7 +6,6 @@ import { fetchOci } from '../fetchers/ociFetcher';
 import type { DashboardStatus, ProviderStatus } from '../types/status';
 
 const POLL_INTERVAL_MS = 60_000;
-const REFRESH_COOLDOWN_MS = 15_000;
 
 function buildDashboardStatus(results: PromiseSettledResult<ProviderStatus>[]): DashboardStatus {
   const providers: ProviderStatus[] = results.map((result, index) => {
@@ -37,7 +36,6 @@ export function useStatusPolling() {
   const [dashboard, setDashboard] = useState<DashboardStatus | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastSuccessfulRefresh, setLastSuccessfulRefresh] = useState<string | null>(null);
-  const [cooldownUntil, setCooldownUntil] = useState<number>(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchAll = useCallback(async () => {
@@ -56,10 +54,9 @@ export function useStatusPolling() {
   }, []);
 
   const manualRefresh = useCallback(() => {
-    if (Date.now() < cooldownUntil) return;
-    setCooldownUntil(Date.now() + REFRESH_COOLDOWN_MS);
+    if (isRefreshing) return;
     fetchAll();
-  }, [cooldownUntil, fetchAll]);
+  }, [isRefreshing, fetchAll]);
 
   useEffect(() => {
     fetchAll();
@@ -69,14 +66,10 @@ export function useStatusPolling() {
     };
   }, [fetchAll]);
 
-  const canRefresh = Date.now() >= cooldownUntil;
-
   return {
     dashboard,
     isRefreshing,
     lastSuccessfulRefresh,
-    canRefresh,
-    cooldownUntil,
     manualRefresh,
   };
 }
