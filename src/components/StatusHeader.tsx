@@ -1,20 +1,66 @@
+import { useEffect, useState } from 'react';
 import { formatRelative } from '../utils/formatters';
 
 interface Props {
   lastRefreshedAt: string | null;
   onRefresh: () => void;
   isRefreshing: boolean;
+  canRefresh: boolean;
+  cooldownUntil: number;
+  isOnline: boolean;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
 }
 
-export function StatusHeader({ lastRefreshedAt, onRefresh, isRefreshing, theme, onToggleTheme }: Props) {
+export function StatusHeader({
+  lastRefreshedAt,
+  onRefresh,
+  isRefreshing,
+  canRefresh,
+  cooldownUntil,
+  isOnline,
+  theme,
+  onToggleTheme,
+}: Props) {
+  const [, setTick] = useState(0);
+
+  // Tick every second while there is an active cooldown to drive the countdown
+  useEffect(() => {
+    if (cooldownUntil <= Date.now()) return;
+    const id = setInterval(() => {
+      setTick((t) => t + 1);
+      if (Date.now() >= cooldownUntil) clearInterval(id);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [cooldownUntil]);
+
+  const secondsLeft = Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000));
+  const onCooldown = !isRefreshing && secondsLeft > 0;
+
+  let buttonLabel: string;
+  let buttonTitle: string;
+  if (!isOnline) {
+    buttonLabel = 'Offline';
+    buttonTitle = 'No network connection';
+  } else if (isRefreshing) {
+    buttonLabel = 'Refreshing…';
+    buttonTitle = 'Fetching latest status…';
+  } else if (onCooldown) {
+    buttonLabel = `Refresh (${secondsLeft}s)`;
+    buttonTitle = `Available in ${secondsLeft} seconds`;
+  } else {
+    buttonLabel = 'Refresh Now';
+    buttonTitle = 'Fetch latest status from all providers';
+  }
+
   return (
     <header className="flex items-center justify-between px-6 py-4 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
       <div className="flex items-center gap-3">
-        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+        <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
         <h1 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Cloud Status Hub</h1>
-        <span className="text-xs text-gray-400 font-medium uppercase tracking-wider">Live</span>
+        <span className="text-xs text-gray-400 font-medium uppercase tracking-wider">
+          {isOnline ? 'Live' : 'Offline'}
+        </span>
       </div>
 
       <div className="flex items-center gap-3">
@@ -26,20 +72,17 @@ export function StatusHeader({ lastRefreshedAt, onRefresh, isRefreshing, theme, 
 
         <button
           onClick={onRefresh}
-          disabled={isRefreshing}
+          disabled={!canRefresh}
+          title={buttonTitle}
           className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium
             bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600
             text-gray-700 dark:text-white
             disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          {isRefreshing ? (
-            <>
-              <span className="inline-block w-3.5 h-3.5 border-2 border-gray-400 border-t-gray-700 dark:border-white/30 dark:border-t-white rounded-full animate-spin" />
-              Refreshing…
-            </>
-          ) : (
-            'Refresh Now'
+          {isRefreshing && (
+            <span className="inline-block w-3.5 h-3.5 border-2 border-gray-400 border-t-gray-700 dark:border-white/30 dark:border-t-white rounded-full animate-spin" />
           )}
+          {buttonLabel}
         </button>
 
         <button
