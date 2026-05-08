@@ -52,7 +52,7 @@ export default function App() {
 
       {/* Offline banner */}
       {!isOnline && (
-        <div className="px-6 pt-4">
+        <div className="px-3 sm:px-6 pt-3 sm:pt-4">
           <div className="rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/50 px-4 py-3 flex items-center gap-3">
             <svg className="w-4 h-4 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 5.636a9 9 0 010 12.728M15.536 8.464a5 5 0 010 7.072M12 12h.01M8.464 15.536a5 5 0 010-7.072M5.636 18.364a9 9 0 010-12.728" />
@@ -70,7 +70,7 @@ export default function App() {
 
       {/* Stale data banner — last fetch failed but we still have data to show */}
       {isOnline && lastFetchFailed && dashboard && (
-        <div className="px-6 pt-4">
+        <div className="px-3 sm:px-6 pt-3 sm:pt-4">
           <div className="rounded-lg bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800/40 px-4 py-3 flex items-center gap-3">
             <svg className="w-4 h-4 text-yellow-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />

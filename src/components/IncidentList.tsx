@@ -16,7 +16,7 @@ export function IncidentList({ providers }: Props) {
 
   if (allIncidents.length === 0) {
     return (
-      <section className="mt-6 px-6">
+      <section className="mt-4 sm:mt-6 px-3 sm:px-6">
         <h2 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
           Active Incidents
         </h2>
@@ -30,7 +30,7 @@ export function IncidentList({ providers }: Props) {
   }
 
   return (
-    <section className="mt-6 px-6">
+    <section className="mt-4 sm:mt-6 px-3 sm:px-6">
       <h2 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
         Active Incidents ({allIncidents.length})
       </h2>
