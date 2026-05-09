@@ -9,9 +9,12 @@ interface Props {
 }
 
 function ServiceLine({ service }: { service: ServiceStatus }) {
+  const isBroad = service.serviceId === 'multipleservices';
   return (
     <div className="flex items-center justify-between py-1 px-3">
-      <span className="text-xs text-gray-600 dark:text-gray-400">{service.serviceName}</span>
+      <span className={`text-xs ${isBroad ? 'font-bold text-gray-800 dark:text-gray-200' : 'text-gray-600 dark:text-gray-400'}`}>
+        {service.serviceName}
+      </span>
       <span className={`text-xs font-medium ${statusTextColor(service.status)}`}>
         {statusLabel(service.status)}
       </span>
