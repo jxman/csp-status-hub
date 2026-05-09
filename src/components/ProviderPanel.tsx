@@ -26,7 +26,7 @@ export function ProviderPanel({ provider, defaultExpanded = false }: Props) {
     return <ErrorState provider={provider.provider} error={provider.fetchError} />;
   }
 
-  const incidentCount = provider.activeIncidents.length;
+  const incidentCount = provider.activeIncidents.filter((inc) => inc.status !== 'resolved').length;
 
   return (
     <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 overflow-hidden transition-all shadow-sm">
@@ -84,7 +84,7 @@ export function ProviderPanel({ provider, defaultExpanded = false }: Props) {
             <FlatServiceList services={GCP_CRITICAL_SERVICES} status={provider.overallStatus} />
           ) : provider.regions.length > 0 ? (
             <RegionTable provider={provider} />
-          ) : provider.activeIncidents.length === 0 && !provider.fetchError ? (
+          ) : incidentCount === 0 && !provider.fetchError ? (
             <div className="rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800/40 px-3 py-2">
               <p className="text-sm text-green-700 dark:text-green-400 font-medium">No active incidents</p>
             </div>

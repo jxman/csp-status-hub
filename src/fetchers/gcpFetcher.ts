@@ -74,55 +74,84 @@ export async function fetchGcp(): Promise<ProviderStatus> {
     return true;
   });
 
+  const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+  const cutoff = Date.now() - TWENTY_FOUR_HOURS_MS;
+  const recentlyResolved = allIncidents.filter((inc) => {
+    if (inc.end !== null) return new Date(inc.end).getTime() >= cutoff;
+    const latestUpdate = inc.updates[0];
+    return latestUpdate?.status === 'AVAILABLE' && new Date(latestUpdate.modified).getTime() >= cutoff;
+  });
+
   const regionMap = new Map<string, { name: string; serviceMap: Map<string, { name: string; incidentIds: string[]; status: StatusLevel }> }>();
 
-  const activeIncidents: Incident[] = active.map((inc) => {
-    const latestUpdate = inc.updates[0] ?? null;
-    const affectedRegions: string[] = [];
-    const affectedServices = inc.affected_products.map((p) => p.title);
-    const incidentStatus = mapSeverityToStatus(inc.severity);
+  const activeIncidents: Incident[] = [
+    ...active.map((inc) => {
+      const latestUpdate = inc.updates[0] ?? null;
+      const affectedRegions: string[] = [];
+      const affectedServices = inc.affected_products.map((p) => p.title);
+      const incidentStatus = mapSeverityToStatus(inc.severity);
 
-    if (latestUpdate) {
-      for (const loc of latestUpdate.affected_locations) {
-        affectedRegions.push(loc.id);
+      if (latestUpdate) {
+        for (const loc of latestUpdate.affected_locations) {
+          affectedRegions.push(loc.id);
 
-        if (!regionMap.has(loc.id)) {
-          regionMap.set(loc.id, { name: loc.title, serviceMap: new Map() });
-        }
-        const regionEntry = regionMap.get(loc.id)!;
+          if (!regionMap.has(loc.id)) {
+            regionMap.set(loc.id, { name: loc.title, serviceMap: new Map() });
+          }
+          const regionEntry = regionMap.get(loc.id)!;
 
-        for (const product of inc.affected_products) {
-          const existing = regionEntry.serviceMap.get(product.id);
-          if (!existing) {
-            regionEntry.serviceMap.set(product.id, {
-              name: product.title,
-              incidentIds: [inc.id],
-              status: incidentStatus,
-            });
-          } else {
-            existing.incidentIds.push(inc.id);
-            existing.status = worstStatus([existing.status, incidentStatus]);
+          for (const product of inc.affected_products) {
+            const existing = regionEntry.serviceMap.get(product.id);
+            if (!existing) {
+              regionEntry.serviceMap.set(product.id, {
+                name: product.title,
+                incidentIds: [inc.id],
+                status: incidentStatus,
+              });
+            } else {
+              existing.incidentIds.push(inc.id);
+              existing.status = worstStatus([existing.status, incidentStatus]);
+            }
           }
         }
       }
-    }
 
-    const incidentSummaryStatus = gcpUpdateStatusToIncidentStatus(latestUpdate?.status ?? '');
+      const incidentSummaryStatus = gcpUpdateStatusToIncidentStatus(latestUpdate?.status ?? '');
 
-    return {
-      id: inc.id,
-      title: inc.external_desc,
-      status: incidentSummaryStatus,
-      severity: inc.severity,
-      startTime: inc.begin,
-      endTime: inc.end,
-      affectedServices,
-      affectedRegions,
-      detailUrl: inc.uri ?? `https://status.cloud.google.com/incidents/${inc.id}`,
-      latestUpdate: latestUpdate?.text ?? '',
-      updatedAt: latestUpdate?.modified ?? inc.begin,
-    };
-  });
+      return {
+        id: inc.id,
+        title: inc.external_desc,
+        status: incidentSummaryStatus,
+        severity: inc.severity,
+        startTime: inc.begin,
+        endTime: inc.end,
+        affectedServices,
+        affectedRegions,
+        detailUrl: inc.uri ?? `https://status.cloud.google.com/incidents/${inc.id}`,
+        latestUpdate: latestUpdate?.text ?? '',
+        updatedAt: latestUpdate?.modified ?? inc.begin,
+      };
+    }),
+    ...recentlyResolved.map((inc) => {
+      const latestUpdate = inc.updates[0] ?? null;
+      const affectedServices = inc.affected_products.map((p) => p.title);
+      const affectedRegions: string[] = latestUpdate?.affected_locations.map((l) => l.id) ?? [];
+      const resolvedAt = inc.end ?? latestUpdate?.modified ?? inc.begin;
+      return {
+        id: inc.id,
+        title: inc.external_desc,
+        status: 'resolved' as const,
+        severity: inc.severity,
+        startTime: inc.begin,
+        endTime: resolvedAt,
+        affectedServices,
+        affectedRegions,
+        detailUrl: inc.uri ?? `https://status.cloud.google.com/incidents/${inc.id}`,
+        latestUpdate: latestUpdate?.text ?? '',
+        updatedAt: latestUpdate?.modified ?? resolvedAt,
+      };
+    }),
+  ];
 
   const regions: RegionStatus[] = Array.from(regionMap.entries()).map(([regionId, regionData]) => {
     const services: ServiceStatus[] = Array.from(regionData.serviceMap.entries()).map(([serviceId, svc]) => ({

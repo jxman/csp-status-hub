@@ -156,42 +156,67 @@ export async function fetchAws(): Promise<ProviderStatus> {
 
   const items = parseRssXml(await response.text());
 
-  // Keep only the most recent update per incident, then drop resolved ones
-  const deduplicated = deduplicateItems(items).filter((item) => !isResolved(item.title));
+  // Keep only the most recent update per incident; split into active vs recently resolved
+  const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+  const allDeduplicated = deduplicateItems(items);
+  const activeItems = allDeduplicated.filter((item) => !isResolved(item.title));
+  const recentlyResolvedItems = allDeduplicated.filter(
+    (item) => isResolved(item.title) && new Date(item.pubDate).getTime() >= Date.now() - TWENTY_FOUR_HOURS_MS
+  );
 
   const regionMap = new Map<string, { serviceMap: Map<string, { status: StatusLevel; incidentIds: string[] }> }>();
 
-  const activeIncidents: Incident[] = deduplicated.map((item) => {
-    const { service, region } = parseGuid(item.guid);
-    const status = inferStatus(item.title);
-    const incidentId = item.guid.replace(/_\d+$/, '');
+  const activeIncidents: Incident[] = [
+    ...activeItems.map((item) => {
+      const { service, region } = parseGuid(item.guid);
+      const status = inferStatus(item.title);
+      const incidentId = item.guid.replace(/_\d+$/, '');
 
-    if (!regionMap.has(region)) {
-      regionMap.set(region, { serviceMap: new Map() });
-    }
-    const regionEntry = regionMap.get(region)!;
-    const existing = regionEntry.serviceMap.get(service);
-    if (!existing) {
-      regionEntry.serviceMap.set(service, { status, incidentIds: [incidentId] });
-    } else {
-      existing.incidentIds.push(incidentId);
-      existing.status = worstStatus([existing.status, status]);
-    }
+      if (!regionMap.has(region)) {
+        regionMap.set(region, { serviceMap: new Map() });
+      }
+      const regionEntry = regionMap.get(region)!;
+      const existing = regionEntry.serviceMap.get(service);
+      if (!existing) {
+        regionEntry.serviceMap.set(service, { status, incidentIds: [incidentId] });
+      } else {
+        existing.incidentIds.push(incidentId);
+        existing.status = worstStatus([existing.status, status]);
+      }
 
-    return {
-      id: incidentId,
-      title: item.title,
-      status: 'investigating',
-      severity: status === 'outage' ? 'high' : 'medium',
-      startTime: item.pubDate ? new Date(item.pubDate).toISOString() : fetchedAt,
-      endTime: null,
-      affectedServices: [service],
-      affectedRegions: [region],
-      detailUrl: item.link || 'https://status.aws.amazon.com/',
-      latestUpdate: item.description ?? item.title,
-      updatedAt: item.pubDate ? new Date(item.pubDate).toISOString() : fetchedAt,
-    };
-  });
+      return {
+        id: incidentId,
+        title: item.title,
+        status: 'investigating' as const,
+        severity: (status === 'outage' ? 'high' : 'medium') as 'high' | 'medium',
+        startTime: item.pubDate ? new Date(item.pubDate).toISOString() : fetchedAt,
+        endTime: null,
+        affectedServices: [service],
+        affectedRegions: [region],
+        detailUrl: item.link || 'https://status.aws.amazon.com/',
+        latestUpdate: item.description ?? item.title,
+        updatedAt: item.pubDate ? new Date(item.pubDate).toISOString() : fetchedAt,
+      };
+    }),
+    ...recentlyResolvedItems.map((item) => {
+      const { service, region } = parseGuid(item.guid);
+      const incidentId = item.guid.replace(/_\d+$/, '');
+      const resolvedAt = item.pubDate ? new Date(item.pubDate).toISOString() : fetchedAt;
+      return {
+        id: incidentId,
+        title: item.title,
+        status: 'resolved' as const,
+        severity: 'low' as const,
+        startTime: resolvedAt,
+        endTime: resolvedAt,
+        affectedServices: [service],
+        affectedRegions: [region],
+        detailUrl: item.link || 'https://status.aws.amazon.com/',
+        latestUpdate: item.description ?? item.title,
+        updatedAt: resolvedAt,
+      };
+    }),
+  ];
 
   // For any region where all.rss only gave us a 'multipleservices' entry, fetch the
   // per-service RSS feeds in parallel to get actual per-service status.
@@ -277,9 +302,9 @@ export async function fetchAws(): Promise<ProviderStatus> {
     };
   });
 
-  const overallStatus = activeIncidents.length === 0
+  const overallStatus = activeItems.length === 0
     ? 'operational'
-    : worstStatus(activeIncidents.map((inc) => inferStatus(inc.title)));
+    : worstStatus(activeItems.map((item) => inferStatus(item.title)));
 
   return {
     provider: 'aws',
