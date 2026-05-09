@@ -65,7 +65,14 @@ export async function fetchGcp(): Promise<ProviderStatus> {
   }
 
   const allIncidents: GcpIncident[] = await response.json();
-  const active = allIncidents.filter((inc) => inc.end === null);
+  // end === null is the primary active flag; also exclude incidents where the latest
+  // update is AVAILABLE — service restored but GCP hasn't formally closed the incident yet
+  const active = allIncidents.filter((inc) => {
+    if (inc.end !== null) return false;
+    const latestUpdate = inc.updates[0];
+    if (latestUpdate?.status === 'AVAILABLE') return false;
+    return true;
+  });
 
   const regionMap = new Map<string, { name: string; serviceMap: Map<string, { name: string; incidentIds: string[]; status: StatusLevel }> }>();
 
