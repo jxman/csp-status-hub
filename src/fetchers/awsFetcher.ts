@@ -216,7 +216,7 @@ export async function fetchAws(): Promise<ProviderStatus> {
       if (result.status === 'rejected' || result.value == null) {
         globalStatuses.set(globalIds[i], { status: 'unknown', incidentIds: [] });
       } else {
-        const items = deduplicateItems(parseRssXml(result.value));
+        const items = deduplicateItems(parseRssXml(result.value)).filter((it) => !isResolved(it.title));
         globalStatuses.set(globalIds[i], items.length === 0
           ? { status: 'operational', incidentIds: [] }
           : { status: worstStatus(items.map((it) => inferStatus(it.title))), incidentIds: items.map((it) => it.guid.replace(/_\d+$/, '')) }
@@ -244,7 +244,7 @@ export async function fetchAws(): Promise<ProviderStatus> {
         serviceMap.set(serviceId, { status: 'unknown', incidentIds: [] });
         continue;
       }
-      const items = deduplicateItems(parseRssXml(result.value));
+      const items = deduplicateItems(parseRssXml(result.value)).filter((it) => !isResolved(it.title));
       serviceMap.set(serviceId, items.length === 0
         ? { status: 'operational', incidentIds: [] }
         : { status: worstStatus(items.map((it) => inferStatus(it.title))), incidentIds: items.map((it) => it.guid.replace(/_\d+$/, '')) }
