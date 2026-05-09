@@ -1,6 +1,6 @@
 import { XMLParser } from 'fast-xml-parser';
 import type { Incident, ProviderStatus, RegionStatus, ServiceStatus, StatusLevel } from '../types/status';
-import { AWS_CRITICAL_SERVICE_IDS, AWS_SERVICE_NAMES, AWS_SERVICE_RSS_SLUGS } from '../utils/awsServices';
+import { AWS_CRITICAL_SERVICE_IDS, AWS_SERVICE_NAMES, AWS_SERVICE_RSS_SLUGS, type AwsServiceRssConfig } from '../utils/awsServices';
 
 const AWS_RSS_URL = 'https://status.aws.amazon.com/rss/all.rss';
 
@@ -193,35 +193,62 @@ export async function fetchAws(): Promise<ProviderStatus> {
     .map(([regionId]) => regionId);
 
   if (broadImpactRegions.length > 0) {
-    const tasks = broadImpactRegions.flatMap((region) =>
-      AWS_CRITICAL_SERVICE_IDS
-        .filter((id) => id in AWS_SERVICE_RSS_SLUGS)
-        .map((serviceId) => ({ region, serviceId, slug: AWS_SERVICE_RSS_SLUGS[serviceId] }))
-    );
+    const configuredIds = AWS_CRITICAL_SERVICE_IDS.filter((id) => id in AWS_SERVICE_RSS_SLUGS);
+    const globalIds = configuredIds.filter((id) => (AWS_SERVICE_RSS_SLUGS[id] as AwsServiceRssConfig).global);
+    const regionalIds = configuredIds.filter((id) => !(AWS_SERVICE_RSS_SLUGS[id] as AwsServiceRssConfig).global);
 
-    const results = await Promise.allSettled(
-      tasks.map(({ slug, region }) =>
-        fetch(`${AWS_RSS_BASE}/${slug}-${region}.rss`).then((r) => (r.ok ? r.text() : null))
+    // Global services (IAM, Route 53): fetch once, share result across all affected regions
+    const globalResults = await Promise.allSettled(
+      globalIds.map((id) =>
+        fetch(`${AWS_RSS_BASE}/${AWS_SERVICE_RSS_SLUGS[id].slug}.rss`).then((r) => (r.ok ? r.text() : null))
       )
     );
+    const globalStatuses = new Map<string, { status: StatusLevel; incidentIds: string[] }>();
+    for (let i = 0; i < globalIds.length; i++) {
+      const result = globalResults[i];
+      if (result.status === 'rejected' || result.value == null) {
+        globalStatuses.set(globalIds[i], { status: 'unknown', incidentIds: [] });
+      } else {
+        const items = deduplicateItems(parseRssXml(result.value));
+        globalStatuses.set(globalIds[i], items.length === 0
+          ? { status: 'operational', incidentIds: [] }
+          : { status: worstStatus(items.map((it) => inferStatus(it.title))), incidentIds: items.map((it) => it.guid.replace(/_\d+$/, '')) }
+        );
+      }
+    }
 
-    for (let i = 0; i < tasks.length; i++) {
-      const { region, serviceId } = tasks[i];
-      const result = results[i];
+    // Regional services: fetch per-region in parallel; 404 = operational (feed absent = no issues)
+    const regionalTasks = broadImpactRegions.flatMap((region) =>
+      regionalIds.map((serviceId) => ({ region, serviceId, slug: AWS_SERVICE_RSS_SLUGS[serviceId].slug }))
+    );
+    const regionalResults = await Promise.allSettled(
+      regionalTasks.map(({ slug, region }) =>
+        fetch(`${AWS_RSS_BASE}/${slug}-${region}.rss`).then((r) => {
+          if (r.ok) return r.text();
+          return r.status === 404 ? '' : null; // '' → no items → operational; null → unknown
+        })
+      )
+    );
+    for (let i = 0; i < regionalTasks.length; i++) {
+      const { region, serviceId } = regionalTasks[i];
+      const result = regionalResults[i];
       const serviceMap = regionMap.get(region)!.serviceMap;
-
       if (result.status === 'rejected' || result.value == null) {
         serviceMap.set(serviceId, { status: 'unknown', incidentIds: [] });
         continue;
       }
+      const items = deduplicateItems(parseRssXml(result.value));
+      serviceMap.set(serviceId, items.length === 0
+        ? { status: 'operational', incidentIds: [] }
+        : { status: worstStatus(items.map((it) => inferStatus(it.title))), incidentIds: items.map((it) => it.guid.replace(/_\d+$/, '')) }
+      );
+    }
 
-      const serviceItems = deduplicateItems(parseRssXml(result.value));
-      if (serviceItems.length === 0) {
-        serviceMap.set(serviceId, { status: 'operational', incidentIds: [] });
-      } else {
-        const status = worstStatus(serviceItems.map((it) => inferStatus(it.title)));
-        const incidentIds = serviceItems.map((it) => it.guid.replace(/_\d+$/, ''));
-        serviceMap.set(serviceId, { status, incidentIds });
+    // Apply global results to every broad-impact region
+    for (const region of broadImpactRegions) {
+      const serviceMap = regionMap.get(region)!.serviceMap;
+      for (const [serviceId, svcStatus] of globalStatuses) {
+        serviceMap.set(serviceId, svcStatus);
       }
     }
   }

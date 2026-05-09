@@ -48,17 +48,22 @@ export const AWS_CRITICAL_SERVICE_IDS = [
   'route53',
 ];
 
-// Maps our canonical service IDs to the slug used in per-service RSS URLs:
-// https://status.aws.amazon.com/rss/{slug}-{region}.rss
-export const AWS_SERVICE_RSS_SLUGS: Record<string, string> = {
-  ec2: 'ec2',
-  console: 'management-console',
-  eks: 'eks',
-  cloudwatch: 'cloudwatch',
-  s3: 's3',
-  rds: 'rds',
-  lambda: 'lambda',
-  iam: 'iam',
-  vpc: 'vpc',
-  route53: 'route53',
+export interface AwsServiceRssConfig {
+  slug: string;
+  global: boolean; // true = fetch {slug}.rss once; false = fetch {slug}-{region}.rss per region
+}
+
+// Maps our canonical service IDs to their RSS feed config.
+// IAM and Route 53 are global services — no per-region RSS feed exists.
+export const AWS_SERVICE_RSS_SLUGS: Record<string, AwsServiceRssConfig> = {
+  ec2:        { slug: 'ec2',                global: false },
+  console:    { slug: 'management-console', global: false },
+  eks:        { slug: 'eks',                global: false },
+  cloudwatch: { slug: 'cloudwatch',         global: false },
+  s3:         { slug: 's3',                 global: false },
+  rds:        { slug: 'rds',                global: false },
+  lambda:     { slug: 'lambda',             global: false },
+  iam:        { slug: 'iam',                global: true  },
+  vpc:        { slug: 'vpc',                global: false },
+  route53:    { slug: 'route53',            global: true  },
 };

@@ -38,7 +38,13 @@ function buildServiceList(
   const criticalSet = new Set(criticalIds);
   const others = feedServices.filter((s) => !criticalSet.has(s.serviceId) && s.serviceId !== 'multipleservices');
 
-  return [...critical, ...others];
+  // If AWS reported broad impact, append a "Multiple Services *" row at the end
+  const multipleEntry = feedServices.find((s) => s.serviceId === 'multipleservices');
+  const multipleRow: ServiceStatus[] = multipleEntry
+    ? [{ serviceId: 'multipleservices', serviceName: 'Multiple Services *', status: multipleEntry.status, incidents: multipleEntry.incidents }]
+    : [];
+
+  return [...critical, ...others, ...multipleRow];
 }
 
 interface RegionRowProps {
@@ -52,11 +58,6 @@ interface RegionRowProps {
 
 function RegionRow({ regionName, geographicArea, overallStatus, services, provider }: RegionRowProps) {
   const [open, setOpen] = useState(false);
-
-  // AWS uses "multipleservices" when broad regional impact is reported without naming
-  // individual services. We then fetch per-service RSS feeds to fill in actual statuses.
-  const hasBroadImpact = services.some((s) => s.serviceId === 'multipleservices');
-  const hasPerServiceData = services.some((s) => s.serviceId !== 'multipleservices');
 
   let displayServices: ServiceStatus[];
   if (provider === 'aws') {
@@ -97,20 +98,22 @@ function RegionRow({ regionName, geographicArea, overallStatus, services, provid
 
       {open && (
         <div className="pb-2 pt-1 bg-gray-50/50 dark:bg-gray-900/30">
-          {hasBroadImpact && (
-            <p className="text-xs text-yellow-700 dark:text-yellow-400 px-3 pt-2 pb-1 italic">
-              AWS reported broad impact across multiple services in this region.
-              {hasPerServiceData ? ' Per-service status from individual feeds:' : ' Individual service status unavailable — see active incidents for details.'}
-            </p>
+          {displayServices.length === 0 ? (
+            <p className="text-xs text-gray-400 px-3 py-1 italic">No service detail available.</p>
+          ) : (
+            displayServices.map((svc) => (
+              <ServiceLine key={svc.serviceId} service={svc} />
+            ))
           )}
-          {(hasPerServiceData || !hasBroadImpact) && (
-            displayServices.length === 0 ? (
-              <p className="text-xs text-gray-400 px-3 py-1 italic">No service detail available.</p>
-            ) : (
-              displayServices.map((svc) => (
-                <ServiceLine key={svc.serviceId} service={svc} />
-              ))
-            )
+          {displayServices.some((s) => s.serviceId === 'multipleservices') && (
+            <p className="text-xs text-gray-400 dark:text-gray-500 px-3 pt-1 italic">
+              * See{' '}
+              <a href="https://status.aws.amazon.com/" target="_blank" rel="noopener noreferrer"
+                className="underline hover:text-gray-600 dark:hover:text-gray-300">
+                AWS status page
+              </a>{' '}
+              for full listing.
+            </p>
           )}
         </div>
       )}
