@@ -78,10 +78,16 @@ function deduplicateItems(items: RssItem[]): RssItem[] {
 
 function inferStatus(title: string): StatusLevel {
   const lower = title.toLowerCase();
+  if (lower.includes('operating normally') || lower.includes('[resolved]')) return 'operational';
   if (lower.includes('service disruption')) return 'outage';
   if (lower.includes('service impact') || lower.includes('performance issues')) return 'degraded';
   if (lower.includes('informational')) return 'degraded';
   return 'degraded';
+}
+
+function isResolved(title: string): boolean {
+  const lower = title.toLowerCase();
+  return lower.includes('operating normally') || lower.includes('[resolved]');
 }
 
 function worstStatus(statuses: StatusLevel[]): StatusLevel {
@@ -150,7 +156,8 @@ export async function fetchAws(): Promise<ProviderStatus> {
 
   const items = parseRssXml(await response.text());
 
-  const deduplicated = deduplicateItems(items);
+  // Keep only the most recent update per incident, then drop resolved ones
+  const deduplicated = deduplicateItems(items).filter((item) => !isResolved(item.title));
 
   const regionMap = new Map<string, { serviceMap: Map<string, { status: StatusLevel; incidentIds: string[] }> }>();
 
