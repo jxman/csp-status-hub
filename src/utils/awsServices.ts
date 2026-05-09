@@ -47,3 +47,18 @@ export const AWS_CRITICAL_SERVICE_IDS = [
   'vpc',
   'route53',
 ];
+
+// Maps our canonical service IDs to the slug used in per-service RSS URLs:
+// https://status.aws.amazon.com/rss/{slug}-{region}.rss
+export const AWS_SERVICE_RSS_SLUGS: Record<string, string> = {
+  ec2: 'ec2',
+  console: 'management-console',
+  eks: 'eks',
+  cloudwatch: 'cloudwatch',
+  s3: 's3',
+  rds: 'rds',
+  lambda: 'lambda',
+  iam: 'iam',
+  vpc: 'vpc',
+  route53: 'route53',
+};

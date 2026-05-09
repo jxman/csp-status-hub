@@ -1,6 +1,6 @@
 import { XMLParser } from 'fast-xml-parser';
 import type { Incident, ProviderStatus, RegionStatus, ServiceStatus, StatusLevel } from '../types/status';
-import { AWS_SERVICE_NAMES } from '../utils/awsServices';
+import { AWS_CRITICAL_SERVICE_IDS, AWS_SERVICE_NAMES, AWS_SERVICE_RSS_SLUGS } from '../utils/awsServices';
 
 const AWS_RSS_URL = 'https://status.aws.amazon.com/rss/all.rss';
 
@@ -17,12 +17,37 @@ const AWS_REGIONS = new Set([
   'us-gov-east-1', 'us-gov-west-1',
 ]);
 
+const AWS_RSS_BASE = 'https://status.aws.amazon.com/rss';
+
 interface RssItem {
   title: string;
   link: string;
   guid: string;
   pubDate: string;
   description?: string;
+}
+
+// fast-xml-parser returns attributed elements as { '#text': value, '@_attr': ... }
+function xmlText(val: unknown): string {
+  if (typeof val === 'string') return val;
+  if (typeof val === 'number') return String(val);
+  if (typeof val === 'object' && val !== null && '#text' in val) return String((val as Record<string, unknown>)['#text']);
+  return '';
+}
+
+function parseRssXml(xml: string): RssItem[] {
+  const parser = new XMLParser({ ignoreAttributes: false });
+  const parsed = parser.parse(xml);
+  const rawItems: unknown[] = [parsed?.rss?.channel?.item ?? []].flat();
+  return rawItems
+    .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+    .map((item) => ({
+      title: xmlText(item['title']),
+      link: xmlText(item['link']),
+      guid: xmlText(item['guid']),
+      pubDate: xmlText(item['pubDate']),
+      description: item['description'] ? xmlText(item['description']) : undefined,
+    }));
 }
 
 function parseGuid(guid: string): { service: string; region: string } {
@@ -123,30 +148,7 @@ export async function fetchAws(): Promise<ProviderStatus> {
     throw new Error(`AWS fetch failed: ${response.status} ${response.statusText}`);
   }
 
-  const xml = await response.text();
-  const parser = new XMLParser({ ignoreAttributes: false });
-  const parsed = parser.parse(xml);
-
-  const rawItems: unknown[] = [parsed?.rss?.channel?.item ?? []].flat();
-
-  // fast-xml-parser returns elements with attributes as { '#text': value, '@_attr': ... }
-  // Use this helper to safely extract text from either a plain string or such an object.
-  function xmlText(val: unknown): string {
-    if (typeof val === 'string') return val;
-    if (typeof val === 'number') return String(val);
-    if (typeof val === 'object' && val !== null && '#text' in val) return String((val as Record<string, unknown>)['#text']);
-    return '';
-  }
-
-  const items: RssItem[] = rawItems
-    .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
-    .map((item) => ({
-      title: xmlText(item['title']),
-      link: xmlText(item['link']),
-      guid: xmlText(item['guid']),
-      pubDate: xmlText(item['pubDate']),
-      description: item['description'] ? xmlText(item['description']) : undefined,
-    }));
+  const items = parseRssXml(await response.text());
 
   const deduplicated = deduplicateItems(items);
 
@@ -183,6 +185,46 @@ export async function fetchAws(): Promise<ProviderStatus> {
       updatedAt: item.pubDate ? new Date(item.pubDate).toISOString() : fetchedAt,
     };
   });
+
+  // For any region where all.rss only gave us a 'multipleservices' entry, fetch the
+  // per-service RSS feeds in parallel to get actual per-service status.
+  const broadImpactRegions = Array.from(regionMap.entries())
+    .filter(([, data]) => data.serviceMap.has('multipleservices') && data.serviceMap.size === 1)
+    .map(([regionId]) => regionId);
+
+  if (broadImpactRegions.length > 0) {
+    const tasks = broadImpactRegions.flatMap((region) =>
+      AWS_CRITICAL_SERVICE_IDS
+        .filter((id) => id in AWS_SERVICE_RSS_SLUGS)
+        .map((serviceId) => ({ region, serviceId, slug: AWS_SERVICE_RSS_SLUGS[serviceId] }))
+    );
+
+    const results = await Promise.allSettled(
+      tasks.map(({ slug, region }) =>
+        fetch(`${AWS_RSS_BASE}/${slug}-${region}.rss`).then((r) => (r.ok ? r.text() : null))
+      )
+    );
+
+    for (let i = 0; i < tasks.length; i++) {
+      const { region, serviceId } = tasks[i];
+      const result = results[i];
+      const serviceMap = regionMap.get(region)!.serviceMap;
+
+      if (result.status === 'rejected' || result.value == null) {
+        serviceMap.set(serviceId, { status: 'unknown', incidentIds: [] });
+        continue;
+      }
+
+      const serviceItems = deduplicateItems(parseRssXml(result.value));
+      if (serviceItems.length === 0) {
+        serviceMap.set(serviceId, { status: 'operational', incidentIds: [] });
+      } else {
+        const status = worstStatus(serviceItems.map((it) => inferStatus(it.title)));
+        const incidentIds = serviceItems.map((it) => it.guid.replace(/_\d+$/, ''));
+        serviceMap.set(serviceId, { status, incidentIds });
+      }
+    }
+  }
 
   const regions: RegionStatus[] = Array.from(regionMap.entries()).map(([regionId, regionData]) => {
     const services: ServiceStatus[] = Array.from(regionData.serviceMap.entries()).map(([serviceId, svc]) => ({

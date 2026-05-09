@@ -53,11 +53,10 @@ interface RegionRowProps {
 function RegionRow({ regionName, geographicArea, overallStatus, services, provider }: RegionRowProps) {
   const [open, setOpen] = useState(false);
 
-  // AWS uses "multipleservices" when broad regional impact is reported without
-  // naming individual services. We can't accurately show per-service status in that case.
-  const hasBroadImpactOnly =
-    services.some((s) => s.serviceId === 'multipleservices') &&
-    services.every((s) => s.serviceId === 'multipleservices');
+  // AWS uses "multipleservices" when broad regional impact is reported without naming
+  // individual services. We then fetch per-service RSS feeds to fill in actual statuses.
+  const hasBroadImpact = services.some((s) => s.serviceId === 'multipleservices');
+  const hasPerServiceData = services.some((s) => s.serviceId !== 'multipleservices');
 
   let displayServices: ServiceStatus[];
   if (provider === 'aws') {
@@ -98,16 +97,20 @@ function RegionRow({ regionName, geographicArea, overallStatus, services, provid
 
       {open && (
         <div className="pb-2 pt-1 bg-gray-50/50 dark:bg-gray-900/30">
-          {hasBroadImpactOnly ? (
-            <p className="text-xs text-yellow-700 dark:text-yellow-400 px-3 py-2 italic">
-              AWS reports multiple services affected — individual service status unavailable. See active incidents for details.
+          {hasBroadImpact && (
+            <p className="text-xs text-yellow-700 dark:text-yellow-400 px-3 pt-2 pb-1 italic">
+              AWS reported broad impact across multiple services in this region.
+              {hasPerServiceData ? ' Per-service status from individual feeds:' : ' Individual service status unavailable — see active incidents for details.'}
             </p>
-          ) : displayServices.length === 0 ? (
-            <p className="text-xs text-gray-400 px-3 py-1 italic">No service detail available.</p>
-          ) : (
-            displayServices.map((svc) => (
-              <ServiceLine key={svc.serviceId} service={svc} />
-            ))
+          )}
+          {(hasPerServiceData || !hasBroadImpact) && (
+            displayServices.length === 0 ? (
+              <p className="text-xs text-gray-400 px-3 py-1 italic">No service detail available.</p>
+            ) : (
+              displayServices.map((svc) => (
+                <ServiceLine key={svc.serviceId} service={svc} />
+              ))
+            )
           )}
         </div>
       )}
