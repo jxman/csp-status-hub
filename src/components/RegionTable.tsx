@@ -26,22 +26,16 @@ function buildServiceList(
 ): ServiceStatus[] {
   const feedMap = new Map(feedServices.map((s) => [s.serviceId, s]));
 
-  // A "multipleservices" entry means AWS reported broad impact across the region
-  // without naming individual services. Propagate its status to all canonical services
-  // so they aren't misleadingly shown as green.
-  const broadImpact = feedMap.get('multipleservices');
-
-  const critical: ServiceStatus[] = criticalIds.map((id) => {
-    const feedSvc = feedMap.get(id);
-    if (feedSvc) return feedSvc;
-    if (broadImpact) {
-      return { serviceId: id, serviceName: nameMap[id] ?? id, status: broadImpact.status, incidents: broadImpact.incidents };
+  const critical: ServiceStatus[] = criticalIds.map((id) =>
+    feedMap.get(id) ?? {
+      serviceId: id,
+      serviceName: nameMap[id] ?? id,
+      status: 'operational' as StatusLevel,
+      incidents: [],
     }
-    return { serviceId: id, serviceName: nameMap[id] ?? id, status: 'operational' as StatusLevel, incidents: [] };
-  });
+  );
 
   const criticalSet = new Set(criticalIds);
-  // Exclude "multipleservices" — its status is now reflected in each canonical service row
   const others = feedServices.filter((s) => !criticalSet.has(s.serviceId) && s.serviceId !== 'multipleservices');
 
   return [...critical, ...others];
@@ -58,6 +52,12 @@ interface RegionRowProps {
 
 function RegionRow({ regionName, geographicArea, overallStatus, services, provider }: RegionRowProps) {
   const [open, setOpen] = useState(false);
+
+  // AWS uses "multipleservices" when broad regional impact is reported without
+  // naming individual services. We can't accurately show per-service status in that case.
+  const hasBroadImpactOnly =
+    services.some((s) => s.serviceId === 'multipleservices') &&
+    services.every((s) => s.serviceId === 'multipleservices');
 
   let displayServices: ServiceStatus[];
   if (provider === 'aws') {
@@ -98,7 +98,11 @@ function RegionRow({ regionName, geographicArea, overallStatus, services, provid
 
       {open && (
         <div className="pb-2 pt-1 bg-gray-50/50 dark:bg-gray-900/30">
-          {displayServices.length === 0 ? (
+          {hasBroadImpactOnly ? (
+            <p className="text-xs text-yellow-700 dark:text-yellow-400 px-3 py-2 italic">
+              AWS reports multiple services affected — individual service status unavailable. See active incidents for details.
+            </p>
+          ) : displayServices.length === 0 ? (
             <p className="text-xs text-gray-400 px-3 py-1 italic">No service detail available.</p>
           ) : (
             displayServices.map((svc) => (
