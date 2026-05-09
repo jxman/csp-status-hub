@@ -26,17 +26,23 @@ function buildServiceList(
 ): ServiceStatus[] {
   const feedMap = new Map(feedServices.map((s) => [s.serviceId, s]));
 
-  const critical: ServiceStatus[] = criticalIds.map((id) =>
-    feedMap.get(id) ?? {
-      serviceId: id,
-      serviceName: nameMap[id] ?? id,
-      status: 'operational' as StatusLevel,
-      incidents: [],
+  // A "multipleservices" entry means AWS reported broad impact across the region
+  // without naming individual services. Propagate its status to all canonical services
+  // so they aren't misleadingly shown as green.
+  const broadImpact = feedMap.get('multipleservices');
+
+  const critical: ServiceStatus[] = criticalIds.map((id) => {
+    const feedSvc = feedMap.get(id);
+    if (feedSvc) return feedSvc;
+    if (broadImpact) {
+      return { serviceId: id, serviceName: nameMap[id] ?? id, status: broadImpact.status, incidents: broadImpact.incidents };
     }
-  );
+    return { serviceId: id, serviceName: nameMap[id] ?? id, status: 'operational' as StatusLevel, incidents: [] };
+  });
 
   const criticalSet = new Set(criticalIds);
-  const others = feedServices.filter((s) => !criticalSet.has(s.serviceId));
+  // Exclude "multipleservices" — its status is now reflected in each canonical service row
+  const others = feedServices.filter((s) => !criticalSet.has(s.serviceId) && s.serviceId !== 'multipleservices');
 
   return [...critical, ...others];
 }
