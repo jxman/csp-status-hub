@@ -65,11 +65,14 @@ export function useStatusPolling() {
   const [lastSuccessfulRefresh, setLastSuccessfulRefresh] = useState<string | null>(null);
   const [lastFetchFailed, setLastFetchFailed] = useState(false);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  const [isVisible, setIsVisible] = useState(() => document.visibilityState === 'visible');
   const [cooldownUntil, setCooldownUntil] = useState<number>(0);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isOnlineRef = useRef(isOnline);
+  const isVisibleRef = useRef(isVisible);
   isOnlineRef.current = isOnline;
+  isVisibleRef.current = isVisible;
 
   // --- network listeners ---
   useEffect(() => {
@@ -81,6 +84,13 @@ export function useStatusPolling() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
+  }, []);
+
+  // --- page visibility listeners ---
+  useEffect(() => {
+    const handleVisibilityChange = () => setIsVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
   // --- fetch logic ---
@@ -112,17 +122,17 @@ export function useStatusPolling() {
     setCooldownUntil(Date.now() + MANUAL_COOLDOWN_MS);
   }, []);
 
-  // --- auto-refresh: pause when offline, resume when back online ---
+  // --- auto-refresh: pause when offline or tab hidden, resume when both restored ---
   useEffect(() => {
     const start = () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       intervalRef.current = setInterval(() => {
-        if (isOnlineRef.current) fetchAll();
+        if (isOnlineRef.current && isVisibleRef.current) fetchAll();
       }, POLL_INTERVAL_MS);
     };
 
-    if (isOnline) {
-      fetchAll(); // immediate fetch on mount or when coming back online
+    if (isOnline && isVisible) {
+      fetchAll(); // immediate fetch on mount, reconnect, or tab focus
       start();
     } else {
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -132,7 +142,7 @@ export function useStatusPolling() {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOnline]);
+  }, [isOnline, isVisible]);
 
   // --- manual refresh ---
   const manualRefresh = useCallback(() => {

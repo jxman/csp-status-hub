@@ -234,10 +234,9 @@ Vercel auto-detects the Vite framework and Node.js serverless functions in `/api
 - Vercel Web Analytics
 - Vercel Speed Insights
 - Azure function CDN caching (`s-maxage=300`)
+- Page Visibility API — polling pauses when tab is hidden, resumes with immediate fetch on focus
 
 ### Pending (see ENHANCEMENTS.md)
-
-- Page visibility API — pause polling when tab is hidden
 - OCI per-service status (API returns it; fetcher currently uses overall status)
 - Aggregate status indicator in the header
 - localStorage cache schema versioning
