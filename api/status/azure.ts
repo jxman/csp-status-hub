@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { XMLParser } from 'fast-xml-parser';
-import type { Incident, ProviderStatus, StatusLevel } from '../../src/types/status';
+import type { Incident, ProviderStatus, StatusLevel } from '../../src/types/status.js';
 
 const AZURE_FEED_URL = 'https://azurestatuscdn.azureedge.net/en-us/status/feed/';
 const AZURE_DASHBOARD_URL = 'https://azure.status.microsoft/';
