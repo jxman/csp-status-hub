@@ -8,7 +8,7 @@ import type { DashboardStatus, ProviderStatus } from '../types/status';
 const POLL_INTERVAL_MS = 60_000;
 const MANUAL_COOLDOWN_MS = 60_000; // matches auto-refresh interval
 const CACHE_KEY = 'csp-status-hub:dashboard';
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL_MS = 60_000; // 60 seconds — matches poll interval
 
 // --- localStorage cache helpers ---
 
