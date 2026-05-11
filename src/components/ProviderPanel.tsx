@@ -1,15 +1,32 @@
 import { useState } from 'react';
-import type { ProviderStatus } from '../types/status';
+import type { Incident, ProviderStatus, StatusLevel } from '../types/status';
 import { statusColor, statusLabel, statusTextColor } from '../utils/statusHelpers';
 import { RegionTable } from './RegionTable';
-import { FlatServiceList } from './FlatServiceList';
+import { FlatServiceList, type FlatService } from './FlatServiceList';
 import { ErrorState } from './ErrorState';
 import { OCI_CRITICAL_SERVICES } from '../utils/ociServices';
 import { GCP_CRITICAL_SERVICES } from '../utils/gcpServices';
+import { AZURE_CRITICAL_SERVICES } from '../utils/azureServices';
 
 interface Props {
   provider: ProviderStatus;
   defaultExpanded?: boolean;
+}
+
+function computeAzureServiceStatuses(incidents: Incident[]): FlatService[] {
+  const active = incidents.filter((inc) => inc.status !== 'resolved');
+  return AZURE_CRITICAL_SERVICES.map((svc) => {
+    const affecting = active.filter((inc) =>
+      inc.affectedServices.some((s) =>
+        svc.keywords.some((kw) => s.toLowerCase().includes(kw))
+      )
+    );
+    let status: StatusLevel = 'operational';
+    if (affecting.length > 0) {
+      status = affecting.some((inc) => inc.severity === 'high') ? 'outage' : 'degraded';
+    }
+    return { id: svc.id, name: svc.name, status };
+  });
 }
 
 const providerLogos: Record<string, string> = {
@@ -80,6 +97,8 @@ export function ProviderPanel({ provider, defaultExpanded = false }: Props) {
 
           {provider.provider === 'oci' ? (
             <FlatServiceList services={OCI_CRITICAL_SERVICES} status={provider.overallStatus} />
+          ) : provider.provider === 'azure' ? (
+            <FlatServiceList services={computeAzureServiceStatuses(provider.activeIncidents)} status={provider.overallStatus} />
           ) : provider.provider === 'gcp' && provider.regions.length === 0 ? (
             <FlatServiceList services={GCP_CRITICAL_SERVICES} status={provider.overallStatus} />
           ) : provider.regions.length > 0 ? (

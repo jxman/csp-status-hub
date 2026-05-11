@@ -35,8 +35,8 @@ function saveCache(data: DashboardStatus) {
 // --- dashboard builder ---
 
 function buildDashboardStatus(results: PromiseSettledResult<ProviderStatus>[]): DashboardStatus {
-  const fallbackProviders = ['aws', 'gcp', 'oci', 'azure'] as const;
-  const fallbackNames = ['Amazon Web Services', 'Google Cloud', 'Oracle Cloud', 'Microsoft Azure'];
+  const fallbackProviders = ['aws', 'azure', 'oci', 'gcp'] as const;
+  const fallbackNames = ['Amazon Web Services', 'Microsoft Azure', 'Oracle Cloud', 'Google Cloud'];
 
   const providers: ProviderStatus[] = results.map((result, index) => {
     if (result.status === 'fulfilled') return result.value;
@@ -89,9 +89,9 @@ export function useStatusPolling() {
 
     const results = await Promise.allSettled([
       fetchAws(),
-      fetchGcp(),
-      fetchOci(),
       fetchAzure(),
+      fetchOci(),
+      fetchGcp(),
     ]);
 
     const allFailed = results.every((r) => r.status === 'rejected');
