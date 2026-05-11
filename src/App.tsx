@@ -1,3 +1,4 @@
+import { Analytics } from '@vercel/analytics/react';
 import { useStatusPolling } from './hooks/useStatusPolling';
 import { useTheme } from './hooks/useTheme';
 import { StatusHeader } from './components/StatusHeader';
@@ -39,6 +40,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors">
+      <Analytics />
       <StatusHeader
         lastRefreshedAt={lastSuccessfulRefresh}
         onRefresh={manualRefresh}

@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "fast-xml-parser": "^5.5.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
