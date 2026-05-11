@@ -10,12 +10,13 @@
 
 ## Quick Wins
 
-### ✅ Page title updates to reflect current status
+### ~~Page title updates to reflect current status~~
 
-_Completed — `bc48584`_
+_Reverted — `bc48584` → reverted_
 
-Browser tab dynamically updates to `⚠️ N Active Incidents — Cloud Status Hub` when
-incidents are present; reverts to plain title when all clear.
+Dynamic tab title (`⚠️ N Active Incidents — Cloud Status Hub`) was implemented but
+reverted by user preference. Title is now the static "Cloud Status Hub" defined in
+`index.html`.
 
 ### ✅ Favicon and meta tags (`index.html`)
 

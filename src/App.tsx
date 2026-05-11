@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { useStatusPolling } from './hooks/useStatusPolling';
@@ -39,17 +38,6 @@ export default function App() {
   } = useStatusPolling();
 
   const { theme, toggle } = useTheme();
-
-  useEffect(() => {
-    if (!dashboard) return;
-    const activeCount = dashboard.providers.reduce(
-      (sum, p) => sum + p.activeIncidents.filter((i) => i.status !== 'resolved').length,
-      0
-    );
-    document.title = activeCount > 0
-      ? `⚠️ ${activeCount} Active Incident${activeCount !== 1 ? 's' : ''} — Cloud Status Hub`
-      : 'Cloud Status Hub';
-  }, [dashboard]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors">
