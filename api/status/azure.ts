@@ -4,8 +4,6 @@ import type { Incident, ProviderStatus, StatusLevel } from '../../src/types/stat
 
 const AZURE_FEED_URL = 'https://azurestatuscdn.azureedge.net/en-us/status/feed/';
 const AZURE_DASHBOARD_URL = 'https://azure.status.microsoft/';
-const COVERAGE_NOTE =
-  "Azure's public status page reports only major widespread incidents. For account-specific or service-level health, visit Azure Service Health in the Azure portal.";
 
 // Known Azure region display names for free-text extraction from titles
 const AZURE_REGIONS = [
@@ -174,7 +172,6 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
       activeIncidents: incidents,
       sourceUrl: AZURE_DASHBOARD_URL,
       dataFetchedAt: fetchedAt,
-      coverageNote: COVERAGE_NOTE,
     };
 
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=60');
@@ -189,7 +186,6 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
       activeIncidents: [],
       sourceUrl: AZURE_DASHBOARD_URL,
       dataFetchedAt: fetchedAt,
-      coverageNote: COVERAGE_NOTE,
       fetchError: message,
     };
     res.setHeader('Cache-Control', 's-maxage=30');
