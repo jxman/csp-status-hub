@@ -204,6 +204,7 @@ body {
 .a-grid {
   display: grid;
   grid-template-columns: 1.4fr 1fr 1fr 1fr;
+  align-items: stretch;
   gap: 16px;
   padding: 20px 32px;
 }
@@ -298,6 +299,7 @@ body {
 
 /* Card footer */
 .pcard-foot {
+  margin-top: auto;
   border-top: 1px solid var(--border);
   padding: 10px 16px;
   display: flex; align-items: center; justify-content: space-between;
@@ -401,5 +403,5 @@ body {
 }
 
 @media (min-width: 721px) and (max-width: 1099px) {
-  .a-grid { grid-template-columns: 1fr 1fr !important; }
+  .a-grid { grid-template-columns: 1fr 1fr !important; align-items: stretch; }
 }
