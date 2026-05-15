@@ -27,6 +27,24 @@ export function statusLabel(status: StatusLevel): string {
   }
 }
 
+export function statusBadgeClass(status: StatusLevel): string {
+  switch (status) {
+    case 'operational': return 'bg-green-100 text-green-700 dark:bg-green-950/50 dark:text-green-400';
+    case 'degraded': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-950/50 dark:text-yellow-400';
+    case 'outage': return 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400';
+    case 'unknown': return 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400';
+  }
+}
+
+export function statusLabelUpper(status: StatusLevel): string {
+  switch (status) {
+    case 'operational': return 'OPERATIONAL';
+    case 'degraded': return 'DEGRADED';
+    case 'outage': return 'OUTAGE';
+    case 'unknown': return 'UNKNOWN';
+  }
+}
+
 export function statusDot(status: StatusLevel): string {
   switch (status) {
     case 'operational': return '🟢';

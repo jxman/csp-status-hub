@@ -1,5 +1,4 @@
 import type { StatusLevel } from '../types/status';
-import { statusLabel, statusTextColor } from '../utils/statusHelpers';
 
 export interface FlatService {
   id: string;
@@ -12,21 +11,31 @@ interface Props {
   status: StatusLevel;
 }
 
+function svcStatusClass(status: StatusLevel): string {
+  if (status === 'operational') return 'ok';
+  if (status === 'degraded') return 'warn';
+  return 'bad';
+}
+
+function svcStatusLabel(status: StatusLevel): string {
+  if (status === 'operational') return 'Operational';
+  if (status === 'degraded') return 'Degraded';
+  return 'Outage';
+}
+
 export function FlatServiceList({ services, status }: Props) {
   return (
-    <div className="rounded-lg border border-gray-100 dark:border-gray-800 overflow-hidden">
+    <div className="svc-list">
       {services.map((svc) => {
         const svcStatus = svc.status ?? status;
+        const cls = svcStatusClass(svcStatus);
         return (
-          <div
-            key={svc.id}
-            className="flex items-center justify-between py-2 px-3 border-b border-gray-100 dark:border-gray-800 last:border-0"
-          >
-            <span className="text-sm text-gray-800 dark:text-gray-200">{svc.name}</span>
-            <span className={`text-xs font-medium ${statusTextColor(svcStatus)}`}>
-              {statusLabel(svcStatus)}
-            </span>
-          </div>
+          <>
+            <div key={`${svc.id}-n`} className="svc">{svc.name}</div>
+            <div key={`${svc.id}-s`} className={`status ${cls}`}>
+              <span className="d" />{svcStatusLabel(svcStatus)}
+            </div>
+          </>
         );
       })}
     </div>

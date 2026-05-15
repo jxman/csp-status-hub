@@ -55,15 +55,15 @@ Browser (React SPA)
 
 ## Tech Stack
 
-| Layer        | Technology                                      |
-| ------------ | ----------------------------------------------- |
-| Frontend     | React 18 + Vite 6                               |
-| Language     | TypeScript 5.6                                  |
-| Styling      | Tailwind CSS 3 (dark mode via `class` strategy) |
-| XML Parsing  | `fast-xml-parser` 5 (browser + serverless)      |
-| Serverless   | Vercel Functions (Node.js, auto-detected)       |
-| Deployment   | Vercel (Vite SPA + `/api` routes)               |
-| Analytics    | Vercel Web Analytics + Speed Insights           |
+| Layer       | Technology                                      |
+| ----------- | ----------------------------------------------- |
+| Frontend    | React 18 + Vite 6                               |
+| Language    | TypeScript 5.6                                  |
+| Styling     | Tailwind CSS 3 (dark mode via `class` strategy) |
+| XML Parsing | `fast-xml-parser` 5 (browser + serverless)      |
+| Serverless  | Vercel Functions (Node.js, auto-detected)       |
+| Deployment  | Vercel (Vite SPA + `/api` routes)               |
+| Analytics   | Vercel Web Analytics + Speed Insights           |
 
 ---
 
@@ -103,7 +103,7 @@ csp-status-hub/
 │   ├── App.tsx                    Root layout, dynamic title, Analytics, SpeedInsights
 │   ├── main.tsx                   React entry point
 │   ├── components/
-│   │   ├── StatusHeader.tsx       Header: title, live dot, refresh button, theme toggle
+│   │   ├── StatusHeader.tsx       Header: title, live dot, refresh, bell (subscribe), theme toggle
 │   │   ├── ProviderGrid.tsx       4-column responsive grid
 │   │   ├── ProviderPanel.tsx      Per-provider expandable card + service list
 │   │   ├── RegionTable.tsx        Region → top-10 service status rows (AWS, GCP)
@@ -174,17 +174,23 @@ Plain `npm run dev` runs the Vite frontend only — Azure will show an error sta
 
 ## Deployment
 
-The app deploys automatically to Vercel on every push to `main`.
-
 ```bash
-# Push to trigger automatic deployment
-git push origin main
+# Deploy to production (lint → build → deploy → open browser)
+npm run deploy
 
-# Manual production deploy (requires vercel CLI)
-vercel --prod
+# Deploy to preview URL (lint → build → deploy → open browser)
+npm run deploy:preview
 ```
 
-Vercel auto-detects the Vite framework and Node.js serverless functions in `/api`. No additional configuration required beyond what is in `vercel.json`.
+Both scripts run lint and build first, then open the deployed URL automatically in your browser on completion.
+
+**First-time setup:**
+```bash
+vercel login   # authenticate
+vercel link    # link this directory to the Vercel project
+```
+
+Vercel auto-detects the Vite framework and Node.js serverless functions in `/api`. No additional configuration required beyond `vercel.json`.
 
 **Environment variables:** None required — all data sources are public and unauthenticated.
 
@@ -192,24 +198,24 @@ Vercel auto-detects the Vite framework and Node.js serverless functions in `/api
 
 ## Refresh and Caching Behavior
 
-| Behavior                | Detail                                                          |
-| ----------------------- | --------------------------------------------------------------- |
-| Auto-refresh interval   | 60 seconds                                                      |
-| Manual refresh cooldown | 60 seconds (starts after fetch completes)                       |
-| Client cache (localStorage) | 60s TTL — hydrated on page load, matches poll interval     |
-| Azure CDN cache         | `s-maxage=300, stale-while-revalidate=60` on Vercel Function    |
-| Offline behavior        | Auto-refresh pauses; banner shown; cached data displayed        |
-| Stale data indicator    | Yellow banner if last fetch failed but cached data is available |
+| Behavior                    | Detail                                                          |
+| --------------------------- | --------------------------------------------------------------- |
+| Auto-refresh interval       | 60 seconds                                                      |
+| Manual refresh cooldown     | 60 seconds (starts after fetch completes)                       |
+| Client cache (localStorage) | 60s TTL — hydrated on page load, matches poll interval          |
+| Azure CDN cache             | `s-maxage=300, stale-while-revalidate=60` on Vercel Function    |
+| Offline behavior            | Auto-refresh pauses; banner shown; cached data displayed        |
+| Stale data indicator        | Yellow banner if last fetch failed but cached data is available |
 
 ---
 
 ## Observability
 
-| Feature         | Status   | Notes                                             |
-| --------------- | -------- | ------------------------------------------------- |
-| Web Analytics   | ✅ Live  | Vercel Web Analytics — enable in dashboard        |
-| Speed Insights  | ✅ Live  | Core Web Vitals tracking — enable in dashboard    |
-| Function logs   | ✅ Live  | `vercel logs <url> --follow` or Logs tab          |
+| Feature        | Status  | Notes                                          |
+| -------------- | ------- | ---------------------------------------------- |
+| Web Analytics  | ✅ Live | Vercel Web Analytics — enable in dashboard     |
+| Speed Insights | ✅ Live | Core Web Vitals tracking — enable in dashboard |
+| Function logs  | ✅ Live | `vercel logs <url> --follow` or Logs tab       |
 
 ---
 
@@ -235,8 +241,16 @@ Vercel auto-detects the Vite framework and Node.js serverless functions in `/api
 - Vercel Speed Insights
 - Azure function CDN caching (`s-maxage=300`)
 - Page Visibility API — polling pauses when tab is hidden, resumes with immediate fetch on focus
+- Stats summary strip (providers degraded, regions impacted, services impacted, active incidents)
+- Services impacted count with `+` suffix when broad multi-service incidents are active
+- Bell icon in header for subscribe to alerts (coming soon modal)
+- "Coming soon" modal for alert subscriptions
+- Footer disclaimer (data source attribution, non-affiliation notice)
+- Mobile-optimised 1×4 stat strip with condensed tile layout
+- Deployment scripts: `npm run deploy` and `npm run deploy:preview` (lint → build → deploy → open)
 
 ### Pending (see ENHANCEMENTS.md)
+
 - OCI per-service status (API returns it; fetcher currently uses overall status)
 - Aggregate status indicator in the header
 - localStorage cache schema versioning
@@ -246,4 +260,4 @@ Vercel auto-detects the Vite framework and Node.js serverless functions in `/api
 
 ---
 
-_Maintained by John Xanthopoulos — Marsh Cloud Engineering_
+\_Maintained by John Xanthopoulos

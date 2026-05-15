@@ -28,7 +28,9 @@ dist/
 # Temporary files (screenshots, local scratch)
 .tmp/
 
+# Claude Code local settings (permissions, not source)
+.claude/
+
 # Logs
 *.log
 npm-debug.log*
-.vercel

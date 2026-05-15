@@ -1,24 +1,33 @@
 import type { StatusLevel } from '../types/status';
-import { statusColor, statusLabel } from '../utils/statusHelpers';
 
 interface Props {
   status: StatusLevel;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg'; // kept for API compat; CSS handles size
 }
 
-export function StatusBadge({ status, size = 'md' }: Props) {
-  const sizeClasses = {
-    sm: 'text-xs px-1.5 py-0.5',
-    md: 'text-sm px-2 py-1',
-    lg: 'text-base px-3 py-1.5',
-  };
+function pillClass(status: StatusLevel): string {
+  switch (status) {
+    case 'operational': return 'pill ok';
+    case 'degraded':    return 'pill warn';
+    case 'outage':      return 'pill bad';
+    case 'unknown':     return 'pill muted';
+  }
+}
 
+function pillLabel(status: StatusLevel): string {
+  switch (status) {
+    case 'operational': return 'Operational';
+    case 'degraded':    return 'Degraded';
+    case 'outage':      return 'Outage';
+    case 'unknown':     return 'Unknown';
+  }
+}
+
+export function StatusBadge({ status }: Props) {
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full font-medium text-white ${statusColor(status)} ${sizeClasses[size]}`}
-    >
-      <span className="inline-block w-1.5 h-1.5 rounded-full bg-white/70" />
-      {statusLabel(status)}
+    <span className={pillClass(status)}>
+      <span className="dot" />
+      {pillLabel(status)}
     </span>
   );
 }

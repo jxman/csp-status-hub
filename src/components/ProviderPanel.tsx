@@ -1,17 +1,26 @@
 import { useState } from 'react';
 import type { Incident, ProviderStatus, StatusLevel } from '../types/status';
-import { statusColor, statusLabel, statusTextColor } from '../utils/statusHelpers';
 import { RegionTable } from './RegionTable';
 import { FlatServiceList, type FlatService } from './FlatServiceList';
 import { ErrorState } from './ErrorState';
+import { StatusBadge } from './StatusBadge';
 import { OCI_CRITICAL_SERVICES } from '../utils/ociServices';
 import { GCP_CRITICAL_SERVICES } from '../utils/gcpServices';
 import { AZURE_CRITICAL_SERVICES } from '../utils/azureServices';
+import { AWS_CRITICAL_SERVICE_IDS, AWS_SERVICE_NAMES } from '../utils/awsServices';
 
 interface Props {
   provider: ProviderStatus;
-  defaultExpanded?: boolean;
 }
+
+const SHORT_NAMES: Record<string, string> = { aws: 'AWS', azure: 'Azure', gcp: 'GCP', oci: 'OCI' };
+
+const OFFICIAL_URLS: Record<string, string> = {
+  aws:   'https://status.aws.amazon.com/',
+  azure: 'https://azure.status.microsoft/',
+  gcp:   'https://status.cloud.google.com/',
+  oci:   'https://ocistatus.oraclecloud.com/',
+};
 
 function computeAzureServiceStatuses(incidents: Incident[]): FlatService[] {
   const active = incidents.filter((inc) => inc.status !== 'resolved');
@@ -29,102 +38,126 @@ function computeAzureServiceStatuses(incidents: Incident[]): FlatService[] {
   });
 }
 
-const providerLogos: Record<string, string> = {
-  aws: 'AWS',
-  azure: 'Azure',
-  gcp: 'GCP',
-  oci: 'OCI',
-};
+function awsFlatServices(): FlatService[] {
+  return AWS_CRITICAL_SERVICE_IDS.map((id) => ({
+    id,
+    name: AWS_SERVICE_NAMES[id] ?? id,
+    status: 'operational' as StatusLevel,
+  }));
+}
 
-export function ProviderPanel({ provider, defaultExpanded = false }: Props) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
+function getSubtext(provider: ProviderStatus): string {
+  if (provider.fetchError && provider.regions.length === 0 && provider.activeIncidents.length === 0) return '';
+  const isImpacted = provider.overallStatus === 'outage' || provider.overallStatus === 'degraded';
+  if (isImpacted) {
+    const affectedRegions = provider.regions.filter((r) => r.overallStatus !== 'operational').length;
+    if (affectedRegions > 0) return `${affectedRegions} region${affectedRegions !== 1 ? 's' : ''} affected`;
+    const activeInc = provider.activeIncidents.filter((i) => i.status !== 'resolved').length;
+    if (activeInc > 0) return `${activeInc} active incident${activeInc !== 1 ? 's' : ''}`;
+    return 'Impact details unavailable';
+  }
+  return 'All regions healthy';
+}
+
+const ChevronIcon = ({ open }: { open: boolean }) => (
+  <svg
+    width="14" height="14" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+    style={{ color: 'var(--ink-4)', flexShrink: 0, transition: 'transform 0.15s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
+  >
+    <path d="M19 9l-7 7-7-7" />
+  </svg>
+);
+
+export function ProviderPanel({ provider }: Props) {
+  const hasRegions = provider.regions.length > 0;
+  // Cards with region blocks are always expanded (regions have their own collapse).
+  // Flat-service cards (healthy OCI, GCP, Azure, AWS) are collapsible.
+  const isExpandable = !hasRegions;
+  const [expanded, setExpanded] = useState(false);
 
   if (provider.fetchError && provider.regions.length === 0 && provider.activeIncidents.length === 0 && !provider.coverageNote) {
-    return <ErrorState provider={provider.provider} error={provider.fetchError} />;
+    return <ErrorState provider={provider.provider} error={provider.fetchError} sourceUrl={provider.sourceUrl} />;
   }
 
+  const isImpacted = provider.overallStatus === 'outage' || provider.overallStatus === 'degraded';
   const incidentCount = provider.activeIncidents.filter((inc) => inc.status !== 'resolved').length;
+  const officialUrl = provider.sourceUrl || OFFICIAL_URLS[provider.provider] || '#';
+  const showBody = !isExpandable || expanded;
+
+  const flatServices = (): FlatService[] => {
+    if (provider.provider === 'azure') return computeAzureServiceStatuses(provider.activeIncidents);
+    if (provider.provider === 'oci')   return OCI_CRITICAL_SERVICES;
+    if (provider.provider === 'gcp')   return GCP_CRITICAL_SERVICES;
+    return awsFlatServices();
+  };
 
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 overflow-hidden transition-all shadow-sm">
-      <button
-        onClick={() => setExpanded((e) => !e)}
-        className="w-full flex items-center justify-between px-5 py-4
-          hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors text-left"
+    <div className={`pcard${isImpacted ? ' bad' : ''}`}>
+      {/* Header — clickable to expand/collapse for flat-service cards */}
+      <div
+        className="pcard-head"
+        onClick={isExpandable ? () => setExpanded((e) => !e) : undefined}
+        style={isExpandable ? { cursor: 'pointer', userSelect: 'none' } : undefined}
       >
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">
-            {providerLogos[provider.provider]}
-          </span>
-          <span className="font-semibold text-gray-900 dark:text-gray-100">{provider.displayName}</span>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <span className={`text-sm font-medium ${statusTextColor(provider.overallStatus)}`}>
-            {statusLabel(provider.overallStatus)}
-          </span>
-          <span className={`w-2.5 h-2.5 rounded-full ${statusColor(provider.overallStatus)}`} />
-          <svg
-            className={`w-4 h-4 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
-            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        </div>
-      </button>
-
-      {!expanded && incidentCount > 0 && (
-        <div className="px-5 pb-3">
-          <span className="text-xs text-yellow-600 dark:text-yellow-400">
-            {incidentCount} active incident{incidentCount !== 1 ? 's' : ''}
-          </span>
-        </div>
-      )}
-
-      {expanded && (
-        <div className="border-t border-gray-100 dark:border-gray-700 px-5 py-4 space-y-4">
-          {provider.coverageNote && (
-            <div className="rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/40 px-3 py-2">
-              <p className="text-xs text-blue-700 dark:text-blue-300">{provider.coverageNote}</p>
-            </div>
-          )}
-
-          {provider.fetchError && (
-            <div className="rounded-lg bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800/40 px-3 py-2">
-              <p className="text-xs text-yellow-700 dark:text-yellow-300">{provider.fetchError}</p>
-            </div>
-          )}
-
-          {provider.provider === 'oci' ? (
-            <FlatServiceList services={OCI_CRITICAL_SERVICES} status={provider.overallStatus} />
-          ) : provider.provider === 'azure' ? (
-            <FlatServiceList services={computeAzureServiceStatuses(provider.activeIncidents)} status={provider.overallStatus} />
-          ) : provider.provider === 'gcp' && provider.regions.length === 0 ? (
-            <FlatServiceList services={GCP_CRITICAL_SERVICES} status={provider.overallStatus} />
-          ) : provider.regions.length > 0 ? (
-            <RegionTable provider={provider} />
-          ) : incidentCount === 0 && !provider.fetchError ? (
-            <div className="rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800/40 px-3 py-2">
-              <p className="text-sm text-green-700 dark:text-green-400 font-medium">No active incidents</p>
-            </div>
-          ) : null}
-
-          <div className="flex items-center justify-between pt-1">
-            <span className="text-xs text-gray-400 dark:text-gray-600">
-              {incidentCount > 0 ? `${incidentCount} active incident${incidentCount !== 1 ? 's' : ''}` : 'No active incidents'}
-            </span>
-            <a
-              href={provider.sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
-              onClick={(e) => e.stopPropagation()}
-            >
-              Official status page →
-            </a>
+        <div className="pcard-titlerow">
+          <div className="pcard-name">
+            <span className="short">{SHORT_NAMES[provider.provider] ?? provider.provider.toUpperCase()}</span>
+            <span className="long">{provider.displayName}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <StatusBadge status={provider.overallStatus} />
+            {isExpandable && <ChevronIcon open={expanded} />}
           </div>
         </div>
+        <div className="pcard-sub">{getSubtext(provider)}</div>
+      </div>
+
+      {/* Body */}
+      {showBody && (
+        <div className="pcard-body">
+          {provider.coverageNote && (
+            <div style={{
+              margin: '8px 16px 0', padding: '8px 10px', borderRadius: 6,
+              background: 'color-mix(in oklab, var(--blue) 8%, transparent)',
+              border: '1px solid color-mix(in oklab, var(--blue) 20%, transparent)',
+              fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.5,
+            }}>
+              {provider.coverageNote}
+            </div>
+          )}
+          {provider.fetchError && (
+            <div style={{
+              margin: '8px 16px 0', padding: '8px 10px', borderRadius: 6,
+              background: 'var(--amber-soft)',
+              border: '1px solid color-mix(in oklab, var(--amber) 30%, transparent)',
+              fontSize: 12, color: 'var(--ink-2)',
+            }}>
+              {provider.fetchError}
+            </div>
+          )}
+
+          {hasRegions ? (
+            <RegionTable provider={provider} />
+          ) : (
+            <div style={{ padding: '8px 16px' }}>
+              <FlatServiceList services={flatServices()} status={provider.overallStatus} />
+            </div>
+          )}
+        </div>
       )}
+
+      {/* Footer */}
+      <div className="pcard-foot">
+        <span>
+          {incidentCount > 0
+            ? `${incidentCount} active incident${incidentCount !== 1 ? 's' : ''}`
+            : 'No active incidents'}
+        </span>
+        <a href={officialUrl} target="_blank" rel="noopener noreferrer">
+          Official status page →
+        </a>
+      </div>
     </div>
   );
 }

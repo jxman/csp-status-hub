@@ -6,7 +6,7 @@ function getInitial(): Theme {
   if (typeof window === 'undefined') return 'light';
   const stored = localStorage.getItem('csp-theme') as Theme | null;
   if (stored === 'light' || stored === 'dark') return stored;
-  return 'light';
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
 export function useTheme() {
@@ -15,9 +15,9 @@ export function useTheme() {
   useEffect(() => {
     const root = document.documentElement;
     if (theme === 'dark') {
-      root.classList.add('dark');
+      root.classList.add('dark', 'theme-dark');
     } else {
-      root.classList.remove('dark');
+      root.classList.remove('dark', 'theme-dark');
     }
     localStorage.setItem('csp-theme', theme);
   }, [theme]);

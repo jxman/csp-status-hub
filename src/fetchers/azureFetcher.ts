@@ -11,7 +11,20 @@ export async function fetchAzure(): Promise<ProviderStatus> {
     throw new Error(`Azure proxy returned ${response.status} ${response.statusText}`);
   }
 
-  const data: ProviderStatus = await response.json();
+  // Vite dev server returns index.html (200 OK) for unknown /api/* routes.
+  // Detect this before calling .json() to avoid a cryptic parse error.
+  const text = await response.text();
+  if (text.trimStart().startsWith('<')) {
+    const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    if (isLocal) {
+      throw new Error(
+        'Azure data requires a Vercel serverless function. Run `vercel dev` instead of `npm run dev` to enable it locally.'
+      );
+    }
+    throw new Error('Azure proxy returned an unexpected HTML response.');
+  }
+
+  const data: ProviderStatus = JSON.parse(text);
 
   return {
     ...data,
