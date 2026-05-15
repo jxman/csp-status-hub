@@ -57,7 +57,7 @@ export interface AwsServiceRssConfig {
 // IAM and Route 53 are global services — no per-region RSS feed exists.
 export const AWS_SERVICE_RSS_SLUGS: Record<string, AwsServiceRssConfig> = {
   ec2:        { slug: 'ec2',                global: false },
-  console:    { slug: 'management-console', global: false },
+  console:    { slug: 'management-console', global: true  },
   eks:        { slug: 'eks',                global: false },
   cloudwatch: { slug: 'cloudwatch',         global: false },
   s3:         { slug: 's3',                 global: false },
