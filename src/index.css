@@ -361,7 +361,7 @@ body {
 /* ===== Responsive ===== */
 @media (max-width: 720px) {
   .dash-head { padding: 14px 16px 12px; flex-wrap: wrap; gap: 10px; }
-  .head-right { gap: 8px; }
+  .head-right { gap: 8px; width: 100%; justify-content: flex-end; }
   .head-right .refresh { font-size: 11px; }
   .btn-ghost { padding: 5px 8px; font-size: 12px; }
   .brand-name { font-size: 15px; }
@@ -373,12 +373,16 @@ body {
     gap: 5px; width: 100%;
   }
   .a-summary .stat > span {
-    display: flex; flex-direction: column; gap: 1px;
-    padding: 5px 6px; background: var(--card);
+    display: flex; flex-direction: column; gap: 2px;
+    align-items: center; justify-content: center; text-align: center;
+    padding: 0 4px; height: 52px;
+    background: var(--card);
     border: 1px solid var(--border); border-radius: 8px;
+    overflow: hidden;
   }
-  .a-summary .stat .num { font-size: 17px; margin-right: 0; }
-  .a-summary .stat b { font-size: 9px; color: var(--ink-3); }
+  .a-summary .stat > span br { display: none; }
+  .a-summary .stat .num { font-size: 17px; margin-right: 0; line-height: 1; }
+  .a-summary .stat b { font-size: 9px; color: var(--ink-3); line-height: 1.25; }
 
   .a-grid { grid-template-columns: 1fr !important; gap: 12px; padding: 14px 16px; }
 
