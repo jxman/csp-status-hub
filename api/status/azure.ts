@@ -223,7 +223,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
       dataFetchedAt: fetchedAt,
     };
 
-    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=60');
+    res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=30');
     res.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
