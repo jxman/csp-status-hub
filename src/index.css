@@ -265,8 +265,8 @@ body {
   white-space: nowrap;
 }
 .svc-list .status .d { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
-.svc-list .status.ok  { color: var(--ink-3); }
-.svc-list .status.ok  .d { background: var(--ink-4); }
+.svc-list .status.ok  { color: var(--green-text); }
+.svc-list .status.ok  .d { background: var(--green); }
 .svc-list .status.bad { color: var(--red-text); font-weight: 500; }
 .svc-list .status.bad .d { background: var(--red); }
 .svc-list .status.warn { color: oklch(0.42 0.12 75); }
