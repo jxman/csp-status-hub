@@ -5,8 +5,8 @@ import type { Incident, ProviderStatus, StatusLevel } from '../../src/types/stat
 const AZURE_FEED_URL = 'https://azurestatuscdn.azureedge.net/en-us/status/feed/';
 const AZURE_DASHBOARD_URL = 'https://azure.status.microsoft/';
 
-// Known Azure region display names for free-text extraction from titles
-const AZURE_REGIONS = [
+// Known Azure region display names — used to split category[] into services vs regions
+const AZURE_REGIONS = new Set([
   'East US 2', 'East US', 'West US 3', 'West US 2', 'West US',
   'Central US', 'North Central US', 'South Central US', 'West Central US',
   'Canada Central', 'Canada East',
@@ -27,7 +27,7 @@ const AZURE_REGIONS = [
   'South Africa North', 'South Africa West',
   'Qatar Central',
   'Multiple Regions', 'Global',
-];
+]);
 
 function stripHtml(html: string): string {
   return html
@@ -60,61 +60,93 @@ function extractLink(link: unknown): string {
   if (typeof alternate === 'object' && alternate !== null) {
     return String((alternate as Record<string, unknown>)['@_href'] ?? AZURE_DASHBOARD_URL);
   }
+  if (typeof alternate === 'string' && alternate.startsWith('http')) return alternate;
   return AZURE_DASHBOARD_URL;
 }
 
 function parseSeverity(title: string): Incident['severity'] {
   const t = title.toLowerCase();
   if (t.includes('service disruption') || t.includes('outage')) return 'high';
-  if (t.includes('degraded') || t.includes('performance') || t.includes('connectivity') || t.includes('latency')) return 'medium';
+  if (t.includes('degraded') || t.includes('degradation') || t.includes('performance') ||
+      t.includes('connectivity') || t.includes('latency') || t.includes('multi service')) return 'medium';
   return 'medium';
 }
 
 function parseStatus(title: string): Incident['status'] {
   const t = title.toLowerCase();
   if (t.startsWith('rca') || t.includes('post-incident') || t.includes('root cause')) return 'resolved';
-  if (t.includes('mitigated') || t.includes('resolved')) return 'resolved';
-  if (t.includes('monitoring')) return 'monitoring';
-  if (t.includes('identified')) return 'identified';
-  if (t.includes('investigating')) return 'investigating';
+  if (t.startsWith('resolved') || t.includes('resolved')) return 'resolved';
+  if (t.startsWith('mitigated') || t.includes('mitigated')) return 'resolved';
+  if (t.startsWith('monitoring') || t.includes('monitoring')) return 'monitoring';
+  if (t.startsWith('identified') || t.includes('identified')) return 'identified';
+  if (t.startsWith('investigating') || t.includes('investigating')) return 'investigating';
+  // Azure RSS titles often start with "Active –" for ongoing incidents
+  if (t.startsWith('active')) return 'investigating';
   return 'unknown';
 }
 
-function parseAffected(title: string): { services: string[]; regions: string[] } {
+function extractCategories(raw: unknown): string[] {
+  if (!raw) return [];
+  const arr = Array.isArray(raw) ? raw : [raw];
+  return arr.map((c) => extractText(c)).filter(Boolean);
+}
+
+function parseAffected(title: string, categories: string[]): { services: string[]; regions: string[] } {
+  // Prefer structured <category> elements (present in RSS format)
+  if (categories.length > 0) {
+    const regions = categories.filter((c) => AZURE_REGIONS.has(c));
+    const services = categories.filter((c) => !AZURE_REGIONS.has(c));
+    return { services, regions };
+  }
+
+  // Fallback: extract from title text
   const foundRegions: string[] = [];
   for (const region of AZURE_REGIONS) {
     if (title.includes(region)) foundRegions.push(region);
   }
-
-  // Strip "RCA - " prefix, then take the first dash-delimited segment as the service
-  const cleaned = title.replace(/^RCA\s*[-–]\s*/i, '');
+  const cleaned = title.replace(/^(Active|Investigating|Monitoring|Identified|Mitigated|Resolved|RCA)\s*[-–]\s*/i, '');
   const parts = cleaned.split(/\s*[-–]\s+/);
   const services = parts.length > 0 && parts[0].trim() ? [parts[0].trim()] : [];
-
   return { services, regions: foundRegions };
 }
 
 interface RawEntry {
+  // Atom fields
   id?: unknown;
   title?: unknown;
   published?: unknown;
   updated?: unknown;
   summary?: unknown;
   link?: unknown;
+  // RSS fields
+  guid?: unknown;
+  pubDate?: unknown;
+  description?: unknown;
+  category?: unknown;
+}
+
+function toIso(val: unknown): string {
+  const raw = String(val ?? '');
+  if (!raw) return new Date().toISOString();
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
 
 function entryToIncident(entry: RawEntry, index: number): Incident {
   const title = extractText(entry.title) || 'Azure Incident';
-  const summary = extractText(entry.summary);
-  const published = String(entry.published ?? new Date().toISOString());
-  const updated = String(entry.updated ?? published);
+  // RSS uses <description>; Atom uses <summary>
+  const summary = extractText(entry.summary || entry.description);
+  // RSS uses <pubDate>; Atom uses <published> — normalize both to ISO 8601
+  const published = toIso(entry.published ?? entry.pubDate);
+  const updated = toIso(entry.updated ?? entry.pubDate ?? entry.published);
   const link = extractLink(entry.link);
-  const rawId = extractText(entry.id) || `azure-${index}`;
+  const rawId = extractText(entry.id || entry.guid) || `azure-${index}`;
   const id = encodeURIComponent(rawId).slice(0, 128);
 
   const incidentStatus = parseStatus(title);
   const severity = parseSeverity(title);
-  const { services, regions } = parseAffected(title);
+  const categories = extractCategories(entry.category);
+  const { services, regions } = parseAffected(title, categories);
   const isResolved = incidentStatus === 'resolved';
 
   return {
@@ -130,6 +162,20 @@ function entryToIncident(entry: RawEntry, index: number): Incident {
     latestUpdate: stripHtml(summary),
     updatedAt: updated,
   };
+}
+
+function extractEntries(parsed: Record<string, unknown>): RawEntry[] {
+  // RSS format: rss.channel.item
+  if (parsed?.rss) {
+    const channel = ((parsed.rss as Record<string, unknown>)?.channel as Record<string, unknown>) ?? {};
+    return [channel?.item ?? []].flat() as RawEntry[];
+  }
+  // Atom format: feed.entry
+  if (parsed?.feed) {
+    const feedData = (parsed.feed as Record<string, unknown>) ?? {};
+    return [feedData?.entry ?? []].flat() as RawEntry[];
+  }
+  return [];
 }
 
 export default async function handler(_req: VercelRequest, res: VercelResponse) {
@@ -149,11 +195,11 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
       ignoreAttributes: false,
       attributeNamePrefix: '@_',
       allowBooleanAttributes: true,
+      isArray: (name) => name === 'item' || name === 'entry' || name === 'category',
     });
 
     const parsed = parser.parse(xml) as Record<string, unknown>;
-    const feedData = (parsed?.feed as Record<string, unknown>) ?? {};
-    const rawEntries: RawEntry[] = [feedData?.entry ?? []].flat() as RawEntry[];
+    const rawEntries = extractEntries(parsed);
 
     const incidents = rawEntries.map((entry, i) => entryToIncident(entry, i));
     const activeCount = incidents.filter((inc) => inc.status !== 'resolved').length;

@@ -203,12 +203,11 @@ body {
 /* ===== Provider grid ===== */
 .a-grid {
   display: grid;
-  grid-template-columns: 1.4fr 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
   align-items: stretch;
   gap: 16px;
   padding: 20px 32px;
 }
-.a-grid.all-healthy { grid-template-columns: 1fr 1fr 1fr 1fr; }
 
 /* ===== Provider card ===== */
 .pcard {

@@ -57,7 +57,7 @@ const ChevronDown = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-function RegionRow({ regionId, regionName, overallStatus, services, provider }: RegionRowProps) {
+function RegionRow({ regionName, overallStatus, services, provider }: RegionRowProps) {
   const [open, setOpen] = useState(false);
 
   let displayServices: ServiceStatus[];
@@ -75,7 +75,6 @@ function RegionRow({ regionId, regionName, overallStatus, services, provider }: 
         onKeyDown={(e) => e.key === 'Enter' && setOpen((o) => !o)}>
         <div className="region-name">
           <span className="region-label">{regionName}</span>
-          <span className="region-code">{regionId}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <StatusBadge status={overallStatus} />

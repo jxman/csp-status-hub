@@ -101,7 +101,11 @@ A React `ErrorBoundary` would catch unexpected render errors and show a graceful
 fallback instead of a blank screen. One bad piece of data from any provider could
 theoretically crash the whole app.
 
-### `formatTime` / `formatDateTime` are in the wrong file
+### ✅ `formatDateTime` / `formatRelative` hardened against Invalid Date
 
-Both functions are defined in `statusHelpers.ts` but belong in `formatters.ts`.
-Minor code organization issue.
+_Completed — this session_
+
+Added `parseDate()` helper that checks `isNaN(d.getTime())` before use. All three
+formatter functions now return `—` on unparseable input instead of "Invalid Date".
+Azure RFC 2822 dates (`pubDate`) are also normalized to ISO 8601 server-side in
+`api/status/azure.ts` before the response is returned.

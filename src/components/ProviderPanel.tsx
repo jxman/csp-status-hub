@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Incident, ProviderStatus, StatusLevel } from '../types/status';
 import { RegionTable } from './RegionTable';
+import { IncidentTable } from './IncidentTable';
 import { FlatServiceList, type FlatService } from './FlatServiceList';
 import { ErrorState } from './ErrorState';
 import { StatusBadge } from './StatusBadge';
@@ -71,9 +72,10 @@ const ChevronIcon = ({ open }: { open: boolean }) => (
 
 export function ProviderPanel({ provider }: Props) {
   const hasRegions = provider.regions.length > 0;
-  // Cards with region blocks are always expanded (regions have their own collapse).
-  // Flat-service cards (healthy OCI, GCP, Azure, AWS) are collapsible.
-  const isExpandable = !hasRegions;
+  const hasActiveIncidents = provider.activeIncidents.filter((i) => i.status !== 'resolved').length > 0;
+  // Cards with regions or active incidents are always expanded (rows collapse individually).
+  // Flat-service cards (healthy providers) are collapsible at the card level.
+  const isExpandable = !hasRegions && !hasActiveIncidents;
   const [expanded, setExpanded] = useState(false);
 
   if (provider.fetchError && provider.regions.length === 0 && provider.activeIncidents.length === 0 && !provider.coverageNote) {
@@ -139,6 +141,8 @@ export function ProviderPanel({ provider }: Props) {
 
           {hasRegions ? (
             <RegionTable provider={provider} />
+          ) : hasActiveIncidents ? (
+            <IncidentTable incidents={provider.activeIncidents} />
           ) : (
             <div style={{ padding: '8px 16px' }}>
               <FlatServiceList services={flatServices()} status={provider.overallStatus} />

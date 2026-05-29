@@ -72,14 +72,14 @@ Browser (React SPA)
 | Provider | Dashboard                          | Data URL                           | Format   | CORS       | Proxy               |
 | -------- | ---------------------------------- | ---------------------------------- | -------- | ---------- | ------------------- |
 | AWS      | https://status.aws.amazon.com/     | `.../rss/all.rss`                  | RSS/XML  | ✅ Direct  | None                |
-| Azure    | https://azure.status.microsoft/    | `azurestatuscdn.azureedge.net/...` | Atom/XML | ❌ Blocked | `/api/status/azure` |
+| Azure    | https://azure.status.microsoft/    | `azurestatuscdn.azureedge.net/...` | RSS/XML  | ❌ Blocked | `/api/status/azure` |
 | OCI      | https://ocistatus.oraclecloud.com/ | `.../api/v2/status.json`           | JSON     | ✅ Direct  | None                |
 | GCP      | https://status.cloud.google.com/   | `.../incidents.json`               | JSON     | ✅ Direct  | None                |
 
 **Coverage notes:**
 
 - **AWS** — `all.rss` covers only incidents AWS publishes publicly (significant/widespread events). Minor single-service degradations appear only in per-service feeds.
-- **Azure** — Public Atom feed covers only major widespread incidents. Per-service status is derived by matching incident titles against a canonical service list. Full per-region granularity requires the authenticated Azure Service Health ARM API.
+- **Azure** — Public RSS feed covers only major widespread incidents. Affected services and regions are extracted from structured `<category>` elements in the feed. Per-service status is derived by keyword-matching incident titles against a canonical service list. Full per-region granularity requires the authenticated Azure Service Health ARM API.
 
 ---
 
@@ -107,6 +107,7 @@ csp-status-hub/
 │   │   ├── ProviderGrid.tsx       4-column responsive grid
 │   │   ├── ProviderPanel.tsx      Per-provider expandable card + service list
 │   │   ├── RegionTable.tsx        Region → top-10 service status rows (AWS, GCP)
+│   │   ├── IncidentTable.tsx      Incident rows with expand/collapse (Azure, no-region providers)
 │   │   ├── FlatServiceList.tsx    Flat service list with per-service status support
 │   │   ├── IncidentList.tsx       Active + recently resolved incidents, sorted by recency
 │   │   ├── IncidentCard.tsx       Per-incident detail row with severity and link
@@ -248,6 +249,12 @@ Vercel auto-detects the Vite framework and Node.js serverless functions in `/api
 - Footer disclaimer (data source attribution, non-affiliation notice)
 - Mobile-optimised 1×4 stat strip with condensed tile layout
 - Deployment scripts: `npm run deploy` and `npm run deploy:preview` (lint → build → deploy → open)
+- Operational service status now shown in green (was gray)
+- Equal-width provider cards (4×1fr grid — first card no longer wider during outages)
+- Azure RSS parser fix — feed returns RSS format (`rss.channel.item`), not Atom (`feed.entry`); services and regions now extracted from structured `<category>` elements
+- `IncidentTable` component: active incidents shown as expandable rows in provider panels (consistent with AWS region rows); clicking reveals affected services and latest update text
+- AWS region rows normalized — removed canonical region ID (e.g. `me-central-1`) from header; display name only
+- Date parsing hardened — Azure RFC 2822 dates normalized to ISO 8601 server-side; client formatters guard against `Invalid Date` with `isNaN` check
 
 ### Pending (see ENHANCEMENTS.md)
 
