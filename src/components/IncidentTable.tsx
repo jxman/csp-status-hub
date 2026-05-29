@@ -28,9 +28,7 @@ function IncidentRow({ incident }: { incident: Incident }) {
     ? incident.affectedRegions.join(' · ')
     : incident.title.replace(/^(Active|Investigating|Monitoring|Identified|Mitigated|Resolved)\s*[–-]\s*/i, '').trim();
 
-  const update = incident.latestUpdate && incident.latestUpdate.length > 420
-    ? incident.latestUpdate.slice(0, 420) + '…'
-    : incident.latestUpdate;
+  const multipleServices = incident.affectedServices.length > 1;
 
   return (
     <div className="region-block">
@@ -50,30 +48,33 @@ function IncidentRow({ incident }: { incident: Incident }) {
         </div>
       </div>
 
-      {open && (
-        <>
-          {/* Full incident title as context inside the expanded area */}
-          <p style={{ margin: '6px 0 2px', fontSize: 12, color: 'var(--ink-2)', fontWeight: 500, lineHeight: 1.4 }}>
-            {incident.title}
-          </p>
-          {incident.affectedServices.length > 0 && (
-            <div className="svc-list">
-              {incident.affectedServices.map((svc) => (
-                <>
-                  <div key={`${svc}-n`} className="svc">{svc}</div>
-                  <div key={`${svc}-s`} className={`status ${svcClass}`}>
-                    <span className="d" />{svcLabel}
-                  </div>
-                </>
-              ))}
-            </div>
+      {open && incident.affectedServices.length > 0 && (
+        <div className="svc-list">
+          {incident.affectedServices.map((svc) => (
+            <>
+              <div key={`${svc}-n`} className="svc">{svc}</div>
+              <div key={`${svc}-s`} className={`status ${svcClass}`}>
+                <span className="d" />{svcLabel}
+              </div>
+            </>
+          ))}
+          {multipleServices && (
+            <>
+              <div className="svc" style={{ fontWeight: 600 }}>Multiple Services *</div>
+              <div className={`status ${svcClass}`}>
+                <span className="d" />{svcLabel}
+              </div>
+              <p style={{ gridColumn: '1/-1', fontSize: 11, color: 'var(--ink-4)', fontStyle: 'italic', margin: '4px 0 0' }}>
+                * See{' '}
+                <a href="https://azure.status.microsoft/" target="_blank" rel="noopener noreferrer"
+                  style={{ color: 'var(--blue)' }}>
+                  Azure status page
+                </a>{' '}
+                for full listing.
+              </p>
+            </>
           )}
-          {update && (
-            <p style={{ margin: '4px 0 8px', fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.5 }}>
-              {update}
-            </p>
-          )}
-        </>
+        </div>
       )}
     </div>
   );
