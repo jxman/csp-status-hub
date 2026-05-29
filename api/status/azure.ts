@@ -132,13 +132,14 @@ function toIso(val: unknown): string {
   return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
 
-function entryToIncident(entry: RawEntry, index: number): Incident {
+function entryToIncident(entry: RawEntry, index: number, feedUpdatedAt?: string): Incident {
   const title = extractText(entry.title) || 'Azure Incident';
   // RSS uses <description>; Atom uses <summary>
   const summary = extractText(entry.summary || entry.description);
-  // RSS uses <pubDate>; Atom uses <published> — normalize both to ISO 8601
+  // startTime = item pubDate (when incident began)
+  // updatedAt = channel lastBuildDate (when feed was last updated) > item updated > pubDate
   const published = toIso(entry.published ?? entry.pubDate);
-  const updated = toIso(entry.updated ?? entry.pubDate ?? entry.published);
+  const updated = toIso(entry.updated ?? feedUpdatedAt ?? entry.pubDate ?? entry.published);
   const link = extractLink(entry.link);
   const rawId = extractText(entry.id || entry.guid) || `azure-${index}`;
   const id = encodeURIComponent(rawId).slice(0, 128);
@@ -164,18 +165,20 @@ function entryToIncident(entry: RawEntry, index: number): Incident {
   };
 }
 
-function extractEntries(parsed: Record<string, unknown>): RawEntry[] {
+function extractEntries(parsed: Record<string, unknown>): { entries: RawEntry[]; feedUpdatedAt?: string } {
   // RSS format: rss.channel.item
   if (parsed?.rss) {
     const channel = ((parsed.rss as Record<string, unknown>)?.channel as Record<string, unknown>) ?? {};
-    return [channel?.item ?? []].flat() as RawEntry[];
+    const lastBuildDate = channel?.lastBuildDate ? toIso(channel.lastBuildDate) : undefined;
+    return { entries: [channel?.item ?? []].flat() as RawEntry[], feedUpdatedAt: lastBuildDate };
   }
   // Atom format: feed.entry
   if (parsed?.feed) {
     const feedData = (parsed.feed as Record<string, unknown>) ?? {};
-    return [feedData?.entry ?? []].flat() as RawEntry[];
+    const feedUpdated = feedData?.updated ? toIso(feedData.updated) : undefined;
+    return { entries: [feedData?.entry ?? []].flat() as RawEntry[], feedUpdatedAt: feedUpdated };
   }
-  return [];
+  return { entries: [] };
 }
 
 export default async function handler(_req: VercelRequest, res: VercelResponse) {
@@ -199,9 +202,9 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
     });
 
     const parsed = parser.parse(xml) as Record<string, unknown>;
-    const rawEntries = extractEntries(parsed);
+    const { entries: rawEntries, feedUpdatedAt } = extractEntries(parsed);
 
-    const incidents = rawEntries.map((entry, i) => entryToIncident(entry, i));
+    const incidents = rawEntries.map((entry, i) => entryToIncident(entry, i, feedUpdatedAt));
     const activeCount = incidents.filter((inc) => inc.status !== 'resolved').length;
 
     const overallStatus: StatusLevel = activeCount === 0
