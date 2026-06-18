@@ -145,3 +145,25 @@ Cards were re-sorted by `overallStatus` (outage → degraded → unknown →
 operational) on every render, contradicting the documented fixed provider
 order. Removed the sort — `ProviderGrid` now renders `providers` in the order
 returned by `useStatusPolling` (AWS → Azure → OCI → GCP), always.
+
+### ✅ GCP service matching used opaque per-incident IDs that never matched
+
+_Completed — this session_
+
+GCP's `incidents.json` assigns each affected product a random doc-style ID
+per incident (e.g. `BSGtCUnz6ZmyajsjgTKv` for VPC) rather than a stable slug
+like AWS's GUID-derived service IDs. `GCP_CRITICAL_SERVICE_IDS` was matching
+against hardcoded slugs (`google-compute-engine`, etc.) that never matched
+anything in the real feed, so canonical services always showed "Operational"
+and *every* affected product — regardless of how many — was listed as an
+individual extra row instead of collapsing.
+
+Rewrote `gcpServices.ts` as `GCP_CRITICAL_SERVICES: GcpServiceDef[]` with
+`keywords` matched case-insensitively against the product `title` (same
+approach as `azureServices.ts`), and added `buildGcpServiceList()` in
+`RegionTable.tsx` to always render the same top-10 list plus a single
+"Multiple Services *" row for anything outside it — matching the AWS
+display pattern. Also replaced the non-existent "Cloud Networking" entry
+with "Virtual Private Cloud (VPC)", and made the "Multiple Services *"
+footnote link provider-aware (`STATUS_PAGE_INFO` in `RegionTable.tsx`) since
+it was previously hardcoded to always link to the AWS status page.

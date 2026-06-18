@@ -90,7 +90,7 @@ export function ProviderPanel({ provider }: Props) {
   const flatServices = (): FlatService[] => {
     if (provider.provider === 'azure') return computeAzureServiceStatuses(provider.activeIncidents);
     if (provider.provider === 'oci')   return OCI_CRITICAL_SERVICES;
-    if (provider.provider === 'gcp')   return GCP_CRITICAL_SERVICES;
+    if (provider.provider === 'gcp')   return GCP_CRITICAL_SERVICES.map(({ id, name }) => ({ id, name }));
     return awsFlatServices();
   };
 

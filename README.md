@@ -259,6 +259,8 @@ Vercel auto-detects the Vite framework and Node.js serverless functions in `/api
 - GCP incident detail link fixed — `uri` field is a relative path (`incidents/{id}`), not an absolute URL; now resolved against `status.cloud.google.com`
 - Active incident cards show "Updated X ago" (latest update time) instead of the static original start date
 - `ProviderGrid` no longer re-sorts by severity — renders the documented fixed order (AWS → Azure → OCI → GCP) on every refresh
+- GCP region/service matrix now follows the same top-10-plus-"Multiple Services *" display pattern as AWS — previously every affected product outside the canonical list was listed individually because GCP service matching used opaque per-incident IDs that never matched
+- GCP canonical top-10 now matches services by title keyword (`GCP_CRITICAL_SERVICES` in `gcpServices.ts`), since GCP's API has no stable service ID; replaced the non-existent "Cloud Networking" entry with "Virtual Private Cloud (VPC)"
 
 ### Pending (see ENHANCEMENTS.md)
 

@@ -587,6 +587,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 | **OCI gov regions** | `gov.ocistatus.com` is a separate endpoint | Out of scope v1 |
 | **GCP `end` field omitted** | `incidents.json` omits `end` entirely for ongoing incidents instead of setting it `null` | Treat `end == null` (loose) rather than `end !== null` (strict) — see `isIncidentOpen()` in `gcpFetcher.ts` |
 | **GCP `uri` is relative** | `incidents.json`'s `uri` field is a path like `incidents/{id}`, not an absolute URL | Prefix with `https://status.cloud.google.com/` — see `buildGcpDetailUrl()` in `gcpFetcher.ts` |
+| **GCP `affected_products[].id` is opaque** | Each product ID is a random per-incident doc hash (e.g. `BSGtCUnz6ZmyajsjgTKv`), not a stable slug — unlike AWS's GUID-derived service IDs | Match canonical top-10 services by title keyword instead of ID — see `GCP_CRITICAL_SERVICES` in `gcpServices.ts` and `buildGcpServiceList()` in `RegionTable.tsx` (same approach as Azure's keyword matching) |
 
 ---
 

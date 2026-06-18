@@ -2,10 +2,24 @@ import { useState } from 'react';
 import type { ProviderStatus, ServiceStatus, StatusLevel } from '../types/status';
 import { StatusBadge } from './StatusBadge';
 import { AWS_CRITICAL_SERVICE_IDS, AWS_SERVICE_NAMES } from '../utils/awsServices';
-import { GCP_CRITICAL_SERVICE_IDS, GCP_SERVICE_NAMES } from '../utils/gcpServices';
+import { GCP_CRITICAL_SERVICES } from '../utils/gcpServices';
 
 interface Props {
   provider: ProviderStatus;
+}
+
+const MULTIPLE_SERVICES_ID = 'multipleservices';
+
+const STATUS_PAGE_INFO: Partial<Record<ProviderStatus['provider'], { url: string; label: string }>> = {
+  aws: { url: 'https://status.aws.amazon.com/', label: 'AWS status page' },
+  gcp: { url: 'https://status.cloud.google.com/', label: 'GCP status page' },
+};
+
+function worstOf(statuses: StatusLevel[]): StatusLevel {
+  if (statuses.includes('outage')) return 'outage';
+  if (statuses.includes('degraded')) return 'degraded';
+  if (statuses.includes('unknown')) return 'unknown';
+  return 'operational';
 }
 
 function svcStatusClass(status: StatusLevel): string {
@@ -30,12 +44,40 @@ function buildServiceList(
     feedMap.get(id) ?? { serviceId: id, serviceName: nameMap[id] ?? id, status: 'operational', incidents: [] }
   );
   const criticalSet = new Set(criticalIds);
-  const others = feedServices.filter((s) => !criticalSet.has(s.serviceId) && s.serviceId !== 'multipleservices');
-  const multipleEntry = feedServices.find((s) => s.serviceId === 'multipleservices');
+  const others = feedServices.filter((s) => !criticalSet.has(s.serviceId) && s.serviceId !== MULTIPLE_SERVICES_ID);
+  const multipleEntry = feedServices.find((s) => s.serviceId === MULTIPLE_SERVICES_ID);
   const multipleRow: ServiceStatus[] = multipleEntry
-    ? [{ serviceId: 'multipleservices', serviceName: 'Multiple Services *', status: multipleEntry.status, incidents: multipleEntry.incidents }]
+    ? [{ serviceId: MULTIPLE_SERVICES_ID, serviceName: 'Multiple Services *', status: multipleEntry.status, incidents: multipleEntry.incidents }]
     : [];
   return [...critical, ...others, ...multipleRow];
+}
+
+// GCP has no stable service IDs, so canonical services are matched by title keyword.
+// Always shows the same top-10 list; any additional impacted product collapses into
+// a single "Multiple Services *" row, matching the AWS display pattern.
+function buildGcpServiceList(feedServices: ServiceStatus[]): ServiceStatus[] {
+  const matchedIds = new Set<string>();
+  const critical: ServiceStatus[] = GCP_CRITICAL_SERVICES.map((def) => {
+    const match = feedServices.find((s) =>
+      def.keywords.some((kw) => s.serviceName.toLowerCase().includes(kw))
+    );
+    if (match) matchedIds.add(match.serviceId);
+    return match
+      ? { serviceId: def.id, serviceName: def.name, status: match.status, incidents: match.incidents }
+      : { serviceId: def.id, serviceName: def.name, status: 'operational' as StatusLevel, incidents: [] };
+  });
+
+  const extras = feedServices.filter((s) => !matchedIds.has(s.serviceId));
+  const multipleRow: ServiceStatus[] = extras.length > 0
+    ? [{
+        serviceId: MULTIPLE_SERVICES_ID,
+        serviceName: 'Multiple Services *',
+        status: worstOf(extras.map((s) => s.status)),
+        incidents: extras.flatMap((s) => s.incidents),
+      }]
+    : [];
+
+  return [...critical, ...multipleRow];
 }
 
 interface RegionRowProps {
@@ -64,7 +106,7 @@ function RegionRow({ regionName, overallStatus, services, provider }: RegionRowP
   if (provider === 'aws') {
     displayServices = buildServiceList(services, AWS_CRITICAL_SERVICE_IDS, AWS_SERVICE_NAMES);
   } else if (provider === 'gcp') {
-    displayServices = buildServiceList(services, GCP_CRITICAL_SERVICE_IDS, GCP_SERVICE_NAMES);
+    displayServices = buildGcpServiceList(services);
   } else {
     displayServices = services;
   }
@@ -92,7 +134,7 @@ function RegionRow({ regionName, overallStatus, services, provider }: RegionRowP
             displayServices.map((svc) => (
               <>
                 <div key={`${svc.serviceId}-n`} className="svc"
-                  style={svc.serviceId === 'multipleservices' ? { fontWeight: 600 } : undefined}>
+                  style={svc.serviceId === MULTIPLE_SERVICES_ID ? { fontWeight: 600 } : undefined}>
                   {svc.serviceName}
                 </div>
                 <div key={`${svc.serviceId}-s`} className={`status ${svcStatusClass(svc.status)}`}>
@@ -101,12 +143,12 @@ function RegionRow({ regionName, overallStatus, services, provider }: RegionRowP
               </>
             ))
           )}
-          {displayServices.some((s) => s.serviceId === 'multipleservices') && (
+          {displayServices.some((s) => s.serviceId === MULTIPLE_SERVICES_ID) && STATUS_PAGE_INFO[provider] && (
             <p style={{ gridColumn: '1/-1', fontSize: 11, color: 'var(--ink-4)', fontStyle: 'italic', margin: '4px 0 0' }}>
               * See{' '}
-              <a href="https://status.aws.amazon.com/" target="_blank" rel="noopener noreferrer"
+              <a href={STATUS_PAGE_INFO[provider]!.url} target="_blank" rel="noopener noreferrer"
                 style={{ color: 'var(--blue)' }}>
-                AWS status page
+                {STATUS_PAGE_INFO[provider]!.label}
               </a>{' '}
               for full listing.
             </p>
