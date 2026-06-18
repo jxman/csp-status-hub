@@ -38,6 +38,12 @@ function isIncidentOpen(end: string | null | undefined): boolean {
   return end == null;
 }
 
+// GCP's `uri` field is a relative path (e.g. "incidents/{id}"), not an absolute URL.
+function buildGcpDetailUrl(uri: string | undefined, id: string): string {
+  if (!uri) return `https://status.cloud.google.com/incidents/${id}`;
+  return uri.startsWith('http') ? uri : `https://status.cloud.google.com/${uri}`;
+}
+
 function mapSeverityToStatus(severity: string): StatusLevel {
   switch (severity) {
     case 'high': return 'outage';
@@ -133,7 +139,7 @@ export async function fetchGcp(): Promise<ProviderStatus> {
         endTime: inc.end ?? null,
         affectedServices,
         affectedRegions,
-        detailUrl: inc.uri ?? `https://status.cloud.google.com/incidents/${inc.id}`,
+        detailUrl: buildGcpDetailUrl(inc.uri, inc.id),
         latestUpdate: latestUpdate?.text ?? '',
         updatedAt: latestUpdate?.modified ?? inc.begin,
       };
@@ -152,7 +158,7 @@ export async function fetchGcp(): Promise<ProviderStatus> {
         endTime: resolvedAt,
         affectedServices,
         affectedRegions,
-        detailUrl: inc.uri ?? `https://status.cloud.google.com/incidents/${inc.id}`,
+        detailUrl: buildGcpDetailUrl(inc.uri, inc.id),
         latestUpdate: latestUpdate?.text ?? '',
         updatedAt: latestUpdate?.modified ?? resolvedAt,
       };

@@ -255,6 +255,10 @@ Vercel auto-detects the Vite framework and Node.js serverless functions in `/api
 - `IncidentTable` component: active incidents shown as expandable rows in provider panels (consistent with AWS region rows); clicking reveals affected services and latest update text
 - AWS region rows normalized — removed canonical region ID (e.g. `me-central-1`) from header; display name only
 - Date parsing hardened — Azure RFC 2822 dates normalized to ISO 8601 server-side; client formatters guard against `Invalid Date` with `isNaN` check
+- GCP active incidents no longer silently dropped — `incidents.json` omits `end` entirely for ongoing incidents instead of setting it `null`; strict `!== null` check treated `undefined` as closed
+- GCP incident detail link fixed — `uri` field is a relative path (`incidents/{id}`), not an absolute URL; now resolved against `status.cloud.google.com`
+- Active incident cards show "Updated X ago" (latest update time) instead of the static original start date
+- `ProviderGrid` no longer re-sorts by severity — renders the documented fixed order (AWS → Azure → OCI → GCP) on every refresh
 
 ### Pending (see ENHANCEMENTS.md)
 

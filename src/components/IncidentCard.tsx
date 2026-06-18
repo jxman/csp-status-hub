@@ -1,5 +1,5 @@
 import type { Incident, Provider } from '../types/status';
-import { formatDateTime, formatRelative } from '../utils/formatters';
+import { formatRelative } from '../utils/formatters';
 
 interface Props {
   incident: Incident;
@@ -44,7 +44,7 @@ export function IncidentCard({ incident, provider }: Props) {
         <span className="inc-time">
           {isResolved && incident.endTime
             ? `Resolved ${formatRelative(incident.endTime)}`
-            : formatDateTime(incident.startTime)}
+            : `Updated ${formatRelative(incident.updatedAt)}`}
         </span>
       </div>
 

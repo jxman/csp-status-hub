@@ -585,6 +585,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 | **Vercel free tier** | 100k fn invocations/month — only Azure calls count now | Even more headroom than before |
 | **Stale data** | 60s poll cycle; AWS TTL is 5min — status may lag | Show `dataFetchedAt` timestamp in UI |
 | **OCI gov regions** | `gov.ocistatus.com` is a separate endpoint | Out of scope v1 |
+| **GCP `end` field omitted** | `incidents.json` omits `end` entirely for ongoing incidents instead of setting it `null` | Treat `end == null` (loose) rather than `end !== null` (strict) — see `isIncidentOpen()` in `gcpFetcher.ts` |
+| **GCP `uri` is relative** | `incidents.json`'s `uri` field is a path like `incidents/{id}`, not an absolute URL | Prefix with `https://status.cloud.google.com/` — see `buildGcpDetailUrl()` in `gcpFetcher.ts` |
 
 ---
 

@@ -109,3 +109,39 @@ Added `parseDate()` helper that checks `isNaN(d.getTime())` before use. All thre
 formatter functions now return `—` on unparseable input instead of "Invalid Date".
 Azure RFC 2822 dates (`pubDate`) are also normalized to ISO 8601 server-side in
 `api/status/azure.ts` before the response is returned.
+
+### ✅ GCP active incidents dropped when `end` field is omitted
+
+_Completed — this session_
+
+`incidents.json` omits the `end` key entirely for ongoing incidents instead of
+setting it to `null`. The fetcher's `active`/`recentlyResolved` filters used
+`inc.end !== null`, and `undefined !== null` is `true` in JS, so any open incident
+with no `end` key vanished from the dashboard entirely. Added `isIncidentOpen()`
+in `gcpFetcher.ts` using loose `== null` to treat both the same.
+
+### ✅ GCP incident detail link resolved to the wrong domain
+
+_Completed — this session_
+
+GCP's `uri` field is a relative path (`incidents/{id}`), not an absolute URL, so
+`inc.uri ?? fallback` always picked the truthy-but-relative path — the "View
+timeline" link resolved against `csp-status-hub.vercel.app` instead of GCP's
+site. Added `buildGcpDetailUrl()` in `gcpFetcher.ts` to prefix it correctly.
+
+### ✅ Incident cards showed stale start date instead of latest update
+
+_Completed — this session_
+
+`IncidentCard` always rendered `formatDateTime(incident.startTime)` for active
+incidents, so a 9-day-old incident with an update from yesterday still showed
+its original start date. Now shows `Updated {formatRelative(updatedAt)}`.
+
+### ✅ `ProviderGrid` silently re-sorted by severity
+
+_Completed — this session_
+
+Cards were re-sorted by `overallStatus` (outage → degraded → unknown →
+operational) on every render, contradicting the documented fixed provider
+order. Removed the sort — `ProviderGrid` now renders `providers` in the order
+returned by `useStatusPolling` (AWS → Azure → OCI → GCP), always.
