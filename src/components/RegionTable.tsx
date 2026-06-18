@@ -52,14 +52,15 @@ function buildServiceList(
   return [...critical, ...others, ...multipleRow];
 }
 
-// GCP has no stable service IDs, so canonical services are matched by title keyword.
-// Always shows the same top-10 list; any additional impacted product collapses into
-// a single "Multiple Services *" row, matching the AWS display pattern.
+// Canonical services are matched by GCP's stable productId first (verified against
+// status.cloud.google.com/products.json); title keyword is a fallback only, in case
+// GCP ever changes a productId. Always shows the same top-10 list; any additional
+// impacted product collapses into a single "Multiple Services *" row, matching AWS.
 function buildGcpServiceList(feedServices: ServiceStatus[]): ServiceStatus[] {
   const matchedIds = new Set<string>();
   const critical: ServiceStatus[] = GCP_CRITICAL_SERVICES.map((def) => {
     const match = feedServices.find((s) =>
-      def.keywords.some((kw) => s.serviceName.toLowerCase().includes(kw))
+      s.serviceId === def.productId || def.keywords.some((kw) => s.serviceName.toLowerCase().includes(kw))
     );
     if (match) matchedIds.add(match.serviceId);
     return match

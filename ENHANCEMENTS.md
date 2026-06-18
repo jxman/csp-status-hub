@@ -146,14 +146,13 @@ operational) on every render, contradicting the documented fixed provider
 order. Removed the sort — `ProviderGrid` now renders `providers` in the order
 returned by `useStatusPolling` (AWS → Azure → OCI → GCP), always.
 
-### ✅ GCP service matching used opaque per-incident IDs that never matched
+### ✅ GCP service matching used hardcoded slugs that never matched real data
 
 _Completed — this session_
 
-GCP's `incidents.json` assigns each affected product a random doc-style ID
-per incident (e.g. `BSGtCUnz6ZmyajsjgTKv` for VPC) rather than a stable slug
-like AWS's GUID-derived service IDs. `GCP_CRITICAL_SERVICE_IDS` was matching
-against hardcoded slugs (`google-compute-engine`, etc.) that never matched
+GCP's `incidents.json` assigns each affected product an opaque doc-style ID
+(e.g. `BSGtCUnz6ZmyajsjgTKv` for VPC). `GCP_CRITICAL_SERVICE_IDS` was matching
+against invented slugs (`google-compute-engine`, etc.) that never matched
 anything in the real feed, so canonical services always showed "Operational"
 and *every* affected product — regardless of how many — was listed as an
 individual extra row instead of collapsing.
@@ -167,3 +166,21 @@ display pattern. Also replaced the non-existent "Cloud Networking" entry
 with "Virtual Private Cloud (VPC)", and made the "Multiple Services *"
 footnote link provider-aware (`STATUS_PAGE_INFO` in `RegionTable.tsx`) since
 it was previously hardcoded to always link to the AWS status page.
+
+### ✅ Upgraded GCP matching from keyword-only to verified stable product IDs
+
+_Completed — this session_
+
+Discovered `https://status.cloud.google.com/products.json` — GCP's full
+207-product catalog with permanent IDs. Cross-checked it against every
+product ID seen across 3 sampled live incidents (49 unique products): zero
+mismatches, confirming the opaque per-product ID is stable, not randomized
+per incident as previously assumed.
+
+Added a `productId` field to each `GCP_CRITICAL_SERVICES` entry, sourced
+from that catalog. `buildGcpServiceList()` now matches by `productId` first
+(exact, can't false-positive) and falls back to the title keyword only if
+the ID ever stops resolving. Added `npm run verify:gcp`
+(`scripts/verify-gcp-services.mjs`) to re-check all 10 `productId`s against
+the live catalog on demand — flags exactly which service went stale and
+whether the keyword fallback would still catch it.

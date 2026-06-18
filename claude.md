@@ -587,7 +587,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 | **OCI gov regions** | `gov.ocistatus.com` is a separate endpoint | Out of scope v1 |
 | **GCP `end` field omitted** | `incidents.json` omits `end` entirely for ongoing incidents instead of setting it `null` | Treat `end == null` (loose) rather than `end !== null` (strict) — see `isIncidentOpen()` in `gcpFetcher.ts` |
 | **GCP `uri` is relative** | `incidents.json`'s `uri` field is a path like `incidents/{id}`, not an absolute URL | Prefix with `https://status.cloud.google.com/` — see `buildGcpDetailUrl()` in `gcpFetcher.ts` |
-| **GCP `affected_products[].id` is opaque** | Each product ID is a random per-incident doc hash (e.g. `BSGtCUnz6ZmyajsjgTKv`), not a stable slug — unlike AWS's GUID-derived service IDs | Match canonical top-10 services by title keyword instead of ID — see `GCP_CRITICAL_SERVICES` in `gcpServices.ts` and `buildGcpServiceList()` in `RegionTable.tsx` (same approach as Azure's keyword matching) |
+| **GCP `affected_products[].id` is opaque but stable** | Each product ID is an opaque doc-style hash (e.g. `BSGtCUnz6ZmyajsjgTKv` for VPC), not a human-readable slug like AWS's — but it IS permanent. Verified via `https://status.cloud.google.com/products.json` (the full 207-product catalog): all IDs seen across sampled incidents matched the catalog exactly | Match canonical top-10 services by hardcoded `productId` (sourced from `products.json`) with title-keyword as fallback — see `GCP_CRITICAL_SERVICES` in `gcpServices.ts` and `buildGcpServiceList()` in `RegionTable.tsx`. Run `npm run verify:gcp` to re-validate all 10 `productId`s against the live catalog at any time |
 
 ---
 

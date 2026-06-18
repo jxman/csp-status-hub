@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "deploy": "npm run lint && npm run build && bash scripts/deploy.sh --prod",
-    "deploy:preview": "npm run lint && npm run build && bash scripts/deploy.sh"
+    "deploy:preview": "npm run lint && npm run build && bash scripts/deploy.sh",
+    "verify:gcp": "node scripts/verify-gcp-services.mjs"
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",

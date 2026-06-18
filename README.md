@@ -161,6 +161,9 @@ npm run build
 
 # Lint
 npm run lint
+
+# Verify GCP's canonical service IDs still resolve against the live product catalog
+npm run verify:gcp
 ```
 
 The Azure proxy (`/api/status/azure`) is a Vercel Function. For full local testing including Azure data, use the Vercel CLI:
@@ -259,8 +262,9 @@ Vercel auto-detects the Vite framework and Node.js serverless functions in `/api
 - GCP incident detail link fixed — `uri` field is a relative path (`incidents/{id}`), not an absolute URL; now resolved against `status.cloud.google.com`
 - Active incident cards show "Updated X ago" (latest update time) instead of the static original start date
 - `ProviderGrid` no longer re-sorts by severity — renders the documented fixed order (AWS → Azure → OCI → GCP) on every refresh
-- GCP region/service matrix now follows the same top-10-plus-"Multiple Services *" display pattern as AWS — previously every affected product outside the canonical list was listed individually because GCP service matching used opaque per-incident IDs that never matched
-- GCP canonical top-10 now matches services by title keyword (`GCP_CRITICAL_SERVICES` in `gcpServices.ts`), since GCP's API has no stable service ID; replaced the non-existent "Cloud Networking" entry with "Virtual Private Cloud (VPC)"
+- GCP region/service matrix now follows the same top-10-plus-"Multiple Services *" display pattern as AWS — previously every affected product outside the canonical list was listed individually because GCP service matching used hardcoded slugs that never matched real feed data
+- GCP canonical top-10 now matches services by stable `productId` (verified against the authoritative `status.cloud.google.com/products.json` catalog), with title keyword as a fallback; replaced the non-existent "Cloud Networking" entry with "Virtual Private Cloud (VPC)"
+- `npm run verify:gcp` — re-validates the 10 hardcoded GCP `productId`s against the live product catalog on demand
 
 ### Pending (see ENHANCEMENTS.md)
 
