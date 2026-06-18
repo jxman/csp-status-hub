@@ -24,12 +24,18 @@ interface GcpIncident {
   id: string;
   number: number;
   begin: string;
-  end: string | null;
+  end?: string | null;
   severity: 'low' | 'medium' | 'high';
   external_desc: string;
   affected_products: GcpProduct[];
   updates: GcpUpdate[];
   uri: string;
+}
+
+// GCP omits the `end` field entirely for ongoing incidents rather than setting it to null,
+// so callers must treat undefined the same as null when checking incident state.
+function isIncidentOpen(end: string | null | undefined): boolean {
+  return end == null;
 }
 
 function mapSeverityToStatus(severity: string): StatusLevel {
@@ -65,10 +71,10 @@ export async function fetchGcp(): Promise<ProviderStatus> {
   }
 
   const allIncidents: GcpIncident[] = await response.json();
-  // end === null is the primary active flag; also exclude incidents where the latest
-  // update is AVAILABLE — service restored but GCP hasn't formally closed the incident yet
+  // An open end (null or absent) is the primary active flag; also exclude incidents where
+  // the latest update is AVAILABLE — service restored but GCP hasn't formally closed the incident yet
   const active = allIncidents.filter((inc) => {
-    if (inc.end !== null) return false;
+    if (!isIncidentOpen(inc.end)) return false;
     const latestUpdate = inc.updates[0];
     if (latestUpdate?.status === 'AVAILABLE') return false;
     return true;
@@ -77,7 +83,7 @@ export async function fetchGcp(): Promise<ProviderStatus> {
   const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
   const cutoff = Date.now() - TWENTY_FOUR_HOURS_MS;
   const recentlyResolved = allIncidents.filter((inc) => {
-    if (inc.end !== null) return new Date(inc.end).getTime() >= cutoff;
+    if (!isIncidentOpen(inc.end)) return new Date(inc.end!).getTime() >= cutoff;
     const latestUpdate = inc.updates[0];
     return latestUpdate?.status === 'AVAILABLE' && new Date(latestUpdate.modified).getTime() >= cutoff;
   });
@@ -124,7 +130,7 @@ export async function fetchGcp(): Promise<ProviderStatus> {
         status: incidentSummaryStatus,
         severity: inc.severity,
         startTime: inc.begin,
-        endTime: inc.end,
+        endTime: inc.end ?? null,
         affectedServices,
         affectedRegions,
         detailUrl: inc.uri ?? `https://status.cloud.google.com/incidents/${inc.id}`,
