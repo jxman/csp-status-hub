@@ -1,4 +1,4 @@
-import type { ProviderStatus, StatusLevel } from '../types/status';
+import type { ProviderStatus, StatusLevel } from '../types/status.js';
 
 const OCI_STATUS_URL = 'https://ocistatus.oraclecloud.com/api/v2/status.json';
 

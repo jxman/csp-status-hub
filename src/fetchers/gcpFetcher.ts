@@ -1,4 +1,4 @@
-import type { Incident, ProviderStatus, RegionStatus, ServiceStatus, StatusLevel } from '../types/status';
+import type { Incident, ProviderStatus, RegionStatus, ServiceStatus, StatusLevel } from '../types/status.js';
 
 const GCP_INCIDENTS_URL = 'https://status.cloud.google.com/incidents.json';
 

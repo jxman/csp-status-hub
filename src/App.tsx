@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { useStatusPolling } from './hooks/useStatusPolling';
@@ -6,52 +6,40 @@ import { useTheme } from './hooks/useTheme';
 import { StatusHeader } from './components/StatusHeader';
 import { ProviderGrid } from './components/ProviderGrid';
 import { IncidentList } from './components/IncidentList';
+import { SubscribeModal } from './components/SubscribeModal';
 import { formatRelative } from './utils/formatters';
 import type { ProviderStatus } from './types/status';
 
-function ComingSoonModal({ onClose }: { onClose: () => void }) {
-  return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 24,
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: 'var(--card)', border: '1px solid var(--border)',
-          borderRadius: 14, padding: '32px 36px', maxWidth: 400, width: '100%',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
-          display: 'flex', flexDirection: 'column', gap: 16,
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ fontSize: 32, lineHeight: 1 }}>🔔</div>
-        <div>
-          <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--ink)', marginBottom: 8 }}>
-            Alerts coming soon
-          </div>
-          <div style={{ fontSize: 14, color: 'var(--ink-2)', lineHeight: 1.6 }}>
-            We're working on email and webhook alerts so you can get notified the moment a provider reports an incident. Stay tuned — this feature is on its way.
-          </div>
-        </div>
-        <button
-          onClick={onClose}
-          style={{
-            alignSelf: 'flex-end', marginTop: 4,
-            padding: '8px 18px', borderRadius: 7, border: '1px solid var(--border-strong)',
-            background: 'var(--ink)', color: 'var(--bg)',
-            fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          Got it
-        </button>
-      </div>
-    </div>
-  );
+type UrlBanner =
+  | { kind: 'ok'; text: string }
+  | { kind: 'error'; text: string };
+
+const URL_BANNERS: Record<string, UrlBanner> = {
+  'confirm=success': { kind: 'ok', text: "You're subscribed! You'll get an email when a provider you follow reports a new outage." },
+  'confirm=updated': { kind: 'ok', text: 'Your alert preferences have been updated.' },
+  'confirm=error': { kind: 'error', text: 'That confirmation link is invalid or has expired. Try subscribing again.' },
+  'unsubscribed=1': { kind: 'ok', text: "You've been unsubscribed from CSP Status Hub alerts." },
+  'unsubscribed=error': { kind: 'error', text: 'That unsubscribe link is invalid.' },
+};
+
+function useUrlBanner() {
+  const [banner, setBanner] = useState<UrlBanner | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    for (const [key, value] of Object.entries(URL_BANNERS)) {
+      const [param, expected] = key.split('=');
+      if (params.get(param) === expected) {
+        setBanner(value);
+        params.delete(param);
+        const next = params.toString();
+        window.history.replaceState({}, '', window.location.pathname + (next ? `?${next}` : ''));
+        break;
+      }
+    }
+  }, []);
+
+  return [banner, () => setBanner(null)] as const;
 }
 
 function computeImpactedServices(providers: ProviderStatus[]): { count: number; isApproximate: boolean } {
@@ -156,6 +144,7 @@ export default function App() {
 
   const { theme, toggle } = useTheme();
   const [showAlertsModal, setShowAlertsModal] = useState(false);
+  const [urlBanner, dismissUrlBanner] = useUrlBanner();
 
   const hasDegradedProvider = dashboard?.providers.some(
     (p) => p.overallStatus === 'degraded' || p.overallStatus === 'outage'
@@ -165,7 +154,25 @@ export default function App() {
     <div className="dash">
       <Analytics />
       <SpeedInsights />
-      {showAlertsModal && <ComingSoonModal onClose={() => setShowAlertsModal(false)} />}
+      {showAlertsModal && <SubscribeModal onClose={() => setShowAlertsModal(false)} />}
+
+      {urlBanner && (
+        <div style={{
+          padding: '10px 32px',
+          background: urlBanner.kind === 'ok' ? 'var(--green-soft)' : 'var(--red-soft)',
+          color: urlBanner.kind === 'ok' ? 'var(--green-text)' : 'var(--red-text)',
+          fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+        }}>
+          <span>{urlBanner.text}</span>
+          <button
+            onClick={dismissUrlBanner}
+            style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0 }}
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <StatusHeader
         lastRefreshedAt={lastSuccessfulRefresh}

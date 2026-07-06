@@ -1,6 +1,6 @@
 import { XMLParser } from 'fast-xml-parser';
-import type { Incident, ProviderStatus, RegionStatus, ServiceStatus, StatusLevel } from '../types/status';
-import { AWS_CRITICAL_SERVICE_IDS, AWS_SERVICE_NAMES, AWS_SERVICE_RSS_SLUGS, type AwsServiceRssConfig } from '../utils/awsServices';
+import type { Incident, ProviderStatus, RegionStatus, ServiceStatus, StatusLevel } from '../types/status.js';
+import { AWS_CRITICAL_SERVICE_IDS, AWS_SERVICE_NAMES, AWS_SERVICE_RSS_SLUGS, type AwsServiceRssConfig } from '../utils/awsServices.js';
 
 const AWS_RSS_URL = 'https://status.aws.amazon.com/rss/all.rss';
 

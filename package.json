@@ -13,11 +13,14 @@
     "verify:gcp": "node scripts/verify-gcp-services.mjs"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
+    "botid": "^1.5.11",
     "fast-xml-parser": "^5.5.7",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "resend": "^6.16.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
