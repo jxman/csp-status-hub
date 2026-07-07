@@ -1,8 +1,12 @@
 # CSP Status Hub — Alert Subscription Feature: Design Document
 
-**Status:** Phases 0–3 built, tested, and verified live (not yet deployed to production). Phase 4 in progress — cron cadence mechanism revised mid-phase (see Section 7).
+**Status:** Phases 0–5 and 7 complete, deployed to production
+(`https://csp-status-hub.vercel.app`), and verified live end-to-end
+including real test alerts. Only Phase 6 (SMS) remains, deferred by user
+request. Several fixes and refinements have landed post-ship from direct
+production use — see Sections 4.1, 5, 8, and 9.1.
 **Author:** Claude Code (drafted for John Xanthopoulos)
-**Date:** 2026-07-05
+**Date:** 2026-07-07
 **Depends on:** `claude.md` (base architecture), stays on Vercel (no platform migration planned)
 
 ---
@@ -223,6 +227,17 @@ All three branches return the exact same generic API response
 (`"Check your email to confirm your subscription."`) regardless of which
 branch fired, or whether the email exists at all — anti-enumeration, per 12.3.
 
+**Fixed after initial ship:** the first version of this logic only ever
+touched `name` in the `unsubscribed` (fresh-signup) branch — resubmitting
+with a new name while `pending_confirmation` or `confirmed` silently kept
+the old name, since those branches only checked for provider differences.
+Name isn't security-sensitive the way providers/email are, so there's no
+reason it should wait on anything: it now updates immediately in all three
+branches, independent of whatever's happening with providers in that same
+request (tested: name-only change → immediate update, no email; name +
+provider change together → name updates immediately while the provider
+change still stages and requires confirmation).
+
 ---
 
 ## 5. Manage / Unsubscribe Flow — As Built
@@ -236,11 +251,24 @@ branch fired, or whether the email exists at all — anti-enumeration, per 12.3.
     and **takes effect immediately, no re-confirmation** — the token itself
     already proves ownership (only the real inbox owner has this link), unlike
     the public form in 4.1.
-  - **Unsubscribe** → `GET /api/subscribe/unsubscribe?token=<manage_token>`,
-    one click, sets `status = unsubscribed`. Implemented as **idempotent** (a
-    second hit — e.g. an email-scanner prefetch — is a harmless no-op) rather
-    than adding a confirm-click page, matching the original CAN-SPAM-driven
-    one-step requirement.
+  - **Unsubscribe** → originally a direct one-click `GET
+    /api/subscribe/unsubscribe?token=...` link straight from the email, per
+    CAN-SPAM's "one step" requirement. **Changed after user feedback**: the
+    email's "Unsubscribe" link now points to
+    `/manage?token=...&action=unsubscribe` instead — landing on the dashboard
+    site first, with a confirmation panel (`ManagePage.tsx`,
+    `confirmingUnsubscribe` state) offering "Cancel", "Yes, unsubscribe" (the
+    real link to the GET endpoint), and a reminder that unchecking providers
+    and hitting Save is an alternative to leaving entirely. `?action=
+    unsubscribe` auto-expands that panel on load so it's still effectively
+    one click past the email, while removing the risk of an automated
+    email-scanner prefetch silently unsubscribing someone by hitting a raw
+    mutating link. The actual `/api/subscribe/unsubscribe` endpoint is
+    unchanged (still GET, still idempotent) — it's just no longer linked to
+    directly from outside the app. A layout bug surfaced during testing:
+    the confirm panel initially *replaced* the Save-changes button instead
+    of sitting alongside it, hiding the exact button the panel's own copy
+    told you to use — fixed so both are always visible together.
 - Provider-change emails after that point (from 4.1) do **not** re-send the
   manage/unsubscribe links — `manage_token` doesn't change on an update, so
   the subscriber's original welcome email still works.
@@ -390,8 +418,17 @@ verified via 3 DNS records added to the existing Route 53 zone (`synepho.com`,
 zone ID `Z1YCOPGKIGNAB3`) using a small idempotent script,
 `scripts/setup-resend-dns.sh`. `sendOutageNotificationEmail()` is the actual
 outage-notification template — subject line names the provider and the
-status it dropped to, body links the official status page plus the
-subscriber's own manage/unsubscribe links (built from their `manage_token`).
+status it dropped to, body links the subscriber's own manage/unsubscribe
+links (built from their `manage_token`).
+
+**Changed after user feedback:** the primary link originally went straight
+to the vendor's official status page (`sourceUrl`). It now points back to
+the CSP Status Hub dashboard (`APP_BASE_URL`) instead — the user wanted
+subscribers to land on the dashboard first, since each provider panel there
+already links out to that same official status page (`ProviderPanel.tsx`),
+so nothing was lost, and subscribers see the full picture (all four
+providers, not just the one that alerted) before clicking further. The
+unsubscribe link change is covered in Section 5.
 
 Dispatch is wired directly into `/api/cron/check-status`'s existing
 notify-worthy check (Section 7.2) — no separate job, no queue: when a
@@ -432,10 +469,39 @@ registration lead time). Not started; user opted to skip for now.
   `{action: 'resend_confirmation' | 'force_unsubscribe'}`, and
   `DELETE /api/admin/subscribers/[id]` for a hard delete. All gated behind the
   same session check as the list endpoint.
-- **Notification log view**: not built — depends on the `notification_log`
-  table, which doesn't exist until Phase 5.
+- **Notification log view**: not built. The `notification_log` table exists
+  now (Phase 5), but there's no dedicated admin UI reading from it yet.
+- **Manual refresh**: a "Refresh" button re-runs the same list query on
+  demand (e.g. after a signup/unsubscribe happened elsewhere while the page
+  was already open) without changing a filter or reloading the browser.
 
-### 10. Admin Auth — The Real Mechanics (revised from 14.3's original assumption)
+### 9.1 Real bug: bracket-syntax dynamic routes aren't auto-wired outside Next.js
+
+`api/admin/subscribers/[id].ts` handles Resend/Unsubscribe/Delete, and was
+**silently unreachable in production** for a while — every request to
+`/api/admin/subscribers/<id>` fell through to the SPA's `index.html` instead
+of hitting the function (confirmed via the `content-disposition:
+inline; filename="index.html"` response header, not an error of any kind,
+which is what made it easy to miss). Root cause, confirmed against Vercel's
+own docs (their Gatsby example shows the identical fix): **bracket dynamic
+API routes are a Next.js framework-adapter convention, not a general Vercel
+Functions behavior** — a Vite project needs an explicit `vercel.json`
+rewrite mapping the URL pattern to the literal bracket filename:
+
+```json
+{ "source": "/api/admin/subscribers/:id", "destination": "/api/admin/subscribers/[id]" }
+```
+
+This had been latent since Phase 3 — the handler logic itself was verified
+correct via local testing, but the *routing* to reach it in production was
+never actually exercised until the user clicked Unsubscribe in the live
+`/admin` UI and got a generic "Action failed." Diagnosed by minting a valid
+admin session cookie directly (using the known `SESSION_SECRET`) and
+reproducing the exact request with `curl`, without needing browser access —
+worth remembering as a technique for any future "logic looks right but the
+button doesn't work" report on an authenticated route.
+
+## 10. Admin Auth — The Real Mechanics (revised from 14.3's original assumption)
 
 The original plan assumed "Sign in with Vercel" would be a straightforward
 drop-in. Two real gaps surfaced:
@@ -558,7 +624,7 @@ presence here should push more services toward AWS.
 | 14.3 | Admin auth | **Sign in with Vercel** OAuth | Real mechanics turned out more involved — see Section 10 |
 | 14.4 | Bot verification | **Vercel BotID** | Confirmed — pure config, no dashboard toggle exists (Section 6) |
 | 14.5 | Config format | **Keep `vercel.json`** | Unchanged |
-| 14.6 | Unsubscribed-record retention | **Hard-delete after 90 days** | Not yet built (Phase 7) |
+| 14.6 | Unsubscribed-record retention | **Hard-delete after 90 days** | Built in Phase 7 (`/api/cron/cleanup`) |
 | 14.7 | Notification trigger (v1) | **Initial outage report only** | Implemented in Phase 4's diff logic |
 | 14.8 | Cron interval | **5 minutes** | Mechanism changed — see 14.9 |
 | 14.9 | Cron cadence mechanism | **AWS EventBridge Rules** (not Scheduler — Scheduler rejects API Destination ARNs, discovered by testing), HTTPS target via an API Destination + Connection, `Authorization: Bearer $CRON_SECRET` | Vercel Hobby caps native cron at once/day — a `*/5 * * * *` `vercel.json` entry fails at deploy time, not just reduced precision. Vercel's own daily cron kept as a free fallback |
@@ -585,9 +651,12 @@ resubscribe-after-unsubscribe reset.
 ### Phase 3 — Admin view — ✅ Complete
 
 Built and verified live against a real Vercel login, including CSV export
-and sign-out.
+and sign-out. Two fixes landed after initial ship, both against real
+production use rather than caught in testing: the bracket-dynamic-route
+bug that broke Resend/Unsubscribe/Delete (Section 9.1), and a manual
+Refresh button added on request.
 
-### Phase 4 — Server-side change detection — 🔄 In progress
+### Phase 4 — Server-side change detection — ✅ Complete
 
 - ✅ Azure fetch logic extracted to `api/_lib/azureFetcher.ts`; aws/gcp/oci
   fetchers reused directly, no refactor needed
@@ -616,6 +685,12 @@ dev` entirely, simplified to one pattern.
   emailed (confirmed delivered) and logged; a subscriber following a
   different provider was correctly skipped; re-running the cron against an
   unchanged ongoing outage produced zero duplicate notifications
+
+**Two refinements after initial ship**, both from direct user feedback on
+the actual test emails: the primary link now points to the dashboard
+instead of straight to the vendor (Section 8), and the "Unsubscribe" link
+now lands on a confirmation panel instead of unsubscribing on click
+(Section 5).
 
 ### Phase 6 — SMS — Not started (user deferred Twilio registration)
 
@@ -707,5 +782,7 @@ question — not before — if/when the hosting platform itself changes.
 
 ---
 
-*Next step: test Phase 4 detection accuracy against real provider data,
-then move to Phase 5 (actual notification dispatch).*
+*Next step: Phase 6 (SMS via Twilio) whenever A2P 10DLC registration is
+started and cleared, or Phase 7's optional widening (resolution/escalation
+notices, per-subscriber severity threshold) if that becomes wanted sooner.
+Everything else in the original phase plan is live.*

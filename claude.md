@@ -4,6 +4,13 @@
 **Author:** John Xanthopoulos  
 **Date:** 2026-05-08 (rev 4 — AWS confirmed CORS-permissive; moved to direct browser fetch)
 
+> **Scope update (2026-07):** Section 1's "Out of Scope" list below reflects
+> the *original* kickoff decision and is left as a historical record. Alerting
+> and subscriptions are now in scope and built — see
+> [`ALERTS-DESIGN.md`](./ALERTS-DESIGN.md) for that feature's full design,
+> decisions, and as-built notes. This document still accurately describes the
+> dashboard itself (data sources, fetchers, unified schema).
+
 ---
 
 ## 1. Project Overview

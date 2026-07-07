@@ -2,7 +2,7 @@
 
 Real-time operational status dashboard for AWS, Azure, OCI, and GCP in a single unified view. Built for Marsh internal leadership and cloud engineering staff.
 
-Auto-refreshes every 60 seconds. Shows active incidents, per-service health, and links through to official vendor status pages.
+Auto-refreshes every 60 seconds. Shows active incidents, per-service health, and links through to official vendor status pages. Subscribers can also opt in to email alerts when a provider they follow reports a new outage — see [Alerts & Admin](#alerts--admin) below.
 
 > **Status:** Live on Vercel — [csp-status-hub.vercel.app](https://csp-status-hub.vercel.app)
 
@@ -89,6 +89,41 @@ Panels and data are always returned in this order: **AWS → Azure → OCI → G
 
 ---
 
+## Alerts & Admin
+
+Opt-in email alerting: sign up (bell icon), confirm via email, get notified
+the moment a provider you follow transitions from operational to something
+else. Full design, decisions, and as-built notes (including a few real
+gotchas hit along the way) live in **[ALERTS-DESIGN.md](./ALERTS-DESIGN.md)**
+— this section is just the map.
+
+| Route | Purpose |
+| --- | --- |
+| `/` (bell icon) | Sign up — name, email, provider checkboxes, invisible bot check |
+| `/manage?token=...` | Edit providers or unsubscribe (link comes from your confirmation email) |
+| `/admin` | Subscriber list, search/filter, CSV export, manual actions — gated behind Sign in with Vercel |
+
+**Backend pieces beyond the dashboard itself:**
+
+- **Neon Postgres** (Vercel Marketplace) — subscriber and status-snapshot data
+- **Resend** — transactional + outage-notification email, sending from `alerts.synepho.com`
+- **Vercel BotID** — invisible bot check on the sign-up form
+- **Sign in with Vercel** — admin auth, restricted to a single hardcoded `ADMIN_EMAIL`
+- **AWS EventBridge** (Rules + Connection + API Destination) — polls `/api/cron/check-status` every 5 minutes; Vercel's own Hobby-plan cron only allows once/day, so this fills that gap. Provisioned via `scripts/setup-eventbridge-cron.sh`
+- **Vercel Firewall** — rate limiting on the sign-up endpoint
+
+**Environment variables** (see `.env.local`, gitignored — pull with `vercel env pull`):
+`DATABASE_URL`, `RESEND_API_KEY`, `RESEND_EMAIL_DOMAIN`, `APP_BASE_URL`, `CRON_SECRET`, `VERCEL_OAUTH_CLIENT_ID`, `VERCEL_OAUTH_CLIENT_SECRET`, `SESSION_SECRET`, `ADMIN_EMAIL`.
+
+**Database migrations** live in `scripts/db/*.sql`, applied via:
+```bash
+vercel env pull .env.local
+set -a && source .env.local && set +a
+node scripts/db-migrate.mjs
+```
+
+---
+
 ## Project Structure
 
 ```
@@ -96,12 +131,34 @@ csp-status-hub/
 ├── api/                           Vercel serverless functions
 │   ├── status/
 │   │   └── azure.ts               Azure Atom feed proxy (fetch, parse, normalize)
+│   ├── subscribe/
+│   │   ├── index.ts               POST — create/stage a subscription
+│   │   ├── confirm.ts             GET  — finalize signup or a staged update
+│   │   ├── manage.ts              GET/POST — view/edit providers by token
+│   │   └── unsubscribe.ts         GET  — one-click, idempotent opt-out
+│   ├── auth/
+│   │   ├── authorize.ts           GET  — start Sign in with Vercel (PKCE)
+│   │   ├── callback.ts            GET  — token exchange, email allowlist check, session cookie
+│   │   └── signout.ts             POST — clear session cookie
+│   ├── admin/subscribers/
+│   │   ├── index.ts               GET  — list/filter/CSV export + summary counts
+│   │   └── [id].ts                PATCH/DELETE — resend/unsubscribe/delete
+│   ├── cron/
+│   │   ├── check-status.ts        Status diffing + notification dispatch (EventBridge + Vercel cron)
+│   │   └── cleanup.ts             Daily retention purge (unconfirmed 7d, unsubscribed 90d)
 │   └── _lib/
-│       └── types.ts               Re-exports shared types for API functions
+│       ├── types.ts               Re-exports shared types for API functions
+│       ├── db.ts                  Neon client
+│       ├── email.ts               Resend templates (confirm, update-confirm, welcome, outage)
+│       ├── azureFetcher.ts        Azure fetch/parse logic shared by api/status/azure.ts and the cron job
+│       ├── auth.ts                requireAdmin() session gate
+│       ├── session.ts             HMAC-signed admin session cookie (sign/verify)
+│       └── cookies.ts             Cookie header parsing
 │
 ├── src/
 │   ├── App.tsx                    Root layout, dynamic title, Analytics, SpeedInsights
-│   ├── main.tsx                   React entry point
+│   ├── main.tsx                   React entry point + path-based routing (/, /manage, /admin)
+│   ├── botid.ts                   Client-side BotID init, protects POST /api/subscribe
 │   ├── components/
 │   │   ├── StatusHeader.tsx       Header: title, live dot, refresh, bell (subscribe), theme toggle
 │   │   ├── ProviderGrid.tsx       4-column responsive grid
@@ -113,7 +170,10 @@ csp-status-hub/
 │   │   ├── IncidentCard.tsx       Per-incident detail row with severity and link
 │   │   ├── StatusBadge.tsx        Color-coded status pill
 │   │   ├── ServiceRow.tsx         Single service row in region view
-│   │   └── ErrorState.tsx         Per-provider fetch failure fallback
+│   │   ├── ErrorState.tsx         Per-provider fetch failure fallback
+│   │   ├── SubscribeModal.tsx     Sign-up form (name, email, provider checkboxes)
+│   │   ├── ManagePage.tsx         /manage — edit providers, confirm-before-unsubscribe
+│   │   └── AdminPage.tsx          /admin — subscriber list, filters, CSV export, actions
 │   ├── fetchers/
 │   │   ├── awsFetcher.ts          RSS parse + GUID parsing + deduplication
 │   │   ├── azureFetcher.ts        Calls /api/status/azure proxy, normalizes response
@@ -132,15 +192,24 @@ csp-status-hub/
 │       ├── statusHelpers.ts       Status → color/label/dot mapping
 │       └── formatters.ts          Relative time formatting
 │
+├── scripts/
+│   ├── db/*.sql                   Migrations, applied in filename order
+│   ├── db-migrate.mjs             Idempotent migration runner
+│   ├── setup-resend-dns.sh        Adds Resend DNS records to the Route 53 zone
+│   ├── setup-eventbridge-cron.sh  Provisions the AWS EventBridge cron trigger
+│   ├── deploy.sh                  Deploy wrapper (opens the deployed URL on completion)
+│   └── verify-gcp-services.mjs    Re-validates GCP productIds against the live catalog
+│
 ├── public/
 │   └── favicon.svg                Cloud icon with green status dot
 │
-├── vercel.json                    Rewrite rules + function config
+├── vercel.json                    Rewrites, function config, cron schedules
 ├── vite.config.ts
 ├── tailwind.config.ts
 ├── tsconfig.json
-├── ENHANCEMENTS.md                Backlog of optimizations and improvements
-└── CLAUDE.md                      Architecture decisions and data source research
+├── ENHANCEMENTS.md                Backlog of dashboard optimizations and improvements
+├── ALERTS-DESIGN.md               Full design/decisions/as-built notes for the alerts feature
+└── claude.md                      Original architecture handoff and data source research
 ```
 
 ---
@@ -166,13 +235,21 @@ npm run lint
 npm run verify:gcp
 ```
 
-The Azure proxy (`/api/status/azure`) is a Vercel Function. For full local testing including Azure data, use the Vercel CLI:
+The Azure proxy (`/api/status/azure`) and everything under **Alerts & Admin**
+above are Vercel Functions. For full local testing (Azure data, sign-up,
+manage, admin, cron), use the Vercel CLI instead of plain `npm run dev`:
 
 ```bash
-vercel dev
+vercel env pull .env.local   # first time only, or after env vars change
+vercel dev --listen 3002     # any free port — 3000 is commonly reserved for a separate dev server
 ```
 
-Plain `npm run dev` runs the Vite frontend only — Azure will show an error state since `/api/status/azure` is unavailable without the function runtime.
+Plain `npm run dev` runs the Vite frontend only — Azure and everything
+under `/api/*` will error or 404 since the function runtime isn't running.
+
+Vercel BotID passes through as "human" automatically in local dev, so
+`/api/subscribe` isn't blocked the way it is against real (non-browser)
+traffic in production.
 
 ---
 
@@ -196,7 +273,18 @@ vercel link    # link this directory to the Vercel project
 
 Vercel auto-detects the Vite framework and Node.js serverless functions in `/api`. No additional configuration required beyond `vercel.json`.
 
-**Environment variables:** None required — all data sources are public and unauthenticated.
+**Environment variables:** the dashboard itself needs none — all four
+status data sources are public and unauthenticated. Alerts & Admin needs
+the variables listed above; they're already provisioned on the Vercel
+project (Production, Preview, and Development), so a fresh clone just
+needs `vercel env pull .env.local` rather than sourcing new values.
+
+**Cron:** `/api/cron/check-status` (every 5 min) is triggered by AWS
+EventBridge, provisioned separately via `scripts/setup-eventbridge-cron.sh`
+— it isn't part of `vercel deploy` and doesn't need re-running on every
+deploy, only if the cron infrastructure itself needs to change.
+`/api/cron/cleanup` (daily) uses Vercel's own native cron, which *is*
+covered by `vercel.json` and needs no separate provisioning step.
 
 ---
 
@@ -247,8 +335,7 @@ Vercel auto-detects the Vite framework and Node.js serverless functions in `/api
 - Page Visibility API — polling pauses when tab is hidden, resumes with immediate fetch on focus
 - Stats summary strip (providers degraded, regions impacted, services impacted, active incidents)
 - Services impacted count with `+` suffix when broad multi-service incidents are active
-- Bell icon in header for subscribe to alerts (coming soon modal)
-- "Coming soon" modal for alert subscriptions
+- Bell icon in header opens a real sign-up form (double opt-in email alerting — see [Alerts & Admin](#alerts--admin) and `ALERTS-DESIGN.md` for the full build)
 - Footer disclaimer (data source attribution, non-affiliation notice)
 - Mobile-optimised 1×4 stat strip with condensed tile layout
 - Deployment scripts: `npm run deploy` and `npm run deploy:preview` (lint → build → deploy → open)
@@ -274,6 +361,8 @@ Vercel auto-detects the Vite framework and Node.js serverless functions in `/api
 - Vite manual chunk splitting for `fast-xml-parser`
 - Keyboard accessibility (`aria-expanded`, `aria-controls`) on expandable panels
 - Top-level React error boundary
+- SMS alerts (Phase 6 of `ALERTS-DESIGN.md` — deferred pending Twilio A2P 10DLC registration)
+- Resolution/escalation notices and per-subscriber severity thresholds (optional widening, see `ALERTS-DESIGN.md` Section 14.7)
 
 ---
 
