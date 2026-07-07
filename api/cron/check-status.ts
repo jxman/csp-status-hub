@@ -31,7 +31,7 @@ async function notifySubscribers(provider: string, status: ProviderStatus): Prom
   await Promise.all(
     subscribers.map(async (sub) => {
       const manageUrl = `${base}/manage?token=${sub.manage_token}`;
-      const unsubscribeUrl = `${base}/api/subscribe/unsubscribe?token=${sub.manage_token}`;
+      const unsubscribeUrl = `${base}/manage?token=${sub.manage_token}&action=unsubscribe`;
 
       const success = await sendOutageNotificationEmail(
         sub.email,

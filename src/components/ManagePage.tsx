@@ -13,11 +13,13 @@ type LoadState =
   | { kind: 'ready'; name: string; email: string };
 
 export function ManagePage() {
-  const token = new URLSearchParams(window.location.search).get('token') ?? '';
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('token') ?? '';
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [allProviders, setAllProviders] = useState(false);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [confirmingUnsubscribe, setConfirmingUnsubscribe] = useState(params.get('action') === 'unsubscribe');
 
   useEffect(() => {
     if (!token) {
@@ -127,25 +129,58 @@ export function ManagePage() {
               <div style={{ fontSize: 13, color: 'var(--green-text)' }}>Saved.</div>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-              <a
-                href={`/api/subscribe/unsubscribe?token=${encodeURIComponent(token)}`}
-                style={{ fontSize: 13, color: 'var(--ink-3)' }}
-              >
-                Unsubscribe
-              </a>
-              <button
-                onClick={handleSave}
-                disabled={saveState === 'saving'}
-                style={{
-                  padding: '8px 18px', borderRadius: 7, border: '1px solid var(--border-strong)',
-                  background: 'var(--ink)', color: 'var(--bg)',
-                  fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-                }}
-              >
-                {saveState === 'saving' ? 'Saving…' : 'Save changes'}
-              </button>
-            </div>
+            {confirmingUnsubscribe ? (
+              <div style={{
+                background: 'var(--red-soft)', border: '1px solid color-mix(in oklab, var(--red) 20%, transparent)',
+                borderRadius: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 10,
+              }}>
+                <div style={{ fontSize: 13, color: 'var(--red-text)', lineHeight: 1.5 }}>
+                  Unsubscribe from all CSP Status Hub alerts? If you just want fewer
+                  providers, uncheck them above and click Save changes instead.
+                </div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => setConfirmingUnsubscribe(false)}
+                    style={{
+                      padding: '7px 14px', borderRadius: 7, border: '1px solid var(--border-strong)',
+                      background: 'transparent', color: 'var(--ink)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <a
+                    href={`/api/subscribe/unsubscribe?token=${encodeURIComponent(token)}`}
+                    style={{
+                      padding: '7px 14px', borderRadius: 7, border: '1px solid var(--red)',
+                      background: 'var(--red)', color: 'white', fontSize: 13, fontWeight: 500,
+                      textDecoration: 'none', display: 'inline-block',
+                    }}
+                  >
+                    Yes, unsubscribe
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                <button
+                  onClick={() => setConfirmingUnsubscribe(true)}
+                  style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, color: 'var(--ink-3)', cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  Unsubscribe
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saveState === 'saving'}
+                  style={{
+                    padding: '8px 18px', borderRadius: 7, border: '1px solid var(--border-strong)',
+                    background: 'var(--ink)', color: 'var(--bg)',
+                    fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >
+                  {saveState === 'saving' ? 'Saving…' : 'Save changes'}
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

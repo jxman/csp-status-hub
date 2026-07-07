@@ -39,7 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       `;
 
       const manageUrl = `${base}/manage?token=${manageToken}`;
-      const unsubscribeUrl = `${base}/api/subscribe/unsubscribe?token=${manageToken}`;
+      const unsubscribeUrl = `${base}/manage?token=${manageToken}&action=unsubscribe`;
       await sendWelcomeEmail(row.email, row.name, manageUrl, unsubscribeUrl);
 
       res.redirect(302, `${base}/?confirm=success`);
