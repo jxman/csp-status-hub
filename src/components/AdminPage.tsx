@@ -172,6 +172,7 @@ export function AdminPage() {
                 <option value="gcp">GCP</option>
                 <option value="oci">OCI</option>
               </select>
+              <button onClick={load} style={buttonStyle}>Refresh</button>
               <button onClick={exportCsv} style={buttonStyle}>Export CSV</button>
               <button onClick={signOut} style={buttonStyle}>Sign out</button>
             </div>
