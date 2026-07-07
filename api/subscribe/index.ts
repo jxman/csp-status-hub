@@ -64,18 +64,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const confirmUrl = `${process.env.APP_BASE_URL}/api/subscribe/confirm?token=${confirmToken}`;
       await sendConfirmationEmail(normalizedEmail, name.trim(), confirmUrl);
     } else if (existing[0].status === 'pending_confirmation') {
-      // Already pending — just reissue the confirmation token instead of erroring.
+      // Already pending — reissue the confirmation token instead of erroring.
+      // Name isn't security-sensitive (unlike providers/email), so it updates
+      // immediately rather than waiting on the re-confirmation below.
       await sql`
         UPDATE subscribers
-        SET confirm_token = ${confirmToken}, confirm_token_expires_at = ${confirmTokenExpiresAt}
+        SET name = ${name.trim()}, confirm_token = ${confirmToken}, confirm_token_expires_at = ${confirmTokenExpiresAt}
         WHERE id = ${existing[0].id}
       `;
       const confirmUrl = `${process.env.APP_BASE_URL}/api/subscribe/confirm?token=${confirmToken}`;
       await sendConfirmationEmail(normalizedEmail, name.trim(), confirmUrl);
     } else if (existing[0].status === 'confirmed') {
-      // Already confirmed (4.1): stage the new provider selection rather than
-      // applying it immediately — this form is unauthenticated (anyone can type
-      // anyone else's email), so a change here must be re-verified by email.
+      // Already confirmed. Name updates immediately (not security-sensitive).
+      // Provider changes (4.1) are staged rather than applied immediately —
+      // this form is unauthenticated (anyone can type anyone else's email),
+      // so a provider change here must be re-verified by email.
+      await sql`
+        UPDATE subscribers SET name = ${name.trim()}, updated_at = now() WHERE id = ${existing[0].id}
+      `;
+
       const sameProviders =
         JSON.stringify([...existing[0].providers].sort()) === JSON.stringify([...providers].sort());
       if (!sameProviders) {
