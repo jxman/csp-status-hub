@@ -56,7 +56,7 @@ export async function sendOutageNotificationEmail(
   name: string,
   providerDisplayName: string,
   status: string,
-  sourceUrl: string,
+  dashboardUrl: string,
   manageUrl: string,
   unsubscribeUrl: string
 ): Promise<boolean> {
@@ -68,7 +68,7 @@ export async function sendOutageNotificationEmail(
     html: `
       <p>Hi ${escapeHtml(name)},</p>
       <p><strong>${escapeHtml(providerDisplayName)}</strong> just started reporting <strong>${escapeHtml(statusLabel)}</strong>.</p>
-      <p><a href="${sourceUrl}">View the official status page</a></p>
+      <p><a href="${dashboardUrl}">View on CSP Status Hub</a> — from there you can click through to the official status page.</p>
       <p style="margin-top:24px;font-size:12px;color:#666;">
         <a href="${manageUrl}">Manage your subscription</a> ·
         <a href="${unsubscribeUrl}">Unsubscribe</a>

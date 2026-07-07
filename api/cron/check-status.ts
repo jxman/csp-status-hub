@@ -38,7 +38,7 @@ async function notifySubscribers(provider: string, status: ProviderStatus): Prom
         sub.name,
         status.displayName,
         status.overallStatus,
-        status.sourceUrl,
+        base || status.sourceUrl,
         manageUrl,
         unsubscribeUrl
       ).catch((err) => {
