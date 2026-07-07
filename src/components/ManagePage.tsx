@@ -129,14 +129,14 @@ export function ManagePage() {
               <div style={{ fontSize: 13, color: 'var(--green-text)' }}>Saved.</div>
             )}
 
-            {confirmingUnsubscribe ? (
+            {confirmingUnsubscribe && (
               <div style={{
                 background: 'var(--red-soft)', border: '1px solid color-mix(in oklab, var(--red) 20%, transparent)',
                 borderRadius: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 10,
               }}>
                 <div style={{ fontSize: 13, color: 'var(--red-text)', lineHeight: 1.5 }}>
                   Unsubscribe from all CSP Status Hub alerts? If you just want fewer
-                  providers, uncheck them above and click Save changes instead.
+                  providers, uncheck them above and click Save changes below instead.
                 </div>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                   <button
@@ -160,27 +160,30 @@ export function ManagePage() {
                   </a>
                 </div>
               </div>
-            ) : (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+              {!confirmingUnsubscribe && (
                 <button
                   onClick={() => setConfirmingUnsubscribe(true)}
                   style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, color: 'var(--ink-3)', cursor: 'pointer', fontFamily: 'inherit' }}
                 >
                   Unsubscribe
                 </button>
-                <button
-                  onClick={handleSave}
-                  disabled={saveState === 'saving'}
-                  style={{
-                    padding: '8px 18px', borderRadius: 7, border: '1px solid var(--border-strong)',
-                    background: 'var(--ink)', color: 'var(--bg)',
-                    fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-                  }}
-                >
-                  {saveState === 'saving' ? 'Saving…' : 'Save changes'}
-                </button>
-              </div>
-            )}
+              )}
+              <button
+                onClick={handleSave}
+                disabled={saveState === 'saving'}
+                style={{
+                  marginLeft: 'auto',
+                  padding: '8px 18px', borderRadius: 7, border: '1px solid var(--border-strong)',
+                  background: 'var(--ink)', color: 'var(--bg)',
+                  fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                {saveState === 'saving' ? 'Saving…' : 'Save changes'}
+              </button>
+            </div>
           </>
         )}
       </div>
