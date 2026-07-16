@@ -60,6 +60,17 @@ function worstStatus(statuses: StatusLevel[]): StatusLevel {
   return 'operational';
 }
 
+// GCP update text sometimes packs multiple "**Header**\n..." sections (Summary,
+// Description, per-product breakdowns, Customer Symptoms, Workaround) into one string,
+// unlike the single plain-narrative blurb the other three providers use for latestUpdate.
+// Pull just the Summary section for parity — full detail is still one click away via
+// detailUrl. Falls back to stripping the markdown markers for incidents without one.
+function extractGcpSummary(text: string): string {
+  const summaryMatch = text.match(/\*\*Summary\*\*\n([\s\S]*?)(?=\n\*\*|$)/);
+  if (summaryMatch) return summaryMatch[1].trim();
+  return text.replace(/\*\*/g, '').replace(/\n+/g, ' ').trim();
+}
+
 function gcpUpdateStatusToIncidentStatus(status: string): Incident['status'] {
   const s = status.toUpperCase();
   if (s.includes('DISRUPTION')) return 'investigating';
@@ -140,7 +151,7 @@ export async function fetchGcp(): Promise<ProviderStatus> {
         affectedServices,
         affectedRegions,
         detailUrl: buildGcpDetailUrl(inc.uri, inc.id),
-        latestUpdate: latestUpdate?.text ?? '',
+        latestUpdate: latestUpdate ? extractGcpSummary(latestUpdate.text) : '',
         updatedAt: latestUpdate?.modified ?? inc.begin,
       };
     }),
@@ -159,7 +170,7 @@ export async function fetchGcp(): Promise<ProviderStatus> {
         affectedServices,
         affectedRegions,
         detailUrl: buildGcpDetailUrl(inc.uri, inc.id),
-        latestUpdate: latestUpdate?.text ?? '',
+        latestUpdate: latestUpdate ? extractGcpSummary(latestUpdate.text) : '',
         updatedAt: latestUpdate?.modified ?? resolvedAt,
       };
     }),
