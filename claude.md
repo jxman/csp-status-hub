@@ -205,6 +205,10 @@ function parseGuid(guid: string): { service: string; region: string } {
       return { service, region };
     }
   }
+  // Global/edge services (CloudFront, Route 53, IAM) have no region segment
+  // in their GUID at all — e.g. "#cloudfront_1784201243". Label these
+  // region "global" rather than falling through to "unknown".
+  if (withoutTimestamp) return { service: withoutTimestamp, region: 'global' };
   return { service: 'unknown', region: 'unknown' };
 }
 ```
@@ -585,6 +589,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 |---|---|---|
 | **AWS coverage** | `all.rss` covers only incidents AWS publishes publicly — significant events only | UI disclaimer in AWS panel; link to full dashboard |
 | **AWS item deduplication** | Feed emits one `<item>` per update, not per incident | Group by GUID base, keep latest `<pubDate>` per group (see Section 3.1) |
+| **AWS global/edge services** | GUIDs for CloudFront, Route 53, IAM, etc. carry no region segment (e.g. `#cloudfront_1784201243`) — found in production 2026-07-16 when a live CloudFront incident rendered as region "unknown" | `parseGuid()` labels these region `"global"` instead of falling through to `unknown`/`unknown` (see Section 3.1) |
 | **Azure coverage** | Only major widespread incidents; no structured per-service/region data | UI disclaimer; attempt free-text parsing for service/region hints |
 | **CORS — Azure only** | Azure Atom feed blocks direct browser fetches | Handled by single Vercel serverless function |
 | **AWS XML in browser** | `fast-xml-parser` must run client-side to parse RSS | Pure JS lib — bundles cleanly with Vite, no issues |

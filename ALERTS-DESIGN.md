@@ -333,12 +333,23 @@ function.
 - `/api/cron/check-status` fetches all four providers' status server-side,
   using the same normalization schema as `src/types/status.ts`.
 - For each provider, it compares the fresh fetch against
-  `provider_status_snapshot`. Per 14.7, a **notify-worthy change** is narrowly
-  defined: `overall_status` transitions from `operational` to anything else.
+  `provider_status_snapshot`. **Revised post-launch (2026-07-16, see 14.7a):**
+  a notify-worthy change is now any **new incident ID** appearing in
+  `active_incident_ids` that wasn't in the stored row, regardless of
+  `overall_status`. The original 14.7 definition (`overall_status` transitions
+  from `operational` to anything else) shipped in Phase 4 but was found in
+  production to silently swallow alerts: a still-open, unrelated AWS regional
+  outage (ME-CENTRAL-1/ME-SOUTH-1) kept `overall_status` pinned at
+  non-`operational` for months, so a brand-new, unrelated CloudFront incident
+  never tripped the `operational →` edge and no alert fired. Diffing incident
+  IDs catches new incidents independent of what else is already ongoing. The
+  very first check ever recorded for a provider (no existing row) is treated
+  as a baseline snapshot only, not a notification trigger, so bootstrapping
+  against an already-live incident doesn't fire a notification storm.
   Escalation within an ongoing incident, incident updates, and eventual
-  resolution are all recorded in the snapshot for bookkeeping but do **not**
-  trigger anything in Phase 4 (there's nothing to trigger yet — Phase 4 only
-  logs; Phase 5 wires actual dispatch to this same signal).
+  resolution are still recorded in the snapshot for bookkeeping but do **not**
+  trigger anything (unchanged from 14.7's original scope — only new incidents
+  alert; see 14.7 in the Decisions Log for the deferred widening).
 - On a fetch failure for one provider, that provider's snapshot row is **left
   untouched** rather than overwritten with `unknown` — a transient network
   blip shouldn't manufacture a false transition on the next successful check.
@@ -625,7 +636,8 @@ presence here should push more services toward AWS.
 | 14.4 | Bot verification | **Vercel BotID** | Confirmed — pure config, no dashboard toggle exists (Section 6) |
 | 14.5 | Config format | **Keep `vercel.json`** | Unchanged |
 | 14.6 | Unsubscribed-record retention | **Hard-delete after 90 days** | Built in Phase 7 (`/api/cron/cleanup`) |
-| 14.7 | Notification trigger (v1) | **Initial outage report only** | Implemented in Phase 4's diff logic |
+| 14.7 | Notification trigger (v1) | **Initial outage report only** | Implemented in Phase 4's diff logic; revised — see 14.7a |
+| 14.7a | Notification trigger (revised) | **New incident ID, not `operational →` transition** | A live, months-long unrelated AWS regional outage kept `overall_status` stuck non-`operational` and silently suppressed alerts for a later, unrelated CloudFront incident (found in production 2026-07-16). Trigger now diffs `active_incident_ids` against the stored snapshot instead of gating on `overall_status`. See Section 7.2 |
 | 14.8 | Cron interval | **5 minutes** | Mechanism changed — see 14.9 |
 | 14.9 | Cron cadence mechanism | **AWS EventBridge Rules** (not Scheduler — Scheduler rejects API Destination ARNs, discovered by testing), HTTPS target via an API Destination + Connection, `Authorization: Bearer $CRON_SECRET` | Vercel Hobby caps native cron at once/day — a `*/5 * * * *` `vercel.json` entry fails at deploy time, not just reduced precision. Vercel's own daily cron kept as a free fallback |
 
@@ -674,6 +686,18 @@ are fixed: `/manage`/`/admin` 404'd (missing SPA catch-all rewrite — local
 dev was more lenient than production static hosting) and a `vercel.json`
 `functions` glob overlap (`api/**/*.ts` + `api/cron/*.ts`) that broke `vercel
 dev` entirely, simplified to one pattern.
+
+**Third bug, found 2026-07-16 against a real live outage:** a real AWS
+CloudFront incident rendered with region "unknown" in the dashboard (its
+GUID has no region segment — see `CLAUDE.md` Section 9), and no alert email
+went out for it. Root cause was two-fold: `parseGuid()`'s fallback mislabeled
+global/edge-service GUIDs, and the 14.7 notify-worthy definition was gated on
+an `operational →` transition that a separate, still-open regional outage
+(ME-CENTRAL-1/ME-SOUTH-1) had permanently blocked for months. Both fixed and
+deployed same-day — see 14.7a and Section 7.2. The already-recorded
+CloudFront incident ID was also manually cleared from that day's
+`provider_status_snapshot` row so the fixed logic would treat it as new and
+send the (late) alert rather than staying silent on it forever.
 
 ### Phase 5 — Email notifications live — ✅ Complete
 
