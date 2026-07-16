@@ -64,7 +64,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  const results: Record<string, { notifyWorthy: boolean; from: string | null; to?: string; error?: string; notified?: number }> = {};
+  const results: Record<string, { notifyWorthy: boolean; from: string | null; to?: string; newIncidentIds?: string[]; error?: string; notified?: number }> = {};
 
   for (const [provider, fetcher] of Object.entries(FETCHERS)) {
     try {
@@ -76,13 +76,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const signature = computeSignature(status, activeIds);
 
       const existing = await sql`
-        SELECT overall_status FROM provider_status_snapshot WHERE provider = ${provider}
+        SELECT overall_status, active_incident_ids FROM provider_status_snapshot WHERE provider = ${provider}
       `;
       const previousStatus: string | null = existing[0]?.overall_status ?? null;
+      const previousIds: string[] = existing[0]?.active_incident_ids ?? [];
 
-      // 14.7: v1 only cares about a fresh outage starting from a clean state —
-      // not escalation, not incident updates, not resolution.
-      const notifyWorthy = previousStatus === 'operational' && status.overallStatus !== 'operational';
+      // Alert on any incident ID we haven't seen before, not just a transition off a
+      // clean 'operational' baseline — a provider can have a long-running unrelated
+      // incident (e.g. a still-open regional outage) that keeps overallStatus stuck
+      // at non-operational, which would otherwise mask every subsequent new incident.
+      // Skip on the very first-ever check for a provider (no row yet) so we don't
+      // fire a notification storm for whatever is already in progress at bootstrap.
+      const isFirstCheck = existing.length === 0;
+      const newIncidentIds = activeIds.filter((id) => !previousIds.includes(id));
+      const notifyWorthy = !isFirstCheck && newIncidentIds.length > 0;
 
       await sql`
         INSERT INTO provider_status_snapshot (provider, overall_status, active_incident_ids, last_checked_at, raw_signature)
@@ -94,9 +101,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           raw_signature = EXCLUDED.raw_signature
       `;
 
-      results[provider] = { notifyWorthy, from: previousStatus, to: status.overallStatus };
+      results[provider] = { notifyWorthy, from: previousStatus, to: status.overallStatus, newIncidentIds };
       if (notifyWorthy) {
-        console.log(`[check-status] notify-worthy change: ${provider} operational -> ${status.overallStatus}`);
+        console.log(`[check-status] notify-worthy change: ${provider} new incident(s) ${newIncidentIds.join(', ')} (status ${previousStatus} -> ${status.overallStatus})`);
         results[provider].notified = await notifySubscribers(provider, status);
       }
     } catch (err) {

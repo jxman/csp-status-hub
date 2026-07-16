@@ -61,6 +61,9 @@ function parseGuid(guid: string): { service: string; region: string } {
       return { service, region };
     }
   }
+  // No region suffix matched — this is a global/edge service (e.g. CloudFront,
+  // Route 53, IAM), whose GUIDs carry no region segment at all.
+  if (withoutTimestamp) return { service: withoutTimestamp, region: 'global' };
   return { service: 'unknown', region: 'unknown' };
 }
 
@@ -98,6 +101,7 @@ function worstStatus(statuses: StatusLevel[]): StatusLevel {
 }
 
 function awsRegionToGeo(region: string): string {
+  if (region === 'global') return 'Global';
   if (region.startsWith('us-') || region.startsWith('ca-')) return 'North America';
   if (region.startsWith('eu-') || region.startsWith('il-')) return 'Europe';
   if (region.startsWith('ap-') || region.startsWith('sa-')) {
@@ -110,6 +114,7 @@ function awsRegionToGeo(region: string): string {
 }
 
 function friendlyRegionName(regionId: string): string {
+  if (regionId === 'global') return 'Global';
   const names: Record<string, string> = {
     'us-east-1': 'US East (N. Virginia)',
     'us-east-2': 'US East (Ohio)',
