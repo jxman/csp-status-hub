@@ -1,4 +1,6 @@
 import { Resend } from 'resend';
+import { statusDot } from '../../src/utils/statusHelpers.js';
+import type { StatusLevel } from '../../src/types/status.js';
 
 const resend = new Resend(process.env.RESEND_API_KEY!);
 const FROM = `CSP Status Hub Alerts <alerts@${process.env.RESEND_EMAIL_DOMAIN}>`;
@@ -51,23 +53,40 @@ const STATUS_LABELS: Record<string, string> = {
   unknown: 'an unknown status',
 };
 
+// Renders as a single bolded line for one incident, or a bullet list for several —
+// callers always pass at least one title (falling back to the raw incident id in
+// the rare case a title couldn't be resolved).
+function renderIncidentTitles(incidentTitles: string[]): string {
+  if (incidentTitles.length === 1) {
+    return `<p><strong>${escapeHtml(incidentTitles[0])}</strong></p>`;
+  }
+  return `<ul>${incidentTitles.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}</ul>`;
+}
+
+function incidentSubjectFragment(incidentTitles: string[]): string {
+  return incidentTitles.length === 1 ? incidentTitles[0] : `${incidentTitles.length} incidents`;
+}
+
 export async function sendOutageNotificationEmail(
   to: string,
   name: string,
   providerDisplayName: string,
-  status: string,
+  status: StatusLevel,
+  incidentTitles: string[],
   dashboardUrl: string,
   manageUrl: string,
   unsubscribeUrl: string
 ): Promise<boolean> {
   const statusLabel = STATUS_LABELS[status] ?? status;
+  const dot = statusDot(status);
   const { error } = await resend.emails.send({
     from: FROM,
     to,
-    subject: `${providerDisplayName} is reporting ${statusLabel}`,
+    subject: `${dot} ${providerDisplayName}: ${incidentSubjectFragment(incidentTitles)}`,
     html: `
       <p>Hi ${escapeHtml(name)},</p>
-      <p><strong>${escapeHtml(providerDisplayName)}</strong> just started reporting <strong>${escapeHtml(statusLabel)}</strong>.</p>
+      <p>${dot} <strong>${escapeHtml(providerDisplayName)}</strong> just started reporting <strong>${escapeHtml(statusLabel)}</strong>:</p>
+      ${renderIncidentTitles(incidentTitles)}
       <p><a href="${dashboardUrl}">View on CSP Status Hub</a> — from there you can click through to the official status page.</p>
       <p style="margin-top:24px;font-size:12px;color:#666;">
         <a href="${manageUrl}">Manage your subscription</a> ·
@@ -87,26 +106,29 @@ export async function sendResolutionNotificationEmail(
   to: string,
   name: string,
   providerDisplayName: string,
-  currentStatus: string,
+  currentStatus: StatusLevel,
+  incidentTitles: string[],
   dashboardUrl: string,
   manageUrl: string,
   unsubscribeUrl: string
 ): Promise<boolean> {
   const stillOngoing = currentStatus !== 'operational';
   const statusLabel = STATUS_LABELS[currentStatus] ?? currentStatus;
-  const bodyLine = stillOngoing
-    ? `One of the incidents affecting <strong>${escapeHtml(providerDisplayName)}</strong> has been resolved. Note: ${escapeHtml(providerDisplayName)} is still reporting <strong>${escapeHtml(statusLabel)}</strong> due to other ongoing issues.`
-    : `<strong>${escapeHtml(providerDisplayName)}</strong> has resolved its incident and is back to normal operations.`;
+  const dot = statusDot(currentStatus);
+  const intro = stillOngoing
+    ? `The following, affecting <strong>${escapeHtml(providerDisplayName)}</strong>, ${incidentTitles.length === 1 ? 'has' : 'have'} been resolved. Note: ${escapeHtml(providerDisplayName)} is still reporting <strong>${escapeHtml(statusLabel)}</strong> due to other ongoing issues:`
+    : `<strong>${escapeHtml(providerDisplayName)}</strong> has resolved the following and is back to normal operations:`;
 
   const { error } = await resend.emails.send({
     from: FROM,
     to,
     subject: stillOngoing
-      ? `${providerDisplayName}: one incident resolved`
-      : `${providerDisplayName} is back to normal`,
+      ? `${dot} ${providerDisplayName}: resolved — ${incidentSubjectFragment(incidentTitles)}`
+      : `${dot} ${providerDisplayName} is back to normal — ${incidentSubjectFragment(incidentTitles)}`,
     html: `
       <p>Hi ${escapeHtml(name)},</p>
-      <p>${bodyLine}</p>
+      <p>${dot} ${intro}</p>
+      ${renderIncidentTitles(incidentTitles)}
       <p><a href="${dashboardUrl}">View on CSP Status Hub</a> — from there you can click through to the official status page.</p>
       <p style="margin-top:24px;font-size:12px;color:#666;">
         <a href="${manageUrl}">Manage your subscription</a> ·
