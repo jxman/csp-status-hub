@@ -82,9 +82,13 @@ function StatsBanner({ providers }: { providers: ProviderStatus[] }) {
   const degradedProviders = live.filter(
     (p) => p.overallStatus === 'degraded' || p.overallStatus === 'outage'
   ).length;
-  const affectedRegions = live.reduce(
-    (acc, p) => acc + p.regions.filter((r) => r.overallStatus !== 'operational').length, 0
-  );
+  const impactedRegionsList = live.flatMap((p) => p.regions.filter((r) => r.overallStatus !== 'operational'));
+  const affectedRegions = impactedRegionsList.length;
+  // A "global" region isn't literally one region — it's an edge/global-scoped
+  // service (e.g. AWS CloudFront, Route 53) whose true blast radius spans every
+  // region, so the discrete count understates impact. Flag it the same way
+  // computeImpactedServices flags 'multipleservices'/'unknown' below.
+  const hasGlobalRegion = impactedRegionsList.some((r) => r.regionId === 'global');
   const activeIncidents = live.reduce(
     (acc, p) => acc + p.activeIncidents.filter((i) => i.status !== 'resolved').length, 0
   );
@@ -99,7 +103,9 @@ function StatsBanner({ providers }: { providers: ProviderStatus[] }) {
           <br /><b>provider{degradedProviders !== 1 ? 's' : ''} degraded</b>
         </span>
         <span>
-          <span className={`num${affectedRegions > 0 ? ' red' : ''}`}>{affectedRegions}</span>
+          <span className={`num${affectedRegions > 0 ? ' red' : ''}`}>
+            {affectedRegions}{hasGlobalRegion ? '+' : ''}
+          </span>
           <br /><b>region{affectedRegions !== 1 ? 's' : ''} impacted</b>
         </span>
         <span>
