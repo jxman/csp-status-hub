@@ -1,8 +1,11 @@
 # CSP Status Hub — Custom Domain Migration Plan
 
-**Status:** In progress — Steps 1–5 done (domain added, DNS live via
-Terraform, SSL issued and serving `200`, `vercel.json` redirect added,
-`og:url` updated), Step 6 (update `APP_BASE_URL`) next
+**Status:** In progress — Steps 1–8 done (domain live on `synepho.com`,
+`APP_BASE_URL` cut over, OAuth callback allow-listed, redeployed; root-path
+redirect bug found and fixed post-deploy). Step 9's curl-able checks pass;
+remaining Step 9 items need a human click-through (admin login, subscribe/
+unsubscribe email links, next cron run), then Step 10 (communicate the
+move).
 **Author:** Claude Code (drafted for John Xanthopoulos)
 **Date:** 2026-07-17
 **Depends on:** `../claude.md` (base architecture), `ALERTS-DESIGN.md` (`APP_BASE_URL` usage, Sign in with Vercel OAuth)
@@ -172,7 +175,7 @@ Slack/Teams/social and the preview card points back at the old domain. Bundle
 this edit into the same commit as the Step 4 `vercel.json` change so both
 ship in Step 8's redeploy.
 
-### Step 6 — Update `APP_BASE_URL`
+### Step 6 — Update `APP_BASE_URL` ✅ Done (2026-07-17)
 
 ```bash
 vercel env rm APP_BASE_URL production
@@ -186,7 +189,13 @@ from this value. Do this **after** Step 3 confirms the new domain is live,
 so there's no window where an outbound email links to a domain that isn't
 serving traffic yet.
 
-### Step 7 — Update the Sign in with Vercel OAuth client
+Ran this before Step 7 rather than after, reordering from the original plan:
+Step 7 requires dashboard access Claude Code doesn't have, so it made more
+sense to have the user add the new callback URL first, confirm it saved,
+then flip `APP_BASE_URL` — avoiding any window where the app requests a
+`redirect_uri` that isn't allow-listed yet.
+
+### Step 7 — Update the Sign in with Vercel OAuth client ✅ Done (2026-07-17)
 
 Add `https://cloudstatus.synepho.com/api/auth/callback` as an allowed
 redirect URI on the OAuth client registration (wherever
@@ -194,7 +203,13 @@ redirect URI on the OAuth client registration (wherever
 registered until Step 4's redirect is confirmed working end-to-end, then
 remove it.
 
-### Step 8 — Redeploy
+Done via **Team Settings → Apps → [app] → Authentication tab →
+Authorization Callback URLs**, alongside the existing `.vercel.app` and
+`localhost:3002` entries. This step cannot be done from the CLI — confirmed
+in Section 10 of `ALERTS-DESIGN.md` that callback URL config only exists on
+the dashboard-managed app object.
+
+### Step 8 — Redeploy ✅ Done (2026-07-17)
 
 ```bash
 npm run deploy   # lint + build + scripts/deploy.sh --prod
@@ -203,22 +218,36 @@ npm run deploy   # lint + build + scripts/deploy.sh --prod
 Ships the `vercel.json` redirect change, the `index.html` `og:url` fix, and
 picks up the new `APP_BASE_URL`.
 
+**Follow-up fix found during verification:** the first deploy's redirect
+rule used the named-param form (`"source": "/:path*"`), which correctly
+redirected every subpath but left the bare root `/` serving a stale cached
+`200` indefinitely (`x-vercel-cache: HIT`, growing `age`, immune to
+query-string cache-busting) — every other previously-cached path (e.g.
+`/logos/aws.svg`) redirected fine, isolating the bug to root matching
+specifically. Switched to the plain regex form Vercel's own docs use for
+whole-site external redirects — `"source": "/(.*)"`,
+`"destination": "https://cloudstatus.synepho.com/$1"` — and redeployed;
+root now redirects correctly with query strings preserved.
+
 ### Step 9 — End-to-end verification
 
-- [ ] `https://cloudstatus.synepho.com` loads the dashboard; all four
-      provider panels populate
-- [ ] `curl -I https://csp-status-hub.vercel.app` returns a 308 to
-      `https://cloudstatus.synepho.com`
+- [x] `https://cloudstatus.synepho.com` loads the dashboard (title + og:url
+      confirmed via `curl`)
+- [x] `curl -I https://csp-status-hub.vercel.app` returns a 308 to
+      `https://cloudstatus.synepho.com` — verified for root, subpaths, and
+      with query strings
+- [x] `/api/auth/authorize` builds a `redirect_uri` of
+      `https://cloudstatus.synepho.com/api/auth/callback`, matching the
+      Step 7 allow-list entry
+- [x] SSL cert valid (`HTTP/2 200`, no curl TLS errors)
+- [x] `og:url` on the new domain reads `cloudstatus.synepho.com`
 - [ ] Admin login (`/admin`) completes the full Vercel OAuth round-trip on
-      the new domain
+      the new domain — needs a human to click through, not curl-able
 - [ ] Test subscribe → confirmation email link points to
       `cloudstatus.synepho.com` and completes
 - [ ] Test unsubscribe link works
 - [ ] Next scheduled cron runs (`check-status` at `0 0 * * *`, `cleanup` at
       `0 3 * * *` UTC) complete without error in Vercel's cron logs
-- [ ] SSL cert valid, no browser warnings
-- [ ] View page source (or a social-preview debugger) on the new domain and
-      confirm `og:url` reads `cloudstatus.synepho.com`, not the old domain
 
 ### Step 10 — Communicate the move
 
