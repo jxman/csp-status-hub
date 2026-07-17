@@ -29,6 +29,16 @@ const buttonStyle: React.CSSProperties = {
   padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border-strong)',
   background: 'transparent', color: 'var(--ink)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
 };
+const linkStyle: React.CSSProperties = {
+  ...buttonStyle, textDecoration: 'none', display: 'inline-block',
+};
+
+const VERCEL_PROJECT_URL = 'https://vercel.com/johns-projects-2d2073fd/csp-status-hub';
+const opsLinks = [
+  { label: 'Cron Jobs →', href: `${VERCEL_PROJECT_URL}/settings/cron-jobs` },
+  { label: 'Runtime Logs →', href: `${VERCEL_PROJECT_URL}/logs` },
+  { label: 'Deployments →', href: `${VERCEL_PROJECT_URL}/deployments` },
+];
 
 export function AdminPage() {
   const [state, setState] = useState<PageState>({ kind: 'loading' });
@@ -131,6 +141,15 @@ export function AdminPage() {
 
         {state.kind === 'ready' && (
           <>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: 'var(--ink-3)', marginRight: 4 }}>Vercel:</span>
+              {opsLinks.map((link) => (
+                <a key={link.href} href={link.href} target="_blank" rel="noopener noreferrer" style={linkStyle}>
+                  {link.label}
+                </a>
+              ))}
+            </div>
+
             <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
               {[
                 ['Total', state.summary.total],
