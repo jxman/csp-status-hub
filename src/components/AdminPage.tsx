@@ -127,7 +127,7 @@ export function AdminPage() {
     <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '32px 24px', fontFamily: 'inherit' }}>
       <div style={{ maxWidth: 960, margin: '0 auto' }}>
         <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--ink)', marginBottom: 20 }}>
-          CSP Status Hub — Admin
+          Cloud Status Hub — Admin
         </h1>
 
         {state.kind === 'loading' && <div style={{ color: 'var(--ink-2)', fontSize: 14 }}>Loading…</div>}

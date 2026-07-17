@@ -18,7 +18,7 @@ const URL_BANNERS: Record<string, UrlBanner> = {
   'confirm=success': { kind: 'ok', text: "You're subscribed! You'll get an email when a provider you follow reports a new outage." },
   'confirm=updated': { kind: 'ok', text: 'Your alert preferences have been updated.' },
   'confirm=error': { kind: 'error', text: 'That confirmation link is invalid or has expired. Try subscribing again.' },
-  'unsubscribed=1': { kind: 'ok', text: "You've been unsubscribed from CSP Status Hub alerts." },
+  'unsubscribed=1': { kind: 'ok', text: "You've been unsubscribed from Cloud Status Hub alerts." },
   'unsubscribed=error': { kind: 'error', text: 'That unsubscribe link is invalid.' },
 };
 

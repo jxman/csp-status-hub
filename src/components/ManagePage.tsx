@@ -135,7 +135,7 @@ export function ManagePage() {
                 borderRadius: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 10,
               }}>
                 <div style={{ fontSize: 13, color: 'var(--red-text)', lineHeight: 1.5 }}>
-                  Unsubscribe from all CSP Status Hub alerts? If you just want fewer
+                  Unsubscribe from all Cloud Status Hub alerts? If you just want fewer
                   providers, uncheck them above and click Save changes below instead.
                 </div>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
