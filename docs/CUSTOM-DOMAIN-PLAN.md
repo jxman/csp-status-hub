@@ -1,7 +1,8 @@
 # CSP Status Hub — Custom Domain Migration Plan
 
-**Status:** In progress — Step 1 done (domain added to Vercel project),
-Step 2 (Terraform DNS record) next
+**Status:** In progress — Steps 1–3 done (domain added, DNS live via
+Terraform, SSL issued and serving `200`), Step 4 (redirect the old
+`.vercel.app` URL) next
 **Author:** Claude Code (drafted for John Xanthopoulos)
 **Date:** 2026-07-17
 **Depends on:** `../claude.md` (base architecture), `ALERTS-DESIGN.md` (`APP_BASE_URL` usage, Sign in with Vercel OAuth)
@@ -56,9 +57,9 @@ keep functioning through the cutover.
 
 ## 4. Prerequisites checklist
 
-- [ ] DNS record change made through your Terraform project (not the Route
+- [x] DNS record change made through your Terraform project (not the Route
       53 console/CLI directly) — see Step 2 for what to add and where
-- [ ] Vercel access to the `johns-projects-2d2073fd` team / `csp-status-hub`
+- [x] Vercel access to the `johns-projects-2d2073fd` team / `csp-status-hub`
       project, with permission to add domains and edit env vars
 - [ ] Access to wherever the Sign in with Vercel OAuth client was registered,
       to add the new callback URL as an allowed redirect URI
@@ -90,51 +91,40 @@ nameservers to Vercel, taking `aws-services.synepho.com` and the root site
 with it. Going with (a): a single A record, scoped to just this subdomain,
 leaving the rest of the zone in Route 53 untouched.
 
-### Step 2 — Add the DNS record via Terraform
+### Step 2 — Add the DNS record via Terraform ✅ Done (2026-07-17)
 
-**Decision:** this record is added through John's Terraform project, not a
-manual Route 53 console/CLI edit. Record details, now confirmed by Step 1:
-
-```text
-Name:  cloudstatus.synepho.com
-Type:  A
-Value: 76.76.21.21
-TTL:   300   (short during cutover; raise to 3600 once stable)
-```
-
-As an `aws_route53_record` resource, that looks like:
+Added directly into `aws-hosting-synepho`'s existing
+`modules/route53/main.tf`, alongside `root_site` / `www_site`, reusing that
+module's `data.aws_route53_zone.selected` lookup and `var.site_name`
+(so the answer to the "which state does this live in" question below was:
+the same state, as a third record in the existing module):
 
 ```hcl
-resource "aws_route53_record" "cloudstatus_synepho_com" {
-  zone_id = data.aws_route53_zone.synepho.zone_id
-  name    = "cloudstatus.synepho.com"
+# Route53 record for cloud status page (Vercel)
+resource "aws_route53_record" "cloudstatus_site" {
+  zone_id = data.aws_route53_zone.selected.zone_id
+  name    = "cloudstatus.${var.site_name}"
   type    = "A"
   ttl     = 300
   records = ["76.76.21.21"]
 }
 ```
 
-One thing to decide at that point: the existing `aws-hosting-synepho`
-Terraform project's `modules/route53` is purpose-built for the site's own
-CloudFront root + `www` alias records (`aws_route53_record.root_site` /
-`www_site`, both `A`-alias, tied to a CloudFront distribution) — a plain
-A record to Vercel's anycast IP doesn't fit that module's shape (it's a
-plain, non-alias record — no CloudFront distribution involved). Confirm
-whether this record
-belongs as a standalone resource in that same state (reusing its existing
-`data "aws_route53_zone"` lookup for `synepho.com`), or in whatever separate
-Terraform project/state is meant to hold cross-cutting `synepho.com`
-subdomain records going forward.
+Applied, and DNS confirmed propagated by `ping cloudstatus.synepho.com`
+resolving to `76.76.21.21`.
 
-### Step 3 — Verify domain + SSL
+### Step 3 — Verify domain + SSL ✅ Done (2026-07-17)
 
 ```bash
-vercel domains inspect cloudstatus.synepho.com   # → "Valid Configuration"
-vercel certs ls                                   # confirm cert issued
+vercel domains inspect cloudstatus.synepho.com --scope johns-projects-2d2073fd
+vercel certs ls --scope johns-projects-2d2073fd
+curl -sI https://cloudstatus.synepho.com/
 ```
 
-Vercel auto-provisions the TLS cert once DNS validates, usually within
-minutes of the A record propagating.
+`inspect` no longer shows the "not configured properly" warning from Step
+1 — DNS is validated. Cert `cert_J9Mv25dDX1aV7Ii6DP5rXRmi` is issued
+(auto-renew on, 90-day expiry), and `curl -I` returns `HTTP/2 200` — the
+app is live and serving over HTTPS on `cloudstatus.synepho.com`.
 
 ### Step 4 — Redirect the old `.vercel.app` URL (permanent, 308)
 
