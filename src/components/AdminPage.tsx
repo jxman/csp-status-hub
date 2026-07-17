@@ -34,10 +34,28 @@ const linkStyle: React.CSSProperties = {
 };
 
 const VERCEL_PROJECT_URL = 'https://vercel.com/johns-projects-2d2073fd/csp-status-hub';
-const opsLinks = [
-  { label: 'Cron Jobs →', href: `${VERCEL_PROJECT_URL}/settings/cron-jobs` },
-  { label: 'Runtime Logs →', href: `${VERCEL_PROJECT_URL}/logs` },
-  { label: 'Deployments →', href: `${VERCEL_PROJECT_URL}/deployments` },
+const NEON_PROJECT_URL = 'https://console.neon.tech/app/projects/misty-truth-00063689';
+
+const opsLinkGroups: { label: string; links: { label: string; href: string }[] }[] = [
+  {
+    label: 'Vercel:',
+    links: [
+      { label: 'Cron Jobs →', href: `${VERCEL_PROJECT_URL}/settings/cron-jobs` },
+      { label: 'Runtime Logs →', href: `${VERCEL_PROJECT_URL}/logs` },
+      { label: 'Deployments →', href: `${VERCEL_PROJECT_URL}/deployments` },
+    ],
+  },
+  {
+    label: 'Neon:',
+    links: [{ label: 'Console →', href: NEON_PROJECT_URL }],
+  },
+  {
+    label: 'Resend:',
+    links: [
+      { label: 'Emails →', href: 'https://resend.com/emails' },
+      { label: 'Domains →', href: 'https://resend.com/domains' },
+    ],
+  },
 ];
 
 export function AdminPage() {
@@ -141,12 +159,16 @@ export function AdminPage() {
 
         {state.kind === 'ready' && (
           <>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ fontSize: 11, color: 'var(--ink-3)', marginRight: 4 }}>Vercel:</span>
-              {opsLinks.map((link) => (
-                <a key={link.href} href={link.href} target="_blank" rel="noopener noreferrer" style={linkStyle}>
-                  {link.label}
-                </a>
+            <div style={{ display: 'flex', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
+              {opsLinkGroups.map((group) => (
+                <div key={group.label} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>{group.label}</span>
+                  {group.links.map((link) => (
+                    <a key={link.href} href={link.href} target="_blank" rel="noopener noreferrer" style={linkStyle}>
+                      {link.label}
+                    </a>
+                  ))}
+                </div>
               ))}
             </div>
 
