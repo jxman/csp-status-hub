@@ -13,21 +13,29 @@ const PROVIDERS: { id: string; label: string }[] = [
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  padding: '9px 12px',
-  borderRadius: 8,
-  border: '1px solid var(--border-strong)',
-  background: 'var(--bg)',
+  padding: '15px 18px',
+  borderRadius: 12,
+  border: '1px solid var(--border)',
+  background: 'var(--chip-bg)',
   color: 'var(--ink)',
-  fontSize: 14,
+  fontSize: 16,
   fontFamily: 'inherit',
+  boxSizing: 'border-box',
 };
 
 const labelStyle: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 600,
-  color: 'var(--ink-2)',
-  marginBottom: 6,
+  fontSize: 17,
+  fontWeight: 700,
+  color: 'var(--ink)',
+  marginBottom: 10,
   display: 'block',
+};
+
+const checkboxStyle: React.CSSProperties = {
+  width: 20,
+  height: 20,
+  accentColor: 'var(--ink)',
+  cursor: 'pointer',
 };
 
 export function SubscribeModal({ onClose }: Props) {
@@ -88,9 +96,9 @@ export function SubscribeModal({ onClose }: Props) {
       <div
         style={{
           background: 'var(--card)', border: '1px solid var(--border)',
-          borderRadius: 14, padding: '32px 36px', maxWidth: 420, width: '100%',
+          borderRadius: 18, padding: '44px 48px', maxWidth: 500, width: '100%',
           boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
-          display: 'flex', flexDirection: 'column', gap: 16,
+          display: 'flex', flexDirection: 'column', gap: 20,
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -106,15 +114,15 @@ export function SubscribeModal({ onClose }: Props) {
         ) : (
           <>
             <div>
-              <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--ink)', marginBottom: 4 }}>
-                🔔 Subscribe to alerts
+              <div style={{ fontSize: 30, fontWeight: 700, color: 'var(--ink)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 32 }}>🔔</span> Subscribe to alerts
               </div>
-              <div style={{ fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.5 }}>
+              <div style={{ fontSize: 16, color: 'var(--ink-2)', lineHeight: 1.6 }}>
                 Get an email when a provider you follow reports a new outage. We'll send a confirmation link first.
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <div>
                 <label style={labelStyle} htmlFor="subscribe-name">Name</label>
                 <input
@@ -122,6 +130,7 @@ export function SubscribeModal({ onClose }: Props) {
                   style={inputStyle}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  placeholder="Jane Doe"
                   required
                   autoComplete="name"
                 />
@@ -135,6 +144,7 @@ export function SubscribeModal({ onClose }: Props) {
                   style={inputStyle}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  placeholder="jane@company.com"
                   required
                   autoComplete="email"
                 />
@@ -142,20 +152,22 @@ export function SubscribeModal({ onClose }: Props) {
 
               <div>
                 <span style={labelStyle}>Providers</span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--ink)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 17, color: 'var(--ink)', cursor: 'pointer' }}>
                     <input
                       type="checkbox"
+                      style={checkboxStyle}
                       checked={allProviders}
                       onChange={(e) => setAllProviders(e.target.checked)}
                     />
                     All providers
                   </label>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', paddingLeft: 4, opacity: allProviders ? 0.5 : 1 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px 28px', opacity: allProviders ? 0.5 : 1 }}>
                     {PROVIDERS.map((p) => (
-                      <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: 'var(--ink)' }}>
+                      <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 17, color: 'var(--ink)', cursor: allProviders ? 'default' : 'pointer' }}>
                         <input
                           type="checkbox"
+                          style={checkboxStyle}
                           disabled={allProviders}
                           checked={selected.has(p.id)}
                           onChange={() => toggleProvider(p.id)}
@@ -187,13 +199,13 @@ export function SubscribeModal({ onClose }: Props) {
 
 const closeButtonStyle: React.CSSProperties = {
   alignSelf: 'flex-end',
-  padding: '8px 18px', borderRadius: 7, border: '1px solid var(--border-strong)',
+  padding: '14px 32px', borderRadius: 10, border: '1px solid var(--border-strong)',
   background: 'var(--ink)', color: 'var(--bg)',
-  fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+  fontSize: 16, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
 };
 
 const secondaryButtonStyle: React.CSSProperties = {
-  padding: '8px 18px', borderRadius: 7, border: '1px solid var(--border-strong)',
+  padding: '14px 32px', borderRadius: 10, border: '1px solid var(--border-strong)',
   background: 'transparent', color: 'var(--ink)',
-  fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+  fontSize: 16, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
 };
