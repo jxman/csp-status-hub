@@ -6,7 +6,7 @@ import { fetchOci } from '../fetchers/ociFetcher';
 import type { DashboardStatus, ProviderStatus } from '../types/status';
 
 const POLL_INTERVAL_MS = 60_000;
-const MANUAL_COOLDOWN_MS = 60_000; // matches auto-refresh interval
+const MANUAL_COOLDOWN_MS = 15_000; // shorter than the auto-refresh interval so the button isn't dead for a full minute
 const CACHE_KEY = 'csp-status-hub:dashboard';
 const CACHE_TTL_MS = 60_000; // 60 seconds — matches poll interval
 
@@ -66,7 +66,9 @@ export function useStatusPolling() {
   const [lastFetchFailed, setLastFetchFailed] = useState(false);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [isVisible, setIsVisible] = useState(() => document.visibilityState === 'visible');
-  const [cooldownUntil, setCooldownUntil] = useState<number>(0);
+  const [cooldownUntil, setCooldownUntil] = useState<number>(0); // drives the header's "Auto-refresh in Xs" countdown
+  const [manualCooldownUntil, setManualCooldownUntil] = useState<number>(0);
+  const [canManualRefresh, setCanManualRefresh] = useState(true); // re-render trigger — manualCooldownUntil alone won't re-render once elapsed
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isOnlineRef = useRef(isOnline);
@@ -93,6 +95,20 @@ export function useStatusPolling() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
+  // --- manual refresh cooldown: a plain "Date.now() >= manualCooldownUntil" check
+  // never re-renders on its own once time passes, so the button would stay visibly
+  // disabled until some unrelated state change happened to re-render this hook's
+  // owner. This timeout forces a re-render right when the cooldown actually ends.
+  useEffect(() => {
+    if (manualCooldownUntil <= Date.now()) {
+      setCanManualRefresh(true);
+      return;
+    }
+    setCanManualRefresh(false);
+    const timeout = setTimeout(() => setCanManualRefresh(true), manualCooldownUntil - Date.now());
+    return () => clearTimeout(timeout);
+  }, [manualCooldownUntil]);
+
   // --- fetch logic ---
   const fetchAll = useCallback(async () => {
     setIsRefreshing(true);
@@ -118,8 +134,10 @@ export function useStatusPolling() {
     }
 
     setIsRefreshing(false);
-    // Cooldown starts only AFTER the fetch completes
-    setCooldownUntil(Date.now() + MANUAL_COOLDOWN_MS);
+    // Cooldowns start only AFTER the fetch completes
+    const now = Date.now();
+    setCooldownUntil(now + POLL_INTERVAL_MS);
+    setManualCooldownUntil(now + MANUAL_COOLDOWN_MS);
   }, []);
 
   // --- auto-refresh: pause when offline or tab hidden, resume when both restored ---
@@ -146,11 +164,11 @@ export function useStatusPolling() {
 
   // --- manual refresh ---
   const manualRefresh = useCallback(() => {
-    if (isRefreshing || Date.now() < cooldownUntil || !isOnline) return;
+    if (isRefreshing || Date.now() < manualCooldownUntil || !isOnline) return;
     fetchAll();
-  }, [isRefreshing, cooldownUntil, isOnline, fetchAll]);
+  }, [isRefreshing, manualCooldownUntil, isOnline, fetchAll]);
 
-  const canRefresh = !isRefreshing && Date.now() >= cooldownUntil && isOnline;
+  const canRefresh = !isRefreshing && canManualRefresh && isOnline;
 
   return {
     dashboard,
