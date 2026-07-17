@@ -83,6 +83,45 @@ export async function sendOutageNotificationEmail(
   return true;
 }
 
+export async function sendResolutionNotificationEmail(
+  to: string,
+  name: string,
+  providerDisplayName: string,
+  currentStatus: string,
+  dashboardUrl: string,
+  manageUrl: string,
+  unsubscribeUrl: string
+): Promise<boolean> {
+  const stillOngoing = currentStatus !== 'operational';
+  const statusLabel = STATUS_LABELS[currentStatus] ?? currentStatus;
+  const bodyLine = stillOngoing
+    ? `One of the incidents affecting <strong>${escapeHtml(providerDisplayName)}</strong> has been resolved. Note: ${escapeHtml(providerDisplayName)} is still reporting <strong>${escapeHtml(statusLabel)}</strong> due to other ongoing issues.`
+    : `<strong>${escapeHtml(providerDisplayName)}</strong> has resolved its incident and is back to normal operations.`;
+
+  const { error } = await resend.emails.send({
+    from: FROM,
+    to,
+    subject: stillOngoing
+      ? `${providerDisplayName}: one incident resolved`
+      : `${providerDisplayName} is back to normal`,
+    html: `
+      <p>Hi ${escapeHtml(name)},</p>
+      <p>${bodyLine}</p>
+      <p><a href="${dashboardUrl}">View on CSP Status Hub</a> — from there you can click through to the official status page.</p>
+      <p style="margin-top:24px;font-size:12px;color:#666;">
+        <a href="${manageUrl}">Manage your subscription</a> ·
+        <a href="${unsubscribeUrl}">Unsubscribe</a>
+      </p>
+    `,
+  });
+
+  if (error) {
+    console.error('sendResolutionNotificationEmail failed', error);
+    return false;
+  }
+  return true;
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }

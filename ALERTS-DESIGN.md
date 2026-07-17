@@ -346,10 +346,34 @@ function.
   very first check ever recorded for a provider (no existing row) is treated
   as a baseline snapshot only, not a notification trigger, so bootstrapping
   against an already-live incident doesn't fire a notification storm.
-  Escalation within an ongoing incident, incident updates, and eventual
-  resolution are still recorded in the snapshot for bookkeeping but do **not**
-  trigger anything (unchanged from 14.7's original scope — only new incidents
-  alert; see 14.7 in the Decisions Log for the deferred widening).
+  Escalation within an ongoing incident and incident updates are still
+  recorded in the snapshot for bookkeeping but do **not** trigger anything —
+  only new incidents starting and existing incidents resolving alert (14.7's
+  originally-deferred widening, built 2026-07-17, see 14.7b).
+- **Resolution detection (14.7b):** the mirror image of the new-incident
+  diff — any ID present in the stored row but missing from the fresh fetch is
+  treated as resolved, and triggers `sendResolutionNotificationEmail`
+  (`incident_resolved` in `notification_log`). This works whether a provider
+  publishes an explicit resolved/closed update (AWS's `[RESOLVED]` items,
+  GCP's `end`/`AVAILABLE` status) or just silently drops the entry once
+  cleared (confirmed live: Azure's feed currently has zero entries, active or
+  resolved — an incident's absence is the only signal). **`ociFetcher.ts`
+  itself has no incident-level data to diff** — it only reads the page-level
+  `status.json` summary (bare `{indicator, description}`, no incidents
+  array; the `regionHealthReports` schema in `CLAUDE.md` Section 3.4 was
+  never actually implemented against it). Since ID diffing needs *something*
+  to diff, it now synthesizes one constant id (`oci-current-incident`)
+  whenever `overallStatus !== 'operational'`. This makes OCI participate
+  correctly in both directions — new alert when it goes bad, resolved alert
+  when it clears — with one known tradeoff: two genuinely distinct OCI
+  incidents that never pass back through "operational" in between are
+  treated as a single continuous incident (no second new-incident alert, no
+  resolved alert until the second one clears too). **A real fix exists but
+  wasn't built this pass** — see 14.10: a genuine per-incident RSS feed
+  (`api/v2/incident-summary.rss`, listed in `CLAUDE.md`'s own OCI quick
+  reference table but never wired into `ociFetcher.ts`) was found live with
+  real incident ids, titles, regions, and resolved/identified status text —
+  AWS-shaped enough that the same dedup/parse approach could apply.
 - On a fetch failure for one provider, that provider's snapshot row is **left
   untouched** rather than overwritten with `unknown` — a transient network
   blip shouldn't manufacture a false transition on the next successful check.
@@ -638,8 +662,10 @@ presence here should push more services toward AWS.
 | 14.6 | Unsubscribed-record retention | **Hard-delete after 90 days** | Built in Phase 7 (`/api/cron/cleanup`) |
 | 14.7 | Notification trigger (v1) | **Initial outage report only** | Implemented in Phase 4's diff logic; revised — see 14.7a |
 | 14.7a | Notification trigger (revised) | **New incident ID, not `operational →` transition** | A live, months-long unrelated AWS regional outage kept `overall_status` stuck non-`operational` and silently suppressed alerts for a later, unrelated CloudFront incident (found in production 2026-07-16). Trigger now diffs `active_incident_ids` against the stored snapshot instead of gating on `overall_status`. See Section 7.2 |
+| 14.7b | Resolution notifications | **Alert when an incident ID disappears from the active set** | Built 2026-07-17, closing 14.7's originally-deferred "resolution notices" scope. Works for all four providers uniformly — explicit resolved markers (AWS, GCP) and silent removal (Azure, OCI's synthesized id) both surface as "ID no longer active." `ociFetcher.ts` still only reads the page-level `status.json` summary (no per-incident id in that endpoint), so it synthesizes a stable id (`oci-current-incident`) — see 14.10 for a real incident feed found on the side that a future pass could wire in instead. See Section 7.2 |
 | 14.8 | Cron interval | **5 minutes** | Mechanism changed — see 14.9 |
 | 14.9 | Cron cadence mechanism | **AWS EventBridge Rules** (not Scheduler — Scheduler rejects API Destination ARNs, discovered by testing), HTTPS target via an API Destination + Connection, `Authorization: Bearer $CRON_SECRET` | Vercel Hobby caps native cron at once/day — a `*/5 * * * *` `vercel.json` entry fails at deploy time, not just reduced precision. Vercel's own daily cron kept as a free fallback |
+| 14.10 | OCI real incident feed | **Found, not yet wired in** | `ociFetcher.ts` only reads `api/v2/status.json` (page-level summary). A real per-incident feed, `api/v2/incident-summary.rss`, was found live 2026-07-17 (verified: 25 items, real ids/titles/regions/resolved-status text, AWS-shaped enough for the same dedup approach) — already listed in `CLAUDE.md`'s OCI table but never implemented. Deferred: would give OCI proper region/service granularity (`regions: []` today) and precise per-incident resolution instead of the 14.7b synthetic single-id workaround. Open — revisit as a follow-up |
 
 ---
 
@@ -710,11 +736,14 @@ send the (late) alert rather than staying silent on it forever.
   different provider was correctly skipped; re-running the cron against an
   unchanged ongoing outage produced zero duplicate notifications
 
-**Two refinements after initial ship**, both from direct user feedback on
-the actual test emails: the primary link now points to the dashboard
-instead of straight to the vendor (Section 8), and the "Unsubscribe" link
-now lands on a confirmation panel instead of unsubscribing on click
-(Section 5).
+**Three refinements after initial ship:** the primary link now points to
+the dashboard instead of straight to the vendor (Section 8) and the
+"Unsubscribe" link now lands on a confirmation panel instead of
+unsubscribing on click (Section 5), both from direct user feedback on the
+actual test emails; and `sendResolutionNotificationEmail()` was added
+2026-07-17 alongside the 14.7b resolution-detection logic (Section 7.2) —
+a separate template/subject line for "one incident resolved, others still
+open" vs. "fully back to normal."
 
 ### Phase 6 — SMS — Not started (user deferred Twilio registration)
 
@@ -723,10 +752,10 @@ now lands on a confirmation panel instead of unsubscribing on click
 - Rate limiting on `/api/subscribe` via Vercel Firewall (verified live)
 - `/api/cron/cleanup` — 7-day unconfirmed purge + 90-day unsubscribed purge
   (14.6), Hobby-native daily cron, verified against seeded stale rows
-- Resolution notices / escalation notices / per-subscriber severity
-  threshold (14.7's optional widening) — **not built**, left as explicitly
-  optional future work per the original design; nothing here blocks it
-  later since `provider_status_snapshot` already tracks what's needed
+- Resolution notices — **built 2026-07-17** (14.7b, Section 7.2). Escalation
+  notices and per-subscriber severity threshold remain **not built**, left as
+  explicitly optional future work; nothing here blocks them later since
+  `provider_status_snapshot` already tracks what's needed
 
 ---
 
