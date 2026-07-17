@@ -1,6 +1,7 @@
 # CSP Status Hub — Custom Domain Migration Plan
 
-**Status:** Planning — not yet started
+**Status:** In progress — Step 1 done (domain added to Vercel project),
+Step 2 (Terraform DNS record) next
 **Author:** Claude Code (drafted for John Xanthopoulos)
 **Date:** 2026-07-17
 **Depends on:** `../claude.md` (base architecture), `ALERTS-DESIGN.md` (`APP_BASE_URL` usage, Sign in with Vercel OAuth)
@@ -68,31 +69,36 @@ keep functioning through the cutover.
 
 ## 5. Step-by-step plan
 
-### Step 1 — Add the domain to the Vercel project
+### Step 1 — Add the domain to the Vercel project ✅ Done (2026-07-17)
 
 ```bash
 vercel domains add cloudstatus.synepho.com --scope johns-projects-2d2073fd
-# or via dashboard: Project Settings → Domains → Add
-vercel domains inspect cloudstatus.synepho.com
+vercel domains inspect cloudstatus.synepho.com --scope johns-projects-2d2073fd
 ```
 
-This returns the exact DNS target Vercel wants (typically a CNAME to
-`cname.vercel-dns.com` for subdomains) — confirm the literal value from
-`inspect` rather than assuming it.
+Ran this — the domain is attached to the project. Vercel's `inspect` output
+came back recommending a plain **A record**, not the CNAME originally
+assumed here:
+
+```
+a) Set the following record on your DNS provider: A cloudstatus.synepho.com 76.76.21.21  [recommended]
+b) Or delegate synepho.com's nameservers to ns1.vercel-dns.com / ns2.vercel-dns.com
+```
+
+Option (b) is out — that would move the whole `synepho.com` zone's
+nameservers to Vercel, taking `aws-services.synepho.com` and the root site
+with it. Going with (a): a single A record, scoped to just this subdomain,
+leaving the rest of the zone in Route 53 untouched.
 
 ### Step 2 — Add the DNS record via Terraform
 
 **Decision:** this record is added through John's Terraform project, not a
-manual Route 53 console/CLI edit. When this step is actually run, the exact
-record details go here first — the DNS name and record type are fixed by
-Step 2's decisions, but the CNAME **value** is only known once Step 1's
-`vercel domains inspect` output comes back, so it can't be filled in until
-then. What to add, once known:
+manual Route 53 console/CLI edit. Record details, now confirmed by Step 1:
 
 ```text
 Name:  cloudstatus.synepho.com
-Type:  CNAME
-Value: <value returned by Step 1's `vercel domains inspect`>
+Type:  A
+Value: 76.76.21.21
 TTL:   300   (short during cutover; raise to 3600 once stable)
 ```
 
@@ -102,9 +108,9 @@ As an `aws_route53_record` resource, that looks like:
 resource "aws_route53_record" "cloudstatus_synepho_com" {
   zone_id = data.aws_route53_zone.synepho.zone_id
   name    = "cloudstatus.synepho.com"
-  type    = "CNAME"
+  type    = "A"
   ttl     = 300
-  records = ["<value returned by Step 1's `vercel domains inspect`>"]
+  records = ["76.76.21.21"]
 }
 ```
 
@@ -112,7 +118,9 @@ One thing to decide at that point: the existing `aws-hosting-synepho`
 Terraform project's `modules/route53` is purpose-built for the site's own
 CloudFront root + `www` alias records (`aws_route53_record.root_site` /
 `www_site`, both `A`-alias, tied to a CloudFront distribution) — a plain
-CNAME to Vercel doesn't fit that module's shape. Confirm whether this record
+A record to Vercel's anycast IP doesn't fit that module's shape (it's a
+plain, non-alias record — no CloudFront distribution involved). Confirm
+whether this record
 belongs as a standalone resource in that same state (reusing its existing
 `data "aws_route53_zone"` lookup for `synepho.com`), or in whatever separate
 Terraform project/state is meant to hold cross-cutting `synepho.com`
@@ -126,7 +134,7 @@ vercel certs ls                                   # confirm cert issued
 ```
 
 Vercel auto-provisions the TLS cert once DNS validates, usually within
-minutes of the CNAME propagating.
+minutes of the A record propagating.
 
 ### Step 4 — Redirect the old `.vercel.app` URL (permanent, 308)
 
@@ -239,7 +247,7 @@ If something breaks post-cutover:
    the new domain stays attached, since nothing is removed, only added.
 2. The `vercel.json` redirect rule can be reverted independently (delete the
    one entry) if it interferes with anything.
-3. Removing the CNAME (via `terraform apply` after deleting the resource
+3. Removing the A record (via `terraform apply` after deleting the resource
    block) doesn't affect `csp-status-hub.vercel.app` at all — the two are
    fully independent.
 
@@ -249,7 +257,7 @@ If something breaks post-cutover:
 | --- | --- |
 | DNS lives outside Vercel | Every DNS change goes through the Terraform project (plan → apply), not the Vercel dashboard — no automatic sync between Vercel and this domain, unlike domains bought through Vercel |
 | `has: host` redirects are production-only | Per Vercel docs, `has` conditions don't evaluate under `vercel dev` — verify Step 4 against a real deployment |
-| TTL during cutover | Keep the new CNAME's TTL low (300s) for the first 24–48h in case the target value needs correcting, then raise it |
+| TTL during cutover | Keep the new A record's TTL low (300s) for the first 24–48h in case the target value needs correcting, then raise it |
 | OAuth redirect URI allow-list | Missing Step 7 fails silently from the app's perspective — the error surfaces as a `redirect_uri` mismatch from Vercel's OAuth endpoint, not an obvious app-side bug |
 
 ## 8. Open decision
