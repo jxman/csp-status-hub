@@ -55,8 +55,8 @@ keep functioning through the cutover.
 
 ## 4. Prerequisites checklist
 
-- [ ] AWS console/CLI access to the Route 53 hosted zone for `synepho.com`
-      (to add a CNAME record)
+- [ ] DNS record change made through your Terraform project (not the Route
+      53 console/CLI directly) — see Step 2 for what to add and where
 - [ ] Vercel access to the `johns-projects-2d2073fd` team / `csp-status-hub`
       project, with permission to add domains and edit env vars
 - [ ] Access to wherever the Sign in with Vercel OAuth client was registered,
@@ -80,16 +80,43 @@ This returns the exact DNS target Vercel wants (typically a CNAME to
 `cname.vercel-dns.com` for subdomains) — confirm the literal value from
 `inspect` rather than assuming it.
 
-### Step 2 — Add the DNS record in Route 53
+### Step 2 — Add the DNS record via Terraform
 
-In the `synepho.com` hosted zone, add:
+**Decision:** this record is added through John's Terraform project, not a
+manual Route 53 console/CLI edit. When this step is actually run, the exact
+record details go here first — the DNS name and record type are fixed by
+Step 2's decisions, but the CNAME **value** is only known once Step 1's
+`vercel domains inspect` output comes back, so it can't be filled in until
+then. What to add, once known:
 
-```
+```text
 Name:  cloudstatus.synepho.com
 Type:  CNAME
 Value: <value returned by Step 1's `vercel domains inspect`>
 TTL:   300   (short during cutover; raise to 3600 once stable)
 ```
+
+As an `aws_route53_record` resource, that looks like:
+
+```hcl
+resource "aws_route53_record" "cloudstatus_synepho_com" {
+  zone_id = data.aws_route53_zone.synepho.zone_id
+  name    = "cloudstatus.synepho.com"
+  type    = "CNAME"
+  ttl     = 300
+  records = ["<value returned by Step 1's `vercel domains inspect`>"]
+}
+```
+
+One thing to decide at that point: the existing `aws-hosting-synepho`
+Terraform project's `modules/route53` is purpose-built for the site's own
+CloudFront root + `www` alias records (`aws_route53_record.root_site` /
+`www_site`, both `A`-alias, tied to a CloudFront distribution) — a plain
+CNAME to Vercel doesn't fit that module's shape. Confirm whether this record
+belongs as a standalone resource in that same state (reusing its existing
+`data "aws_route53_zone"` lookup for `synepho.com`), or in whatever separate
+Terraform project/state is meant to hold cross-cutting `synepho.com`
+subdomain records going forward.
 
 ### Step 3 — Verify domain + SSL
 
@@ -212,17 +239,18 @@ If something breaks post-cutover:
    the new domain stays attached, since nothing is removed, only added.
 2. The `vercel.json` redirect rule can be reverted independently (delete the
    one entry) if it interferes with anything.
-3. Removing the CNAME in Route 53 doesn't affect `csp-status-hub.vercel.app`
-   at all — the two are fully independent.
+3. Removing the CNAME (via `terraform apply` after deleting the resource
+   block) doesn't affect `csp-status-hub.vercel.app` at all — the two are
+   fully independent.
 
 ## 7. Known constraints & caveats
 
 | Constraint | Detail |
-|---|---|
-| DNS lives outside Vercel | Every DNS change is a manual Route 53 edit — no automatic sync between Vercel and this domain, unlike domains bought through Vercel |
+| --- | --- |
+| DNS lives outside Vercel | Every DNS change goes through the Terraform project (plan → apply), not the Vercel dashboard — no automatic sync between Vercel and this domain, unlike domains bought through Vercel |
 | `has: host` redirects are production-only | Per Vercel docs, `has` conditions don't evaluate under `vercel dev` — verify Step 4 against a real deployment |
 | TTL during cutover | Keep the new CNAME's TTL low (300s) for the first 24–48h in case the target value needs correcting, then raise it |
-| OAuth redirect URI allow-list | Missing Step 6 fails silently from the app's perspective — the error surfaces as a `redirect_uri` mismatch from Vercel's OAuth endpoint, not an obvious app-side bug |
+| OAuth redirect URI allow-list | Missing Step 7 fails silently from the app's perspective — the error surfaces as a `redirect_uri` mismatch from Vercel's OAuth endpoint, not an obvious app-side bug |
 
 ## 8. Open decision
 
