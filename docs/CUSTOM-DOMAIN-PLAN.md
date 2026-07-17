@@ -1,8 +1,8 @@
 # CSP Status Hub — Custom Domain Migration Plan
 
-**Status:** In progress — Steps 1–3 done (domain added, DNS live via
-Terraform, SSL issued and serving `200`), Step 4 (redirect the old
-`.vercel.app` URL) next
+**Status:** In progress — Steps 1–5 done (domain added, DNS live via
+Terraform, SSL issued and serving `200`, `vercel.json` redirect added,
+`og:url` updated), Step 6 (update `APP_BASE_URL`) next
 **Author:** Claude Code (drafted for John Xanthopoulos)
 **Date:** 2026-07-17
 **Depends on:** `../claude.md` (base architecture), `ALERTS-DESIGN.md` (`APP_BASE_URL` usage, Sign in with Vercel OAuth)
@@ -126,7 +126,7 @@ curl -sI https://cloudstatus.synepho.com/
 (auto-renew on, 90-day expiry), and `curl -I` returns `HTTP/2 200` — the
 app is live and serving over HTTPS on `cloudstatus.synepho.com`.
 
-### Step 4 — Redirect the old `.vercel.app` URL (permanent, 308)
+### Step 4 — Redirect the old `.vercel.app` URL (permanent, 308) ✅ Done (2026-07-17)
 
 Vercel's project-domain "redirect" field (the one used for custom-domain-to-
 custom-domain moves) doesn't cleanly apply to a project's *default*
@@ -154,7 +154,7 @@ would otherwise take precedence. Note: `has: host` conditions only evaluate
 on Vercel's production routing layer — they're a no-op under `vercel dev`,
 so test this against a real deployment, not locally.
 
-### Step 5 — Update the hardcoded `og:url` in `index.html`
+### Step 5 — Update the hardcoded `og:url` in `index.html` ✅ Done (2026-07-17)
 
 ```html
 <!-- before -->

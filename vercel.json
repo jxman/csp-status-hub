@@ -1,4 +1,12 @@
 {
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "csp-status-hub.vercel.app" }],
+      "destination": "https://cloudstatus.synepho.com/:path*",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     { "source": "/api/admin/subscribers/:id", "destination": "/api/admin/subscribers/[id]" },
     { "source": "/api/:path*", "destination": "/api/:path*" },
