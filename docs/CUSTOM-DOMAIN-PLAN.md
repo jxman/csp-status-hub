@@ -2,10 +2,11 @@
 
 **Status:** In progress — Steps 1–8 done (domain live on `synepho.com`,
 `APP_BASE_URL` cut over, OAuth callback allow-listed, redeployed; root-path
-redirect bug found and fixed post-deploy). Step 9's curl-able checks pass;
-remaining Step 9 items need a human click-through (admin login, subscribe/
-unsubscribe email links, next cron run), then Step 10 (communicate the
-move).
+redirect bug found and fixed post-deploy; DNS record switched from a plain A
+record to Vercel's recommended per-domain CNAME, see Step 2b). Step 9's
+curl-able checks pass; remaining Step 9 items need a human click-through
+(admin login, subscribe/unsubscribe email links, next cron run), then Step
+10 (communicate the move).
 **Author:** Claude Code (drafted for John Xanthopoulos)
 **Date:** 2026-07-17
 **Depends on:** `../claude.md` (base architecture), `ALERTS-DESIGN.md` (`APP_BASE_URL` usage, Sign in with Vercel OAuth)
@@ -60,8 +61,10 @@ keep functioning through the cutover.
 
 ## 4. Prerequisites checklist
 
-- [x] DNS record change made through your Terraform project (not the Route
-      53 console/CLI directly) — see Step 2 for what to add and where
+- [x] DNS record change made through your Terraform project
+      ([`jxman/synepho-s3cf-site`](https://github.com/jxman/synepho-s3cf-site)),
+      not the Route 53 console/CLI directly — see Step 2 for what to add and
+      where
 - [x] Vercel access to the `johns-projects-2d2073fd` team / `csp-status-hub`
       project, with permission to add domains and edit env vars
 - [ ] Access to wherever the Sign in with Vercel OAuth client was registered,
@@ -96,8 +99,8 @@ leaving the rest of the zone in Route 53 untouched.
 
 ### Step 2 — Add the DNS record via Terraform ✅ Done (2026-07-17)
 
-Added directly into `aws-hosting-synepho`'s existing
-`modules/route53/main.tf`, alongside `root_site` / `www_site`, reusing that
+Added directly into [`jxman/synepho-s3cf-site`](https://github.com/jxman/synepho-s3cf-site)'s
+existing `modules/route53/main.tf`, alongside `root_site` / `www_site`, reusing that
 module's `data.aws_route53_zone.selected` lookup and `var.site_name`
 (so the answer to the "which state does this live in" question below was:
 the same state, as a third record in the existing module):
@@ -115,6 +118,36 @@ resource "aws_route53_record" "cloudstatus_site" {
 
 Applied, and DNS confirmed propagated by `ping cloudstatus.synepho.com`
 resolving to `76.76.21.21`.
+
+### Step 2b — Switched the A record to Vercel's recommended CNAME (2026-07-17)
+
+After the `synepho.com` apex domain was separately added to the same Vercel
+project (`vercel domains ls` — added ~1h before this was noticed, `Creator
+jxman-2501`), re-inspecting `cloudstatus.synepho.com` started recommending a
+**CNAME** to a unique per-domain hostname instead of the plain A record —
+confirmed live via `dig`:
+
+```
+cloudstatus.synepho.com. IN CNAME 86f00b6411813bbf.vercel-dns-017.com.
+86f00b6411813bbf.vercel-dns-017.com. IN A 216.198.79.65
+86f00b6411813bbf.vercel-dns-017.com. IN A 64.29.17.65
+```
+
+Per [Vercel's docs](https://vercel.com/docs/domains/set-up-custom-domain):
+apex/root domains must use an A record to the shared anycast IP (a DNS zone
+apex can't hold a CNAME alongside other records like MX) — but a **subdomain**
+should use a CNAME to a Vercel-hosted hostname. The unique per-domain form
+(rather than the generic `cname.vercel-dns-0.com`) lets Vercel move the IPs
+behind that hostname at any time — load rebalancing, infra changes, incident
+failover — without any DNS change on our end. A hardcoded A record would
+break if Vercel ever retired `76.76.21.21`.
+
+[`jxman/synepho-s3cf-site`](https://github.com/jxman/synepho-s3cf-site)'s
+`cloudstatus_site` Route53 record (Step 2, above) was updated from an `A`
+record to a `CNAME` record pointing at
+`86f00b6411813bbf.vercel-dns-017.com` to match. The rollback plan in Section
+6 still applies — deleting this record doesn't affect anything else in the
+zone.
 
 ### Step 3 — Verify domain + SSL ✅ Done (2026-07-17)
 
@@ -274,9 +307,9 @@ If something breaks post-cutover:
 
 | Constraint | Detail |
 | --- | --- |
-| DNS lives outside Vercel | Every DNS change goes through the Terraform project (plan → apply), not the Vercel dashboard — no automatic sync between Vercel and this domain, unlike domains bought through Vercel |
+| DNS lives outside Vercel | Every DNS change goes through the [`jxman/synepho-s3cf-site`](https://github.com/jxman/synepho-s3cf-site) Terraform project (plan → apply), not the Vercel dashboard — no automatic sync between Vercel and this domain, unlike domains bought through Vercel |
 | `has: host` redirects are production-only | Per Vercel docs, `has` conditions don't evaluate under `vercel dev` — verify Step 4 against a real deployment |
-| TTL during cutover | Keep the new A record's TTL low (300s) for the first 24–48h in case the target value needs correcting, then raise it |
+| TTL during cutover | Keep the new record's TTL low (300s, or the ~50s Vercel sets on the CNAME per Step 2b) for the first 24–48h in case the target value needs correcting, then raise it |
 | OAuth redirect URI allow-list | Missing Step 7 fails silently from the app's perspective — the error surfaces as a `redirect_uri` mismatch from Vercel's OAuth endpoint, not an obvious app-side bug |
 
 ## 8. Open decision
