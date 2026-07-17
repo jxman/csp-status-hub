@@ -3,6 +3,7 @@ import type { ProviderStatus, ServiceStatus, StatusLevel } from '../types/status
 import { StatusBadge } from './StatusBadge';
 import { AWS_CRITICAL_SERVICE_IDS, AWS_SERVICE_NAMES } from '../utils/awsServices';
 import { GCP_CRITICAL_SERVICES } from '../utils/gcpServices';
+import { OCI_CRITICAL_SERVICES } from '../utils/ociServices';
 
 interface Props {
   provider: ProviderStatus;
@@ -13,6 +14,7 @@ const MULTIPLE_SERVICES_ID = 'multipleservices';
 const STATUS_PAGE_INFO: Partial<Record<ProviderStatus['provider'], { url: string; label: string }>> = {
   aws: { url: 'https://status.aws.amazon.com/', label: 'AWS status page' },
   gcp: { url: 'https://status.cloud.google.com/', label: 'GCP status page' },
+  oci: { url: 'https://ocistatus.oraclecloud.com/', label: 'OCI status page' },
 };
 
 function worstOf(statuses: StatusLevel[]): StatusLevel {
@@ -81,6 +83,35 @@ function buildGcpServiceList(feedServices: ServiceStatus[]): ServiceStatus[] {
   return [...critical, ...multipleRow];
 }
 
+// OCI's incident-summary.rss gives free-text service names/categories (e.g.
+// "Networking", "Virtual Cloud Network (VCN)"), not a clean enum like AWS's slugs —
+// matched by keyword only (no stable per-product id like GCP's productId). Same
+// always-show-top-10 + "Multiple Services *" catch-all pattern as AWS/GCP.
+function buildOciServiceList(feedServices: ServiceStatus[]): ServiceStatus[] {
+  const matchedIds = new Set<string>();
+  const critical: ServiceStatus[] = OCI_CRITICAL_SERVICES.map((def) => {
+    const match = feedServices.find((s) =>
+      s.serviceId !== MULTIPLE_SERVICES_ID && def.keywords.some((kw) => s.serviceName.toLowerCase().includes(kw))
+    );
+    if (match) matchedIds.add(match.serviceId);
+    return match
+      ? { serviceId: def.id, serviceName: def.name, status: match.status, incidents: match.incidents }
+      : { serviceId: def.id, serviceName: def.name, status: 'operational' as StatusLevel, incidents: [] };
+  });
+
+  const extras = feedServices.filter((s) => !matchedIds.has(s.serviceId));
+  const multipleRow: ServiceStatus[] = extras.length > 0
+    ? [{
+        serviceId: MULTIPLE_SERVICES_ID,
+        serviceName: 'Multiple Services *',
+        status: worstOf(extras.map((s) => s.status)),
+        incidents: extras.flatMap((s) => s.incidents),
+      }]
+    : [];
+
+  return [...critical, ...multipleRow];
+}
+
 interface RegionRowProps {
   regionId: string;
   regionName: string;
@@ -108,6 +139,8 @@ function RegionRow({ regionName, overallStatus, services, provider }: RegionRowP
     displayServices = buildServiceList(services, AWS_CRITICAL_SERVICE_IDS, AWS_SERVICE_NAMES);
   } else if (provider === 'gcp') {
     displayServices = buildGcpServiceList(services);
+  } else if (provider === 'oci') {
+    displayServices = buildOciServiceList(services);
   } else {
     displayServices = services;
   }

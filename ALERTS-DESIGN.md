@@ -368,12 +368,11 @@ function.
   when it clears — with one known tradeoff: two genuinely distinct OCI
   incidents that never pass back through "operational" in between are
   treated as a single continuous incident (no second new-incident alert, no
-  resolved alert until the second one clears too). **A real fix exists but
-  wasn't built this pass** — see 14.10: a genuine per-incident RSS feed
-  (`api/v2/incident-summary.rss`, listed in `CLAUDE.md`'s own OCI quick
-  reference table but never wired into `ociFetcher.ts`) was found live with
-  real incident ids, titles, regions, and resolved/identified status text —
-  AWS-shaped enough that the same dedup/parse approach could apply.
+  resolved alert until the second one clears too) — this was the case until
+  14.10 (Section 7.4, implemented 2026-07-17) wired in a real per-incident
+  feed (`api/v2/incident-summary.rss`). The synthetic id described above is
+  kept as a safety net for when the two sources disagree, but is no longer
+  the primary mechanism — see Section 7.4 for the current design.
 - On a fetch failure for one provider, that provider's snapshot row is **left
   untouched** rather than overwritten with `unknown` — a transient network
   blip shouldn't manufacture a false transition on the next successful check.
@@ -443,6 +442,106 @@ limits.
 
 See Section 17 for the broader question this raised: given AWS is now in the
 loop for scheduling, should more of the backend move there too?
+
+---
+
+### 7.4 OCI real incident feed — implemented (14.10)
+
+`ociFetcher.ts` today only reads `api/v2/status.json` — a bare
+`{indicator, description}` page summary with no incident-level data, which
+is why `regions` is always `[]` and 14.7b needed a synthetic single incident
+id. A real per-incident feed exists and was inspected live 2026-07-17:
+`api/v2/incident-summary.rss`.
+
+**Confirmed shape**, live:
+
+- **One RSS `<item>` per incident**, not one per update like AWS. The
+  `<guid>` is a permanent, stable OCID (`ocid1.oraclecloudincident.oc1...`)
+  that Oracle updates in place as the incident progresses — pubDate and the
+  description both grow with each new update, same guid throughout. This
+  means **no dedup/grouping pass is needed**, unlike `awsFetcher.ts`'s
+  GUID-base + latest-pubDate grouping.
+- **`<title>`**: `{service-or-category} | {region display name} |
+  {reference}`, e.g. `"Virtual Cloud Network (VCN) | US East (Ashburn) |
+  210f910e"`. Reliably splits on `" | "`. Some incidents use broad labels
+  (`"Networking"`, `"Multiple Services"`, `"Multiple Regions"`) — the same
+  fallback shape AWS (`multipleservices`) and GCP already have.
+- **`<description>`**: HTML, one `<p>` block per update, newest first. Each
+  block opens `<strong>{StatusWord}</strong> - {narrative}` where
+  `StatusWord` is `Investigating` / `Identified` / `Monitoring` / `Resolved`
+  — maps directly onto the existing `Incident['status']` union in
+  `status.ts`, no title-guessing heuristic needed (unlike Azure's
+  `parseStatus`).
+- **`<pubDate>`**: last-update time (matches the newest embedded block).
+- **`<link>`**: real detail URL (`.../#/incidents/{same-ocid}`).
+
+**Design:**
+
+1. Keep `status.json` as the sole source of `overallStatus`/`coverageNote`
+   — simple, low-risk, and it's literally what feeds OCI's own status
+   banner. Not being replaced.
+2. Add the RSS fetch. Parse each `<item>` directly into an `Incident` (no
+   dedup pass needed, per above):
+   - `status`: map the newest (`first`) `<strong>` word directly to
+     `investigating/identified/monitoring/resolved/unknown`.
+   - severity/color: keyword-scan the newest update's narrative
+     (`outage`/`disruption`/`unavailable` → high/outage;
+     `degrad`/`impact`/`latency`/`connectivity` → medium/degraded), same
+     philosophy as AWS's `inferStatus()`.
+   - `latestUpdate`: HTML-strip just the newest `<p>` block's narrative
+     sentence, dropping the boilerplate Customer Impact/Start Time/
+     Reference Number trailer — same "one clean blurb" normalization
+     already applied to GCP's `extractGcpSummary()`.
+   - `affectedRegions`/`affectedServices`: the title's two segments.
+3. Active vs. recently-resolved windowing: same 24h pattern as AWS/GCP —
+   status ≠ resolved is active; resolved within 24h is shown once, then
+   drops off.
+4. Build `RegionStatus[]`/`ServiceStatus[]` from these. This also fixes a
+   `ProviderPanel.tsx` display gap found alongside this design: once OCI
+   produces a real incident, `hasActiveIncidents` routes to the incident
+   table instead of the decorative flat `OCI_CRITICAL_SERVICES` list, so
+   that list currently only ever renders while OCI is fully operational
+   (i.e., only when it's uninteresting). Real region data fixes this the
+   same way AWS/GCP already work.
+5. **Safety net kept, not removed**: whether the RSS reflects a
+   freshly-opened incident in real time (vs. only once further along)
+   couldn't be verified — no live OCI incident existed to test against. So
+   the 14.7b synthetic `oci-current-incident` id stays, but only fires if
+   `status.json` reports non-operational **and** the RSS parse found zero
+   active incidents that tick — a safety net for the two sources
+   disagreeing or the RSS lagging, not the primary path.
+6. **`regionId` uses the RSS's raw display name** (e.g. `"US East
+   (Ashburn)"`) rather than a hand-built display-name → canonical-slug
+   table (like AWS's `us-ashburn-1`) — avoids a mapping table that would
+   need to be guessed/verified per region and kept in sync as Oracle adds
+   regions.
+7. No changes needed to `check-status.ts`, `email.ts`, or the DB schema —
+   the id/title diffing built for 14.7b is already fully generic over
+   whatever a fetcher returns.
+
+**Companion UI change:** `RegionTable.tsx` gained a `buildOciServiceList()`
+alongside the existing `buildServiceList()` (AWS) / `buildGcpServiceList()`
+(GCP) — matches OCI's free-text service names against
+`OCI_CRITICAL_SERVICES` by keyword (that file gained a `keywords: string[]`
+per entry, GCP-style, since OCI's title text isn't a clean enum like AWS's
+slugs), with a "Multiple Services *" catch-all row for anything else — same
+pattern GCP's `RegionTable.tsx` already establishes. This also fixes the
+display gap noted when this was designed: `OCI_CRITICAL_SERVICES` previously
+only ever rendered while OCI was fully operational: now that real region
+data exists, the incident table and region table both populate correctly
+during an actual OCI incident.
+
+**Verification, implementation day:** no live OCI incident existed to test
+against (same as design time), so the parse pipeline was verified two ways:
+(1) the real feed, live — 0 active/recently-resolved incidents, matching
+`status.json`'s `operational`; (2) a synthetic RSS built from real historical
+description HTML (an actual "Investigating" update block from a past
+incident, with `pubDate` moved to now) fed through a mocked `fetch`, which
+correctly produced `status: 'investigating'`, the right region
+(`"Saudi Arabia West (Jeddah)"` → `Middle East`), the right service slug,
+and a clean stripped `latestUpdate` with the boilerplate trailer removed. A
+separate mocked run (non-operational `status.json`, empty RSS) confirmed the
+14.7b safety net still fires correctly when the two sources disagree.
 
 ---
 
@@ -665,7 +764,7 @@ presence here should push more services toward AWS.
 | 14.7b | Resolution notifications | **Alert when an incident ID disappears from the active set** | Built 2026-07-17, closing 14.7's originally-deferred "resolution notices" scope. Works for all four providers uniformly — explicit resolved markers (AWS, GCP) and silent removal (Azure, OCI's synthesized id) both surface as "ID no longer active." `ociFetcher.ts` still only reads the page-level `status.json` summary (no per-incident id in that endpoint), so it synthesizes a stable id (`oci-current-incident`) — see 14.10 for a real incident feed found on the side that a future pass could wire in instead. See Section 7.2 |
 | 14.8 | Cron interval | **5 minutes** | Mechanism changed — see 14.9 |
 | 14.9 | Cron cadence mechanism | **AWS EventBridge Rules** (not Scheduler — Scheduler rejects API Destination ARNs, discovered by testing), HTTPS target via an API Destination + Connection, `Authorization: Bearer $CRON_SECRET` | Vercel Hobby caps native cron at once/day — a `*/5 * * * *` `vercel.json` entry fails at deploy time, not just reduced precision. Vercel's own daily cron kept as a free fallback |
-| 14.10 | OCI real incident feed | **Found, not yet wired in** | `ociFetcher.ts` only reads `api/v2/status.json` (page-level summary). A real per-incident feed, `api/v2/incident-summary.rss`, was found live 2026-07-17 (verified: 25 items, real ids/titles/regions/resolved-status text, AWS-shaped enough for the same dedup approach) — already listed in `CLAUDE.md`'s OCI table but never implemented. Deferred: would give OCI proper region/service granularity (`regions: []` today) and precise per-incident resolution instead of the 14.7b synthetic single-id workaround. Open — revisit as a follow-up |
+| 14.10 | OCI real incident feed | **Implemented 2026-07-17** | See Section 7.4 for the full design and verification notes. `incident-summary.rss` is one persistent `<item>` per incident (stable OCID guid, updated in place — unlike AWS's one-item-per-update), so no dedup pass is needed. `status.json` stays as the `overallStatus`/`coverageNote` source; the RSS is purely additive for incident/region/service detail. The 14.7b synthetic `oci-current-incident` id is kept as a safety net (only synthesized if `status.json` disagrees with the RSS finding zero active incidents that tick), since real-time-ness of the RSS on a freshly-opened incident still couldn't be verified live (no live OCI incident existed at implementation time either — tested against a synthetic "Investigating" item instead, see Section 7.4). `regionId` uses the RSS's raw display name (e.g. `"US East (Ashburn)"`) rather than a hand-built canonical-slug table. Companion change: `RegionTable.tsx` gained `buildOciServiceList()`, `ociServices.ts` gained `keywords` per entry, mirroring GCP's pattern |
 
 ---
 
