@@ -15,18 +15,21 @@ dist/
 # System
 .DS_Store
 
-# Dev screenshots (working files, not source)
+# Dev screenshots (working files, not source) — but keep real assets under public/
 *.png
+!public/**/*.png
 
 # IDE
 .vscode/
 .idea/
+*.swp
 
 # Playwright MCP working files
 .playwright-mcp/
 
 # Temporary files (screenshots, local scratch)
 .tmp/
+*.tmp
 
 # Claude Code local settings (permissions, not source)
 .claude/
@@ -34,4 +37,3 @@ dist/
 # Logs
 *.log
 npm-debug.log*
-.env*.local

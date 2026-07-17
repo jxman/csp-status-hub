@@ -94,7 +94,7 @@ Panels and data are always returned in this order: **AWS → Azure → OCI → G
 Opt-in email alerting: sign up (bell icon), confirm via email, get notified
 the moment a provider you follow transitions from operational to something
 else. Full design, decisions, and as-built notes (including a few real
-gotchas hit along the way) live in **[ALERTS-DESIGN.md](./ALERTS-DESIGN.md)**
+gotchas hit along the way) live in **[docs/ALERTS-DESIGN.md](./docs/ALERTS-DESIGN.md)**
 — this section is just the map.
 
 | Route | Purpose |
@@ -207,9 +207,13 @@ csp-status-hub/
 ├── vite.config.ts
 ├── tailwind.config.ts
 ├── tsconfig.json
-├── ENHANCEMENTS.md                Backlog of dashboard optimizations and improvements
-├── ALERTS-DESIGN.md               Full design/decisions/as-built notes for the alerts feature
-└── claude.md                      Original architecture handoff and data source research
+├── claude.md                      Original architecture handoff and data source research
+│
+├── docs/
+│   ├── ENHANCEMENTS.md            Backlog of dashboard optimizations and improvements
+│   ├── ALERTS-DESIGN.md           Full design/decisions/as-built notes for the alerts feature
+│   ├── AWS-MIGRATION-ASSESSMENT.md  Assessment for a potential move off Vercel to AWS
+│   └── CUSTOM-DOMAIN-PLAN.md      Plan to move the app to a synepho.com subdomain
 ```
 
 ---
@@ -335,7 +339,7 @@ covered by `vercel.json` and needs no separate provisioning step.
 - Page Visibility API — polling pauses when tab is hidden, resumes with immediate fetch on focus
 - Stats summary strip (providers degraded, regions impacted, services impacted, active incidents)
 - Services impacted count with `+` suffix when broad multi-service incidents are active
-- Bell icon in header opens a real sign-up form (double opt-in email alerting — see [Alerts & Admin](#alerts--admin) and `ALERTS-DESIGN.md` for the full build)
+- Bell icon in header opens a real sign-up form (double opt-in email alerting — see [Alerts & Admin](#alerts--admin) and `docs/ALERTS-DESIGN.md` for the full build)
 - Footer disclaimer (data source attribution, non-affiliation notice)
 - Mobile-optimised 1×4 stat strip with condensed tile layout
 - Deployment scripts: `npm run deploy` and `npm run deploy:preview` (lint → build → deploy → open)
@@ -353,7 +357,7 @@ covered by `vercel.json` and needs no separate provisioning step.
 - GCP canonical top-10 now matches services by stable `productId` (verified against the authoritative `status.cloud.google.com/products.json` catalog), with title keyword as a fallback; replaced the non-existent "Cloud Networking" entry with "Virtual Private Cloud (VPC)"
 - `npm run verify:gcp` — re-validates the 10 hardcoded GCP `productId`s against the live product catalog on demand
 
-### Pending (see ENHANCEMENTS.md)
+### Pending (see docs/ENHANCEMENTS.md)
 
 - OCI per-service status (API returns it; fetcher currently uses overall status)
 - Aggregate status indicator in the header
@@ -361,8 +365,8 @@ covered by `vercel.json` and needs no separate provisioning step.
 - Vite manual chunk splitting for `fast-xml-parser`
 - Keyboard accessibility (`aria-expanded`, `aria-controls`) on expandable panels
 - Top-level React error boundary
-- SMS alerts (Phase 6 of `ALERTS-DESIGN.md` — deferred pending Twilio A2P 10DLC registration)
-- Resolution/escalation notices and per-subscriber severity thresholds (optional widening, see `ALERTS-DESIGN.md` Section 14.7)
+- SMS alerts (Phase 6 of `docs/ALERTS-DESIGN.md` — deferred pending Twilio A2P 10DLC registration)
+- Resolution/escalation notices and per-subscriber severity thresholds (optional widening, see `docs/ALERTS-DESIGN.md` Section 14.7)
 
 ---
 
