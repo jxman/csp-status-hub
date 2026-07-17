@@ -1,4 +1,4 @@
-import type { StatusLevel } from '../types/status';
+import type { StatusLevel } from '../types/status.js';
 
 export function statusColor(status: StatusLevel): string {
   switch (status) {
