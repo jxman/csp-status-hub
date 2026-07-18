@@ -663,7 +663,10 @@ refresh tokens turned out to be unnecessary complexity — the app only needs
 the `id_token` once, at login, to establish identity. So instead of
 persisting Vercel's own access/refresh tokens, `/api/auth/callback` mints its
 **own** HMAC-signed session cookie (`api/_lib/session.ts`, signed with a
-`SESSION_SECRET` env var, 30-day expiry, `timingSafeEqual` verification) —
+`SESSION_SECRET` env var, 7-day expiry (shortened from an initial 30 days
+2026-07-17, since the account is single-admin and passkey-protected on the
+Vercel side — a shorter cookie window is pure upside with no real
+downside), `timingSafeEqual` verification) —
 fully decoupled from Vercel's 1-hour access-token lifetime, and requiring
 only `openid`, `email`, and `profile` scopes on the Vercel App (no
 `offline_access`, no Vercel API read permissions at all, since nothing here

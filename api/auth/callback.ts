@@ -63,7 +63,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const secure = base.startsWith('https') ? '; Secure' : '';
     res.setHeader('Set-Cookie', [
       ...CLEAR_OAUTH_COOKIES,
-      `admin_session=${createSessionCookie(email)}; Max-Age=${30 * 24 * 60 * 60}; Path=/; HttpOnly; SameSite=Lax${secure}`,
+      `admin_session=${createSessionCookie(email)}; Max-Age=${7 * 24 * 60 * 60}; Path=/; HttpOnly; SameSite=Lax${secure}`,
     ]);
     res.redirect(302, `${base}/admin`);
   } catch (err) {

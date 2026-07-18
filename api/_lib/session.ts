@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function sign(data: string): string {
   return createHmac('sha256', process.env.SESSION_SECRET!).update(data).digest('base64url');
