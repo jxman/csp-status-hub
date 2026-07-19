@@ -114,7 +114,11 @@ export async function sendResolutionNotificationEmail(
 ): Promise<boolean> {
   const stillOngoing = currentStatus !== 'operational';
   const statusLabel = STATUS_LABELS[currentStatus] ?? currentStatus;
-  const dot = statusDot(currentStatus);
+  // Fixed "resolved" icon rather than statusDot(currentStatus) — this email reports
+  // the resolved incident's outcome, not the provider's overall live status, so a
+  // red/yellow dot next to "has been resolved" read as a contradiction even though
+  // the "still reporting X" note below explains it. See feedback_email_no_emoji memory.
+  const resolvedIcon = '✅';
   const intro = stillOngoing
     ? `The following, affecting <strong>${escapeHtml(providerDisplayName)}</strong>, ${incidentTitles.length === 1 ? 'has' : 'have'} been resolved. Note: ${escapeHtml(providerDisplayName)} is still reporting <strong>${escapeHtml(statusLabel)}</strong> due to other ongoing issues:`
     : `<strong>${escapeHtml(providerDisplayName)}</strong> has resolved the following and is back to normal operations:`;
@@ -123,11 +127,11 @@ export async function sendResolutionNotificationEmail(
     from: FROM,
     to,
     subject: stillOngoing
-      ? `${dot} ${providerDisplayName}: resolved — ${incidentSubjectFragment(incidentTitles)}`
-      : `${dot} ${providerDisplayName} is back to normal — ${incidentSubjectFragment(incidentTitles)}`,
+      ? `${resolvedIcon} ${providerDisplayName}: resolved — ${incidentSubjectFragment(incidentTitles)}`
+      : `${resolvedIcon} ${providerDisplayName} is back to normal — ${incidentSubjectFragment(incidentTitles)}`,
     html: `
       <p>Hi ${escapeHtml(name)},</p>
-      <p>${dot} ${intro}</p>
+      <p>${resolvedIcon} ${intro}</p>
       ${renderIncidentTitles(incidentTitles)}
       <p><a href="${dashboardUrl}">View on Cloud Status Hub</a> — from there you can click through to the official status page.</p>
       <p style="margin-top:24px;font-size:12px;color:#666;">
