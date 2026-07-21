@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /manage
+
+Sitemap: https://cloudstatus.synepho.com/sitemap.xml

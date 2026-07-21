@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- icon -->
+  <g transform="translate(90,225)">
+    <rect width="180" height="180" rx="40" fill="#1d4ed8"/>
+    <path d="M132.2 87.2a22.5 22.5 0 0 0-42.8-9.6 16.9 16.9 0 1 0-5 32.9h45a16.9 16.9 0 0 0 2.8-33.6v.3z" fill="white"/>
+    <circle cx="140" cy="42" r="22" fill="#22c55e"/>
+  </g>
+
+  <text x="330" y="290" font-family="Geist, Arial, sans-serif" font-size="72" font-weight="700" fill="#f8fafc">Cloud Status Hub</text>
+  <text x="330" y="345" font-family="Geist, Arial, sans-serif" font-size="32" font-weight="500" fill="#94a3b8">Real-time status for AWS, Azure, GCP &amp; OCI</text>
+
+  <g transform="translate(330,390)">
+    <circle cx="10" cy="10" r="8" fill="#22c55e"/>
+    <text x="30" y="18" font-family="Geist, Arial, sans-serif" font-size="22" fill="#cbd5e1">Unified · Auto-refreshing · Region &amp; service level</text>
+  </g>
+</svg>
