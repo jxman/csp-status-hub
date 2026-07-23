@@ -31,7 +31,7 @@ CONNECTION_NAME="csp-status-hub-cron-connection"
 API_DESTINATION_NAME="csp-status-hub-check-status"
 ROLE_NAME="csp-status-hub-eventbridge-role"
 RULE_NAME="csp-status-hub-check-status"
-TARGET_ENDPOINT="https://csp-status-hub.vercel.app/api/cron/check-status"
+TARGET_ENDPOINT="https://cloudstatus.synepho.com/api/cron/check-status"
 
 if [ -z "$CRON_SECRET" ]; then
   echo "CRON_SECRET is not set. Run: set -a; source .env.local; set +a" >&2
@@ -83,7 +83,18 @@ fi
 echo "== 2. EventBridge API destination =="
 API_DESTINATION_ARN=$(aws events describe-api-destination --name "$API_DESTINATION_NAME" --query 'ApiDestinationArn' --output text 2>/dev/null || echo "")
 if [ -n "$API_DESTINATION_ARN" ]; then
-  echo "  $API_DESTINATION_NAME already exists, skipping"
+  CURRENT_ENDPOINT=$(aws events describe-api-destination --name "$API_DESTINATION_NAME" --query 'InvocationEndpoint' --output text)
+  if [ "$CURRENT_ENDPOINT" != "$TARGET_ENDPOINT" ]; then
+    echo "  $API_DESTINATION_NAME exists but points at $CURRENT_ENDPOINT, updating to $TARGET_ENDPOINT"
+    aws events update-api-destination \
+      --name "$API_DESTINATION_NAME" \
+      --connection-arn "$CONNECTION_ARN" \
+      --invocation-endpoint "$TARGET_ENDPOINT" \
+      --http-method GET \
+      --invocation-rate-limit-per-second 1 >/dev/null
+  else
+    echo "  $API_DESTINATION_NAME already exists and endpoint is current, skipping"
+  fi
 else
   API_DESTINATION_ARN=$(aws events create-api-destination \
     --name "$API_DESTINATION_NAME" \
