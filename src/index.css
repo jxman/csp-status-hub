@@ -375,11 +375,10 @@ body {
   }
   .a-summary .stat > span {
     display: flex; flex-direction: column; gap: 2px;
-    align-items: center; justify-content: center; text-align: center;
-    padding: 0 4px; height: 52px;
+    align-items: center; justify-content: flex-start; text-align: center;
+    padding: 10px 4px 8px; min-height: 52px;
     background: var(--card);
     border: 1px solid var(--border); border-radius: 8px;
-    overflow: hidden;
   }
   .a-summary .stat > span br { display: none; }
   .a-summary .stat .num { font-size: 17px; margin-right: 0; line-height: 1; }
