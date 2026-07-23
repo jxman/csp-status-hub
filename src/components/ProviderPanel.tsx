@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import type { Incident, ProviderStatus, StatusLevel } from '../types/status';
+import type { ProviderStatus, StatusLevel } from '../types/status';
 import { RegionTable } from './RegionTable';
-import { IncidentTable } from './IncidentTable';
 import { FlatServiceList, type FlatService } from './FlatServiceList';
 import { ErrorState } from './ErrorState';
 import { StatusBadge } from './StatusBadge';
@@ -22,22 +21,6 @@ const OFFICIAL_URLS: Record<string, string> = {
   gcp:   'https://status.cloud.google.com/',
   oci:   'https://ocistatus.oraclecloud.com/',
 };
-
-function computeAzureServiceStatuses(incidents: Incident[]): FlatService[] {
-  const active = incidents.filter((inc) => inc.status !== 'resolved');
-  return AZURE_CRITICAL_SERVICES.map((svc) => {
-    const affecting = active.filter((inc) =>
-      inc.affectedServices.some((s) =>
-        svc.keywords.some((kw) => s.toLowerCase().includes(kw))
-      )
-    );
-    let status: StatusLevel = 'operational';
-    if (affecting.length > 0) {
-      status = affecting.some((inc) => inc.severity === 'high') ? 'outage' : 'degraded';
-    }
-    return { id: svc.id, name: svc.name, status };
-  });
-}
 
 function awsFlatServices(): FlatService[] {
   return AWS_CRITICAL_SERVICE_IDS.map((id) => ({
@@ -88,7 +71,7 @@ export function ProviderPanel({ provider }: Props) {
   const showBody = !isExpandable || expanded;
 
   const flatServices = (): FlatService[] => {
-    if (provider.provider === 'azure') return computeAzureServiceStatuses(provider.activeIncidents);
+    if (provider.provider === 'azure') return AZURE_CRITICAL_SERVICES.map(({ id, name }) => ({ id, name }));
     if (provider.provider === 'oci')   return OCI_CRITICAL_SERVICES;
     if (provider.provider === 'gcp')   return GCP_CRITICAL_SERVICES.map(({ id, name }) => ({ id, name }));
     return awsFlatServices();
@@ -141,8 +124,6 @@ export function ProviderPanel({ provider }: Props) {
 
           {hasRegions ? (
             <RegionTable provider={provider} />
-          ) : hasActiveIncidents ? (
-            <IncidentTable incidents={provider.activeIncidents} />
           ) : (
             <div style={{ padding: '8px 16px' }}>
               <FlatServiceList services={flatServices()} status={provider.overallStatus} />

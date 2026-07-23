@@ -1,5 +1,5 @@
 import { XMLParser } from 'fast-xml-parser';
-import type { Incident, ProviderStatus, StatusLevel } from '../../src/types/status.js';
+import type { Incident, ProviderStatus, RegionStatus, ServiceStatus, StatusLevel } from '../../src/types/status.js';
 
 const AZURE_FEED_URL = 'https://azurestatuscdn.azureedge.net/en-us/status/feed/';
 const AZURE_DASHBOARD_URL = 'https://azure.status.microsoft/';
@@ -28,6 +28,42 @@ const AZURE_REGIONS = new Set([
   'Multiple Regions', 'Global',
 ]);
 
+// Azure's region names are already an enumerated display-name set (AZURE_REGIONS
+// above), not a canonical slug — same situation as OCI (see ALERTS-DESIGN.md 14.10),
+// so geographic grouping is done by exact/word match rather than a hand-built slug table.
+function azureRegionToGeo(regionName: string): string {
+  if (regionName === 'Global' || regionName === 'Multiple Regions') return 'Global';
+  const words = regionName.split(' ');
+  if (words.includes('US') || words.includes('Canada')) return 'North America';
+  if (words.includes('Brazil')) return 'South America';
+  if (regionName.includes('South Africa')) return 'Africa';
+  if (words.includes('Australia')) return 'Australia';
+  if (words.includes('UAE') || words.includes('Qatar')) return 'Middle East';
+  if (['UK', 'Europe', 'France', 'Germany', 'Switzerland', 'Norway', 'Sweden', 'Poland', 'Spain', 'Italy']
+    .some((w) => words.includes(w))) return 'Europe';
+  if (['Asia', 'Japan', 'Korea', 'India'].some((w) => words.includes(w))) return 'Asia Pacific';
+  return 'Global';
+}
+
+// AWS flags edge/global-scoped services with regionId 'global' (see claude.md Known
+// Constraints — CloudFront, Route 53 carry no region segment). Mirror that convention
+// here so Azure's broad-impact incidents get the same "+" treatment in the dashboard's
+// regions-impacted stat, instead of a differently-cased region bucket the UI doesn't recognize.
+function regionIdFor(regionName: string): string {
+  return regionName === 'Global' || regionName === 'Multiple Regions' ? 'global' : regionName;
+}
+
+function serviceIdFromName(name: string): string {
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'service';
+}
+
+function worstStatus(statuses: StatusLevel[]): StatusLevel {
+  if (statuses.includes('outage')) return 'outage';
+  if (statuses.includes('degraded')) return 'degraded';
+  if (statuses.includes('unknown')) return 'unknown';
+  return 'operational';
+}
+
 function stripHtml(html: string): string {
   return html
     .replace(/<[^>]*>/g, ' ')
@@ -48,19 +84,6 @@ function extractText(val: unknown): string {
     return String((val as Record<string, unknown>)['#text'] ?? '');
   }
   return String(val);
-}
-
-function extractLink(link: unknown): string {
-  if (!link) return AZURE_DASHBOARD_URL;
-  const candidates = Array.isArray(link) ? link : [link];
-  const alternate = candidates.find(
-    (l) => typeof l === 'object' && l !== null && (l as Record<string, unknown>)['@_rel'] === 'alternate'
-  ) ?? candidates[0];
-  if (typeof alternate === 'object' && alternate !== null) {
-    return String((alternate as Record<string, unknown>)['@_href'] ?? AZURE_DASHBOARD_URL);
-  }
-  if (typeof alternate === 'string' && alternate.startsWith('http')) return alternate;
-  return AZURE_DASHBOARD_URL;
 }
 
 function parseSeverity(title: string): Incident['severity'] {
@@ -139,7 +162,6 @@ function entryToIncident(entry: RawEntry, index: number, feedUpdatedAt?: string)
   // updatedAt = channel lastBuildDate (when feed was last updated) > item updated > pubDate
   const published = toIso(entry.published ?? entry.pubDate);
   const updated = toIso(entry.updated ?? feedUpdatedAt ?? entry.pubDate ?? entry.published);
-  const link = extractLink(entry.link);
   const rawId = extractText(entry.id || entry.guid) || `azure-${index}`;
   const id = encodeURIComponent(rawId).slice(0, 128);
 
@@ -158,7 +180,12 @@ function entryToIncident(entry: RawEntry, index: number, feedUpdatedAt?: string)
     endTime: isResolved ? updated : null,
     affectedServices: services,
     affectedRegions: regions,
-    detailUrl: link,
+    // Microsoft's own feed <link> points at a raw backend App Service host
+    // (e.g. azurestatusprodeus.azurewebsites.net) rather than the public
+    // azure.status.microsoft domain, and it's the same generic root URL on
+    // every entry — not an incident-specific deep link. Use the stable
+    // public domain instead of trusting the feed's link verbatim.
+    detailUrl: AZURE_DASHBOARD_URL,
     latestUpdate: stripHtml(summary),
     updatedAt: updated,
   };
@@ -203,19 +230,58 @@ export async function fetchAzure(): Promise<ProviderStatus> {
   const { entries: rawEntries, feedUpdatedAt } = extractEntries(parsed);
 
   const incidents = rawEntries.map((entry, i) => entryToIncident(entry, i, feedUpdatedAt));
-  const activeCount = incidents.filter((inc) => inc.status !== 'resolved').length;
+  const activeIncidents = incidents.filter((inc) => inc.status !== 'resolved');
 
-  const overallStatus: StatusLevel = activeCount === 0
+  const overallStatus: StatusLevel = activeIncidents.length === 0
     ? 'operational'
-    : incidents.some((inc) => inc.status !== 'resolved' && inc.severity === 'high')
+    : activeIncidents.some((inc) => inc.severity === 'high')
       ? 'outage'
       : 'degraded';
+
+  // Roll active incidents up into a region x service breakdown, matching the
+  // AWS/GCP/OCI region-table UI — Azure's feed has no structured region/service
+  // grid of its own (see claude.md 3.2), so it's built here from each incident's
+  // parsed affectedRegions/affectedServices. Incidents with no parseable region
+  // (empty affectedRegions — title/categories didn't match AZURE_REGIONS) fall
+  // into a 'Global' bucket rather than silently dropping their service impact.
+  const regionMap = new Map<string, Map<string, ServiceStatus>>();
+  for (const inc of activeIncidents) {
+    const svcStatus: StatusLevel = inc.severity === 'high' ? 'outage' : 'degraded';
+    const regionNames = inc.affectedRegions.length > 0 ? inc.affectedRegions : ['Global'];
+    const serviceNames = inc.affectedServices.length > 0 ? inc.affectedServices : ['Multiple Services'];
+
+    for (const regionName of regionNames) {
+      if (!regionMap.has(regionName)) regionMap.set(regionName, new Map());
+      const serviceMap = regionMap.get(regionName)!;
+      for (const serviceName of serviceNames) {
+        const serviceId = serviceIdFromName(serviceName);
+        const existing = serviceMap.get(serviceId);
+        if (existing) {
+          existing.incidents.push(inc.id);
+          existing.status = worstStatus([existing.status, svcStatus]);
+        } else {
+          serviceMap.set(serviceId, { serviceId, serviceName, status: svcStatus, incidents: [inc.id] });
+        }
+      }
+    }
+  }
+
+  const regions: RegionStatus[] = Array.from(regionMap.entries()).map(([regionName, serviceMap]) => {
+    const services = Array.from(serviceMap.values());
+    return {
+      regionId: regionIdFor(regionName),
+      regionName,
+      geographicArea: azureRegionToGeo(regionName),
+      overallStatus: worstStatus(services.map((s) => s.status)),
+      services,
+    };
+  });
 
   return {
     provider: 'azure',
     displayName: 'Microsoft Azure',
     overallStatus,
-    regions: [],
+    regions,
     activeIncidents: incidents,
     sourceUrl: AZURE_DASHBOARD_URL,
     dataFetchedAt: fetchedAt,

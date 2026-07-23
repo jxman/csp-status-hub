@@ -16,6 +16,6 @@ export const AZURE_CRITICAL_SERVICES: AzureServiceDef[] = [
   { id: 'app-service',       name: 'App Service',                keywords: ['app service'] },
   { id: 'functions',         name: 'Functions',                  keywords: ['functions'] },
   { id: 'virtual-network',   name: 'Virtual Network',            keywords: ['virtual network', 'networking'] },
-  { id: 'monitor',           name: 'Monitor',                    keywords: ['monitor'] },
+  { id: 'network-infrastructure', name: 'Network Infrastructure', keywords: ['network infrastructure'] },
   { id: 'key-vault',         name: 'Key Vault',                  keywords: ['key vault'] },
 ];

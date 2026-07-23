@@ -4,6 +4,7 @@ import { StatusBadge } from './StatusBadge';
 import { AWS_CRITICAL_SERVICE_IDS, AWS_SERVICE_NAMES } from '../utils/awsServices';
 import { GCP_CRITICAL_SERVICES } from '../utils/gcpServices';
 import { OCI_CRITICAL_SERVICES } from '../utils/ociServices';
+import { AZURE_CRITICAL_SERVICES } from '../utils/azureServices';
 
 interface Props {
   provider: ProviderStatus;
@@ -15,6 +16,7 @@ const STATUS_PAGE_INFO: Partial<Record<ProviderStatus['provider'], { url: string
   aws: { url: 'https://status.aws.amazon.com/', label: 'AWS status page' },
   gcp: { url: 'https://status.cloud.google.com/', label: 'GCP status page' },
   oci: { url: 'https://ocistatus.oraclecloud.com/', label: 'OCI status page' },
+  azure: { url: 'https://azure.status.microsoft/', label: 'Azure status page' },
 };
 
 function worstOf(statuses: StatusLevel[]): StatusLevel {
@@ -112,6 +114,34 @@ function buildOciServiceList(feedServices: ServiceStatus[]): ServiceStatus[] {
   return [...critical, ...multipleRow];
 }
 
+// Azure incidents give free-text service names too (see azureFetcher.ts — built from
+// each incident's parsed affectedServices, no stable id like GCP's productId), matched
+// by keyword only. Same always-show-top-10 + "Multiple Services *" catch-all pattern.
+function buildAzureServiceList(feedServices: ServiceStatus[]): ServiceStatus[] {
+  const matchedIds = new Set<string>();
+  const critical: ServiceStatus[] = AZURE_CRITICAL_SERVICES.map((def) => {
+    const match = feedServices.find((s) =>
+      s.serviceId !== MULTIPLE_SERVICES_ID && def.keywords.some((kw) => s.serviceName.toLowerCase().includes(kw))
+    );
+    if (match) matchedIds.add(match.serviceId);
+    return match
+      ? { serviceId: def.id, serviceName: def.name, status: match.status, incidents: match.incidents }
+      : { serviceId: def.id, serviceName: def.name, status: 'operational' as StatusLevel, incidents: [] };
+  });
+
+  const extras = feedServices.filter((s) => !matchedIds.has(s.serviceId));
+  const multipleRow: ServiceStatus[] = extras.length > 0
+    ? [{
+        serviceId: MULTIPLE_SERVICES_ID,
+        serviceName: 'Multiple Services *',
+        status: worstOf(extras.map((s) => s.status)),
+        incidents: extras.flatMap((s) => s.incidents),
+      }]
+    : [];
+
+  return [...critical, ...multipleRow];
+}
+
 interface RegionRowProps {
   regionId: string;
   regionName: string;
@@ -141,6 +171,8 @@ function RegionRow({ regionName, overallStatus, services, provider }: RegionRowP
     displayServices = buildGcpServiceList(services);
   } else if (provider === 'oci') {
     displayServices = buildOciServiceList(services);
+  } else if (provider === 'azure') {
+    displayServices = buildAzureServiceList(services);
   } else {
     displayServices = services;
   }
