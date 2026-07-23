@@ -4,7 +4,7 @@ Real-time operational status dashboard for AWS, Azure, OCI, and GCP in a single 
 
 Auto-refreshes every 60 seconds. Shows active incidents, per-service health, and links through to official vendor status pages. Subscribers can also opt in to email alerts when a provider they follow reports a new outage — see [Alerts & Admin](#alerts--admin) below.
 
-> **Status:** Live on Vercel — [csp-status-hub.vercel.app](https://csp-status-hub.vercel.app)
+> **Status:** Live on Vercel — [cloudstatus.synepho.com](https://cloudstatus.synepho.com) (the old `csp-status-hub.vercel.app` URL still works — permanent redirect, see [docs/CUSTOM-DOMAIN-PLAN.md](./docs/CUSTOM-DOMAIN-PLAN.md))
 
 ---
 
@@ -22,7 +22,7 @@ Browser (React SPA)
              Azure only: /api/status/azure
                    └─→ Vercel Function (Node.js, cached s-maxage=300)
                           └─→ azurestatuscdn.azureedge.net/en-us/status/feed/
-                                (Atom/XML → parsed → normalized JSON)
+                                (Atom/XML → parsed → region × service breakdown → normalized JSON)
 
 ┌─────────────────────────────────────────────────────────────────────┐
 │  useStatusPolling (React hook)                                      │
@@ -79,7 +79,7 @@ Browser (React SPA)
 **Coverage notes:**
 
 - **AWS** — `all.rss` covers only incidents AWS publishes publicly (significant/widespread events). Minor single-service degradations appear only in per-service feeds.
-- **Azure** — Public RSS feed covers only major widespread incidents. Affected services and regions are extracted from structured `<category>` elements in the feed. Per-service status is derived by keyword-matching incident titles against a canonical service list. Full per-region granularity requires the authenticated Azure Service Health ARM API.
+- **Azure** — Public RSS feed covers only major widespread incidents. Affected services and regions are extracted from structured `<category>` elements (or title text as a fallback) and rolled up into a region × service breakdown, same as AWS/GCP/OCI — matched against a canonical top-10 service list by keyword, with anything else collapsed into a "Multiple Services *" row. Still bounded by whatever Microsoft's feed itself names; full authenticated-account granularity would require the Azure Service Health ARM API.
 
 ---
 
@@ -163,9 +163,8 @@ csp-status-hub/
 │   │   ├── StatusHeader.tsx       Header: title, live dot, refresh, bell (subscribe), theme toggle
 │   │   ├── ProviderGrid.tsx       4-column responsive grid
 │   │   ├── ProviderPanel.tsx      Per-provider expandable card + service list
-│   │   ├── RegionTable.tsx        Region → top-10 service status rows (AWS, GCP)
-│   │   ├── IncidentTable.tsx      Incident rows with expand/collapse (Azure, no-region providers)
-│   │   ├── FlatServiceList.tsx    Flat service list with per-service status support
+│   │   ├── RegionTable.tsx        Region → top-10 service status rows (all four providers)
+│   │   ├── FlatServiceList.tsx    Flat top-10 list for the no-active-incident state (no regions to show yet)
 │   │   ├── IncidentList.tsx       Active + recently resolved incidents, sorted by recency
 │   │   ├── IncidentCard.tsx       Per-incident detail row with severity and link
 │   │   ├── StatusBadge.tsx        Color-coded status pill
@@ -356,6 +355,11 @@ covered by `vercel.json` and needs no separate provisioning step.
 - GCP region/service matrix now follows the same top-10-plus-"Multiple Services *" display pattern as AWS — previously every affected product outside the canonical list was listed individually because GCP service matching used hardcoded slugs that never matched real feed data
 - GCP canonical top-10 now matches services by stable `productId` (verified against the authoritative `status.cloud.google.com/products.json` catalog), with title keyword as a fallback; replaced the non-existent "Cloud Networking" entry with "Virtual Private Cloud (VPC)"
 - `npm run verify:gcp` — re-validates the 10 hardcoded GCP `productId`s against the live product catalog on demand
+- Custom domain — dashboard moved to `cloudstatus.synepho.com`, permanent redirect from the old `csp-status-hub.vercel.app` URL (see `docs/CUSTOM-DOMAIN-PLAN.md`)
+- Azure region/service breakdown now matches AWS/GCP/OCI — `azureFetcher.ts` groups each active incident's parsed regions/services into a real region → service map instead of always returning an empty region list; `RegionTable.tsx` gained `buildAzureServiceList()` (top-10 always shown, extras collapsed into "Multiple Services *"); the old ad hoc `IncidentTable` component this replaced was removed
+- Azure "View timeline" link fixed — the feed's own `<link>` element pointed at Microsoft's internal backend hostname (e.g. `azurestatusprodeus.azurewebsites.net`) rather than the public `azure.status.microsoft` domain, and wasn't incident-specific anyway; `detailUrl` now always uses the canonical public domain
+- Azure canonical service list: replaced `Monitor` with `Network Infrastructure`, matching what the feed's categories actually report
+- AWS EventBridge cron target endpoint drift fixed — the custom-domain redirect (above) 308'd every EventBridge invocation of the old `.vercel.app` URL, silently failing status checks and alerts for days; `scripts/setup-eventbridge-cron.sh` now points at the current domain and self-heals endpoint drift on re-run instead of skipping
 
 ### Pending (see docs/ENHANCEMENTS.md)
 

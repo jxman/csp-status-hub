@@ -184,3 +184,32 @@ the ID ever stops resolving. Added `npm run verify:gcp`
 (`scripts/verify-gcp-services.mjs`) to re-check all 10 `productId`s against
 the live catalog on demand — flags exactly which service went stale and
 whether the keyword fallback would still catch it.
+
+### ✅ Azure showed no region/service breakdown during an active incident
+
+_Completed — this session_
+
+`azureFetcher.ts` always returned `regions: []`, so any active incident
+replaced the whole panel with `IncidentTable`, a bespoke component that only
+listed that one incident's own narrow service list — the canonical top-10
+critical services (and their still-operational status) disappeared entirely
+during an outage, exactly the gap the GCP fix above closed for GCP.
+`azureFetcher.ts` now groups each active incident's parsed `affectedRegions` ×
+`affectedServices` into a real region/service map, the same shape AWS/GCP/OCI
+already produce. `RegionTable.tsx` gained `buildAzureServiceList()` matching
+the existing GCP/OCI builders (top-10 always shown, extras collapsed into
+"Multiple Services *"); `IncidentTable.tsx` and the ad hoc `ProviderPanel`-level
+Azure logic it required were removed as dead code. Also swapped `Monitor` for
+`Network Infrastructure` in `AZURE_CRITICAL_SERVICES`, matching what the feed's
+categories actually report.
+
+### ✅ Azure "View timeline" link pointed at Microsoft's internal backend host
+
+_Completed — this session_
+
+`entryToIncident()`'s `detailUrl` trusted the feed's own `<link>` element,
+which Microsoft's feed populates with a raw backend App Service hostname
+(e.g. `azurestatusprodeus.azurewebsites.net`) rather than the public
+`azure.status.microsoft` domain — and the same generic root URL on every
+entry regardless of incident, so it wasn't even incident-specific. `detailUrl`
+now always uses the canonical public domain instead.

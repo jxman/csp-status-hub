@@ -276,6 +276,18 @@ Azure's public status page intentionally covers only three categories of inciden
 - The best available from the public feed: parse each Atom `<entry>` title/summary for service names and region names using string matching/regex
 - Azure's card in the UI must display a disclaimer explaining this coverage gap
 
+> **Update (2026-07-23):** the structural limitation above is still true — Azure's
+> feed only ever reports what Microsoft chooses to publish — but as of this date
+> `azureFetcher.ts` no longer leaves `regions: []` for every incident. It groups
+> each active incident's parsed `affectedRegions`/`affectedServices` into a real
+> region → service map and renders it through the same `<RegionTable />` matrix
+> AWS/GCP/OCI use, with a canonical top-10 critical-service list
+> (`azureServices.ts`) and a "Multiple Services *" catch-all for anything outside
+> it. See `docs/ALERTS-DESIGN.md` Section 7.5 / 14.11 for the as-built details —
+> the "UI Treatment for Azure" bullets below describe the original kickoff plan,
+> which predates this and no longer matches exactly (there's no "Limited Data"
+> badge; the coverage note is a plain info banner).
+
 **Serverless function behavior (`/api/status/azure.ts`):**
 1. Fetch Atom feed
 2. Parse XML, extract all `<entry>` elements
@@ -590,8 +602,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 | **AWS coverage** | `all.rss` covers only incidents AWS publishes publicly — significant events only | UI disclaimer in AWS panel; link to full dashboard |
 | **AWS item deduplication** | Feed emits one `<item>` per update, not per incident | Group by GUID base, keep latest `<pubDate>` per group (see Section 3.1) |
 | **AWS global/edge services** | GUIDs for CloudFront, Route 53, IAM, etc. carry no region segment (e.g. `#cloudfront_1784201243`) — found in production 2026-07-16 when a live CloudFront incident rendered as region "unknown" | `parseGuid()` labels these region `"global"` instead of falling through to `unknown`/`unknown` (see Section 3.1) |
-| **Azure coverage** | Only major widespread incidents; no structured per-service/region data | UI disclaimer; attempt free-text parsing for service/region hints |
+| **Azure coverage** | Only major widespread incidents | UI disclaimer; link to full dashboard |
 | **CORS — Azure only** | Azure Atom feed blocks direct browser fetches | Handled by single Vercel serverless function |
+| **Azure region/service data now built from the feed's own `<category>`/title parsing** (2026-07-23) | The Section 3.2 "no structured per-region or per-service breakdown" limitation was true of the raw feed, but `azureFetcher.ts` now groups each active incident's parsed `affectedRegions` × `affectedServices` into a real region → service map — the same shape AWS/GCP/OCI already produce, rather than always returning `regions: []` | `RegionTable.tsx` gained `buildAzureServiceList()` (top-10 always shown from `AZURE_CRITICAL_SERVICES`, extras collapsed into "Multiple Services *"), matching `buildGcpServiceList()`/`buildOciServiceList()`. `IncidentTable.tsx` — the old ad hoc per-incident list this replaced — was deleted as dead code. See `docs/ALERTS-DESIGN.md` Section 7.5 / 14.11 |
+| **Azure feed `<link>` points at an internal backend host, not the public domain** (found 2026-07-23) | Each RSS/Atom entry's `<link>` is a raw backend App Service hostname (e.g. `azurestatusprodeus.azurewebsites.net`), not `azure.status.microsoft` — and it's the same generic root URL on every entry, not an incident-specific deep link | `entryToIncident()` ignores the feed's `<link>` and always sets `detailUrl` to the canonical `azure.status.microsoft` dashboard URL |
 | **AWS XML in browser** | `fast-xml-parser` must run client-side to parse RSS | Pure JS lib — bundles cleanly with Vite, no issues |
 | **Vercel cold starts** | First Azure call after inactivity may add 1–2s | Loading indicator in UI; other three providers unaffected |
 | **Vercel free tier** | 100k fn invocations/month — only Azure calls count now | Even more headroom than before |

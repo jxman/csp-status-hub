@@ -5,8 +5,9 @@
 redirect bug found and fixed post-deploy; DNS record switched from a plain A
 record to Vercel's recommended per-domain CNAME, see Step 2b). Step 9's
 curl-able checks pass; remaining Step 9 items need a human click-through
-(admin login, subscribe/unsubscribe email links, next cron run), then Step
-10 (communicate the move).
+(admin login, subscribe/unsubscribe email links), then Step 10 (communicate
+the move). **The cron item on that checklist was found broken 2026-07-23 —
+see the follow-up below, now fixed.**
 **Author:** Claude Code (drafted for John Xanthopoulos)
 **Date:** 2026-07-17
 **Depends on:** `../claude.md` (base architecture), `ALERTS-DESIGN.md` (`APP_BASE_URL` usage, Sign in with Vercel OAuth)
@@ -279,8 +280,55 @@ root now redirects correctly with query strings preserved.
 - [ ] Test subscribe → confirmation email link points to
       `cloudstatus.synepho.com` and completes
 - [ ] Test unsubscribe link works
-- [ ] Next scheduled cron runs (`check-status` at `0 0 * * *`, `cleanup` at
-      `0 3 * * *` UTC) complete without error in Vercel's cron logs
+- [x] Next scheduled cron runs (`check-status` at `0 0 * * *`, `cleanup` at
+      `0 3 * * *` UTC) complete without error in Vercel's cron logs — but
+      **this checklist item only covers Vercel's own native cron**. It missed
+      that `check-status` is *primarily* triggered by a separate piece of AWS
+      infrastructure (EventBridge, see `ALERTS-DESIGN.md` Section 7.3) with
+      its own hardcoded target URL — that one kept silently failing for days
+      after this cutover. See "Follow-up: EventBridge target endpoint drift"
+      below.
+
+### Follow-up: EventBridge target endpoint drift (found 2026-07-23)
+
+This plan's Step 6 states "every absolute URL the app builds is driven by
+`APP_BASE_URL`" — true for everything the *app* builds at request time, but
+`/api/cron/check-status`'s primary trigger isn't one of those. AWS EventBridge
+polls it every 5 minutes via an API Destination whose `InvocationEndpoint` is
+a literal string baked into that AWS resource (and into
+`scripts/setup-eventbridge-cron.sh`'s `TARGET_ENDPOINT`), set up independently
+of this migration in `ALERTS-DESIGN.md` Section 7.3. Nothing in this domain
+cutover touched it.
+
+Consequence: from this migration's Step 4 redirect going live (2026-07-17)
+until discovery (2026-07-23), the EventBridge API Destination kept calling
+`https://csp-status-hub.vercel.app/api/cron/check-status`, which now 308s to
+`cloudstatus.synepho.com` — and EventBridge doesn't follow redirects, so every
+single invocation counted as failed (confirmed via CloudWatch:
+`Invocations` == `FailedInvocations` on every 5-minute tick). Status checks
+and outage-alert emails were effectively not running during that window,
+surfaced only when a real Azure incident produced no alert. Vercel's own
+native cron (the thing Step 9's checklist item above actually verified) was
+never affected — it isn't behind the redirect at all — which is exactly why
+this went unnoticed by that checklist.
+
+**Fix:** updated the live API Destination's `InvocationEndpoint` to
+`https://cloudstatus.synepho.com/api/cron/check-status` via `aws events
+update-api-destination`, and changed `setup-eventbridge-cron.sh`'s "already
+exists" branch for that resource to compare the live endpoint against
+`TARGET_ENDPOINT` and update it on drift instead of unconditionally skipping.
+Verified via CloudWatch: zero `FailedInvocations` across the first four real
+ticks after the fix. Full writeup, root-cause detail, and the notable side
+effect of verifying it (a live curl against the fixed endpoint triggered a
+real outage-notification email, since it's the same code path as the actual
+cron) are in `ALERTS-DESIGN.md` Section 7.6 / decision 14.12.
+
+**Takeaway for any future domain change on this project:** grep for the
+current domain across `scripts/` as well as `api/`/`src/` before assuming
+`APP_BASE_URL` covers everything — any script that provisions external
+infrastructure with a hardcoded callback/target URL (EventBridge today; a
+future webhook or third-party integration tomorrow) needs its own explicit
+update step in whatever plan replaces this one.
 
 ### Step 10 — Communicate the move
 
@@ -311,6 +359,7 @@ If something breaks post-cutover:
 | `has: host` redirects are production-only | Per Vercel docs, `has` conditions don't evaluate under `vercel dev` — verify Step 4 against a real deployment |
 | TTL during cutover | Keep the new record's TTL low (300s, or the ~50s Vercel sets on the CNAME per Step 2b) for the first 24–48h in case the target value needs correcting, then raise it |
 | OAuth redirect URI allow-list | Missing Step 7 fails silently from the app's perspective — the error surfaces as a `redirect_uri` mismatch from Vercel's OAuth endpoint, not an obvious app-side bug |
+| EventBridge target endpoint isn't driven by `APP_BASE_URL` | Found 2026-07-23 (see follow-up under Step 9) — it's a literal value in a separate AWS resource and in `scripts/setup-eventbridge-cron.sh`, so it silently kept pointing at the old domain and every invocation failed until manually fixed. Any future domain change must update it explicitly |
 
 ## 8. Open decision
 

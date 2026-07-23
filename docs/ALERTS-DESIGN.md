@@ -1,10 +1,11 @@
 # CSP Status Hub — Alert Subscription Feature: Design Document
 
 **Status:** Phases 0–5 and 7 complete, deployed to production
-(`https://csp-status-hub.vercel.app`), and verified live end-to-end
+(now `https://cloudstatus.synepho.com` — moved from `csp-status-hub.vercel.app`
+on 2026-07-17, see `docs/CUSTOM-DOMAIN-PLAN.md`), and verified live end-to-end
 including real test alerts. Only Phase 6 (SMS) remains, deferred by user
 request. Several fixes and refinements have landed post-ship from direct
-production use — see Sections 4.1, 5, 8, and 9.1.
+production use — see Sections 4.1, 5, 7.3, 7.5, 7.6, 8, and 9.1.
 **Author:** Claude Code (drafted for John Xanthopoulos)
 **Date:** 2026-07-07
 **Depends on:** `claude.md` (base architecture), stays on Vercel (no platform migration planned)
@@ -543,6 +544,133 @@ and a clean stripped `latestUpdate` with the boilerplate trailer removed. A
 separate mocked run (non-operational `status.json`, empty RSS) confirmed the
 14.7b safety net still fires correctly when the two sources disagree.
 
+### 7.5 Azure region/service breakdown — implemented (14.11)
+
+Same underlying gap as 7.4's OCI fix, for a different reason: `azureFetcher.ts`
+always returned `regions: []`, so an active Azure incident replaced the whole
+provider panel with `IncidentTable.tsx` — a bespoke component that only listed
+that one incident's own narrow `affectedServices` list. The canonical top-10
+critical services (`azureServices.ts`) and their "still operational" status
+disappeared entirely during any Azure outage, and anything the incident named
+outside that top-10 had no consistent presentation — found 2026-07-23 while
+reviewing why a live Azure incident's dashboard view looked thinner than AWS's
+for the same kind of event.
+
+**Design:** unlike OCI (7.4), there was no undiscovered richer feed to switch
+to — Azure's Atom/RSS feed already provides everything used here (`<category>`
+elements, or title-text fallback, both already parsed by `parseAffected()`).
+The gap was purely that this data was never rolled up into `RegionStatus[]`:
+
+1. `azureFetcher.ts` now groups each active incident's parsed
+   `affectedRegions` × `affectedServices` into a `Map<regionName, Map<serviceId,
+   ServiceStatus>>`, then converts that into `RegionStatus[]` — the same shape
+   AWS/GCP/OCI already build.
+2. Incidents with no parseable region (title/categories didn't match the known
+   `AZURE_REGIONS` set — genuinely possible, same category of gap as AWS's
+   region-less global/edge GUIDs, see `claude.md` Section 9) fall into a
+   `Global` bucket rather than silently dropping their service impact.
+   `regionId` for that bucket is lowercased to `'global'`, matching the
+   existing AWS convention (`claude.md` — CloudFront/Route 53), so it picks up
+   the same "+" treatment in the dashboard's regions-impacted stat
+   (`StatsBanner` in `App.tsx`) automatically, with no changes needed there.
+3. Real region names (e.g. `"West US"`) keep their display-name string as
+   `regionId`, same reasoning as OCI's 14.10 (no canonical slug exists to map
+   to, and building one would need per-region verification and upkeep).
+4. `RegionTable.tsx` gained `buildAzureServiceList()` — identical pattern to
+   `buildGcpServiceList()`/`buildOciServiceList()`: the top-10 from
+   `AZURE_CRITICAL_SERVICES` always render (defaulting to Operational),
+   anything else reported gets collapsed into a single "Multiple Services *"
+   row.
+5. `ProviderPanel.tsx`'s Azure-specific branch (a stopgap added earlier the
+   same day, before this region-based fix, to at least show the top-10 list
+   flat alongside the incident) and `IncidentTable.tsx` itself were both
+   removed as dead code — once Azure populates `regions` like every other
+   provider, `hasRegions` routes it through the same `<RegionTable />` branch
+   automatically, no Azure-specific branching left in `ProviderPanel.tsx`.
+
+**Companion fix, same day:** `entryToIncident()`'s `detailUrl` was trusting
+the feed's own `<link>` element for the "View timeline" link. Live inspection
+showed that link is a raw backend App Service hostname (e.g.
+`azurestatusprodeus.azurewebsites.net`) — an internal implementation detail
+sitting behind Microsoft's branded `azure.status.microsoft` domain/CDN, not a
+documented public endpoint — and the exact same generic root URL on every
+entry regardless of incident, so it wasn't even incident-specific. `detailUrl`
+now always uses the canonical `azure.status.microsoft` domain instead.
+
+**Verification:** confirmed against the live Azure feed both before and after
+Microsoft enriched the same incident with more structured `<category>` data
+mid-investigation — first pass (`affectedServices: ["Network Infrastructure"]`
+only) correctly produced all 10 critical services Operational plus a single
+Degraded "Multiple Services *" row (since "Network Infrastructure" didn't
+match any top-10 keyword at the time); after Microsoft added 12 named
+categories to the same incident, re-running produced the expected mix of
+Operational/Degraded rows across the top-10 with no "Multiple Services *" row
+needed, grouped correctly under a single "West US" region. Also swapped
+`Monitor` for `Network Infrastructure` in `AZURE_CRITICAL_SERVICES` — matches
+what the feed's categories actually report for connectivity/infra incidents;
+`Monitor` rarely if ever appears as an affected category in practice.
+
+### 7.6 EventBridge target endpoint drift after the custom-domain migration (2026-07-23)
+
+Discovered while investigating the same missing-Azure-alert report that led to
+7.5. AWS CloudWatch showed `Invocations` exactly equal to `FailedInvocations`
+on the `csp-status-hub-check-status` EventBridge rule for every 5-minute tick
+in the checked window — every single invocation had been failing, meaning
+`check-status.ts` hadn't actually run on schedule at all, Azure incident or
+not.
+
+**Root cause:** the EventBridge API Destination's `InvocationEndpoint` (set up
+in 7.3) was still `https://csp-status-hub.vercel.app/api/cron/check-status`.
+The custom-domain migration (`docs/CUSTOM-DOMAIN-PLAN.md`, 2026-07-17) added a
+permanent redirect from that exact host to `cloudstatus.synepho.com` — correct
+and necessary for browsers and bookmarks, but EventBridge API Destinations
+don't follow HTTP redirects, so every invocation got a 308 back and counted it
+as a failed call. Confirmed by curling the API Destination's literal
+configured URL directly (308, no body) versus the new domain (200, real JSON)
+with the same `Authorization: Bearer $CRON_SECRET` header both times.
+
+**Why this wasn't caught by the domain migration's own Step 9 checklist:**
+that checklist's cron item only says "next scheduled cron runs complete
+without error in Vercel's cron logs" — true and checkable, but it only covers
+Vercel's own native daily cron (`vercel.json`), which was never touched and
+kept working. EventBridge is a separate piece of infrastructure with its own
+hardcoded target, entirely outside `vercel.json` and outside `APP_BASE_URL` —
+nothing in the domain migration plan's checklist or Section 3 ("every
+absolute URL the app builds is driven by `APP_BASE_URL`") accounted for it,
+because the EventBridge endpoint isn't something the *app* builds at runtime;
+it's a value baked into AWS resource config and into
+`scripts/setup-eventbridge-cron.sh`, both outside the app's deploy.
+
+**Fix:**
+1. `aws events update-api-destination` on the live `csp-status-hub-check-status`
+   API Destination, pointing `InvocationEndpoint` at
+   `https://cloudstatus.synepho.com/api/cron/check-status`.
+2. `scripts/setup-eventbridge-cron.sh`'s `TARGET_ENDPOINT` constant updated to
+   match, and its "already exists, skipping" branch for the API Destination
+   step now compares the live endpoint against `TARGET_ENDPOINT` and calls
+   `update-api-destination` if they've drifted, instead of unconditionally
+   skipping — so a future domain change plus a routine re-run of this script
+   self-heals instead of silently continuing to point at a dead URL.
+3. Verified via CloudWatch: zero `FailedInvocations` across the first four
+   real 5-minute ticks after the fix, versus 100% failure before it.
+
+**Side effect worth recording:** confirming the theory involved manually
+curling the real (fixed) endpoint with the live `CRON_SECRET`. Because that's
+the same code path the real cron uses, it detected the still-active Azure
+incident as genuinely new and sent live outage emails to both real confirmed
+subscribers as an unplanned side effect of verification, not a deliberate,
+approved action — worth remembering for future debugging of any endpoint that
+both diffs state *and* dispatches notifications on a detected change: it is
+not a safe read-only healthcheck to invoke directly.
+
+**Lesson for future domain/URL changes:** any change to the app's public
+domain must also check for infrastructure with a *hardcoded* target URL
+living outside the app's own deploy and outside `APP_BASE_URL` — currently
+just the EventBridge API Destination (`scripts/setup-eventbridge-cron.sh`),
+but the same class of risk would apply to any future webhook registration,
+external monitor, or third-party integration configured with a literal
+callback URL.
+
 ---
 
 ## 8. Notification Dispatch — As Built (Email); SMS Not Started
@@ -742,7 +870,7 @@ CAN-SPAM, TCPA, and data-minimization notes unchanged from original design
 | SMS | Twilio | Not started (Phase 6) |
 | Bot protection | Vercel BotID | Live |
 | Admin auth | Sign in with Vercel + custom session cookie | Live |
-| Cron (primary) | AWS EventBridge (Rules + Connection + API Destination) | Live — provisioned via `scripts/setup-eventbridge-cron.sh` |
+| Cron (primary) | AWS EventBridge (Rules + Connection + API Destination) | Live — provisioned via `scripts/setup-eventbridge-cron.sh`. Target endpoint is a literal value, **not** driven by `APP_BASE_URL` — re-run the script (self-heals drift) after any future domain change; see 14.12 |
 | Cron (fallback) | Vercel Cron, daily (`check-status` + `cleanup`) | Configured in `vercel.json` |
 | Rate limiting | Vercel Firewall custom rule | Live — `/api/subscribe`, 5 req/60s/IP |
 | DNS | AWS Route 53 (`synepho.com` zone) | Pre-existing, now also hosting Resend's verification records |
@@ -768,6 +896,8 @@ presence here should push more services toward AWS.
 | 14.8 | Cron interval | **5 minutes** | Mechanism changed — see 14.9 |
 | 14.9 | Cron cadence mechanism | **AWS EventBridge Rules** (not Scheduler — Scheduler rejects API Destination ARNs, discovered by testing), HTTPS target via an API Destination + Connection, `Authorization: Bearer $CRON_SECRET` | Vercel Hobby caps native cron at once/day — a `*/5 * * * *` `vercel.json` entry fails at deploy time, not just reduced precision. Vercel's own daily cron kept as a free fallback |
 | 14.10 | OCI real incident feed | **Implemented 2026-07-17** | See Section 7.4 for the full design and verification notes. `incident-summary.rss` is one persistent `<item>` per incident (stable OCID guid, updated in place — unlike AWS's one-item-per-update), so no dedup pass is needed. `status.json` stays as the `overallStatus`/`coverageNote` source; the RSS is purely additive for incident/region/service detail. The 14.7b synthetic `oci-current-incident` id is kept as a safety net (only synthesized if `status.json` disagrees with the RSS finding zero active incidents that tick), since real-time-ness of the RSS on a freshly-opened incident still couldn't be verified live (no live OCI incident existed at implementation time either — tested against a synthetic "Investigating" item instead, see Section 7.4). `regionId` uses the RSS's raw display name (e.g. `"US East (Ashburn)"`) rather than a hand-built canonical-slug table. Companion change: `RegionTable.tsx` gained `buildOciServiceList()`, `ociServices.ts` gained `keywords` per entry, mirroring GCP's pattern |
+| 14.11 | Azure region/service breakdown | **Implemented 2026-07-23** | See Section 7.5. `azureFetcher.ts` now groups active incidents' parsed `affectedRegions` × `affectedServices` into a real `RegionStatus[]`, replacing the always-empty `regions: []` and the ad hoc `IncidentTable.tsx` component that gap required (now deleted). `RegionTable.tsx` gained `buildAzureServiceList()`, matching GCP/OCI's builders. Region-less incidents bucket into `regionId: 'global'`, matching AWS's edge-service convention. Companion fixes same day: `detailUrl` no longer trusts the feed's own `<link>` (points at an internal `azurestatusprodeus.azurewebsites.net`-style backend host, not the public domain, and isn't incident-specific); `AZURE_CRITICAL_SERVICES` swapped `Monitor` for `Network Infrastructure` |
+| 14.12 | EventBridge target endpoint drift | **Fixed 2026-07-23** | See Section 7.6. The 2026-07-17 custom-domain cutover (`docs/CUSTOM-DOMAIN-PLAN.md`) redirects the old `.vercel.app` URL, but EventBridge's API Destination `InvocationEndpoint` (14.9) is a literal value outside `APP_BASE_URL`'s reach and was never updated — every 5-minute cron invocation 308'd and silently failed from cutover until discovery. Fixed live via `aws events update-api-destination`; `scripts/setup-eventbridge-cron.sh` now reconciles endpoint drift on re-run instead of skipping when the resource already exists |
 
 ---
 
@@ -826,6 +956,25 @@ deployed same-day — see 14.7a and Section 7.2. The already-recorded
 CloudFront incident ID was also manually cleared from that day's
 `provider_status_snapshot` row so the fixed logic would treat it as new and
 send the (late) alert rather than staying silent on it forever.
+
+**Fourth bug, found 2026-07-23:** a live Azure incident produced no alert
+email at all, and investigation found every single EventBridge invocation of
+`/api/cron/check-status` had been failing silently — `Invocations` equalled
+`FailedInvocations` on every 5-minute tick for at least the prior 6 hours (and
+almost certainly since the 2026-07-17 domain cutover in
+`docs/CUSTOM-DOMAIN-PLAN.md`). Root cause: the EventBridge API Destination's
+`InvocationEndpoint` was still the old `csp-status-hub.vercel.app` URL, which
+`vercel.json`'s redirect rule now 308s to `cloudstatus.synepho.com` —
+EventBridge doesn't follow redirects, so it counted every 308 as a failed
+invocation. This endpoint is **not** driven by `APP_BASE_URL` — it's a
+separate literal value baked into the live AWS resource and into
+`scripts/setup-eventbridge-cron.sh`'s `TARGET_ENDPOINT`, so the domain
+cutover's Step 6 (`APP_BASE_URL` update) had no effect on it and nothing
+about the failure was visible from the app side (the request never reached
+`check-status.ts`, so there was nothing to log). Fixed by updating the live
+API Destination's endpoint and making the setup script reconcile drift on
+re-run instead of skipping when the resource already exists — see Section
+7.6 for the full writeup and the general lesson for future domain changes.
 
 ### Phase 5 — Email notifications live — ✅ Complete
 
