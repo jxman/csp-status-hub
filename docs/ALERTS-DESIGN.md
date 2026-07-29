@@ -755,6 +755,38 @@ Free plan even without changing the cron cadence.
 left in place in Neon rather than dropped — nothing reads or writes them
 anymore, kept only as a historical record of the prior schema.
 
+### 7.8 Azure feed URL moved off azureedge.net (2026-07-29)
+
+`AZURE_FEED_URL` in `api/_lib/azureFetcher.ts` changed from
+`https://azurestatuscdn.azureedge.net/en-us/status/feed/` to
+`https://rssfeed.azure.status.microsoft/en-us/status/feed/`.
+
+Proactive, not reactive — the old URL is still live and returns byte-identical
+content as of this date (same response body, same Azure Front Door backend
+per matching `x-azure-ref`/`request-context` headers on both). The motivation
+is Microsoft's ongoing retirement of classic `*.azureedge.net` CDN
+infrastructure (Azure CDN from Edgio retired Jan 2025; Azure CDN Standard
+from Microsoft classic retires Sept 30, 2027) — moving onto a custom domain
+under the `azure.status.microsoft` brand now, while both work identically,
+avoids a future silent break of the kind 7.6 already caught once.
+
+Verified before switching:
+- `curl` with an `Origin` header against the new URL: no
+  `Access-Control-Allow-Origin` in the response — CORS is still blocked, so
+  the Vercel serverless proxy (`api/status/azure.ts`) is still required.
+  Nothing about the client/proxy split changes.
+- Ran `fetchAzure()` directly (via `tsx`) against the live new URL end to
+  end: parsed cleanly, returned `overallStatus: "operational"`, 0 regions/
+  incidents (correct — the feed had no active incidents at test time),
+  no `fetchError`.
+
+Also corrected while touching this: CLAUDE.md's Section 3.2/4 tables listed
+`Data Format: Atom/XML`, carried over from the original kickoff-doc
+assumption (Section 1). The feed has always actually been RSS 2.0
+(`<rss><channel><item>`, not `<feed><entry>`) — `azureFetcher.ts` already
+handled both shapes (see 7.5's `entryToIncident()` era), so no code change
+was needed, just a doc correction so the table stops contradicting the code.
+
 ---
 
 ## 8. Notification Dispatch — As Built (Email); SMS Not Started

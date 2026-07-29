@@ -1,7 +1,7 @@
 import { XMLParser } from 'fast-xml-parser';
 import type { Incident, ProviderStatus, RegionStatus, ServiceStatus, StatusLevel } from '../../src/types/status.js';
 
-const AZURE_FEED_URL = 'https://azurestatuscdn.azureedge.net/en-us/status/feed/';
+const AZURE_FEED_URL = 'https://rssfeed.azure.status.microsoft/en-us/status/feed/';
 const AZURE_DASHBOARD_URL = 'https://azure.status.microsoft/';
 
 // Known Azure region display names — used to split category[] into services vs regions

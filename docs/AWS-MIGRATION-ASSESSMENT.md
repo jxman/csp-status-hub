@@ -35,7 +35,7 @@ The app currently runs on Vercel, which provides three things: static SPA hostin
 
 ### Why It Exists
 
-Azure's Atom feed (`azurestatuscdn.azureedge.net`) blocks browser CORS requests. The other three providers (AWS, GCP, OCI) are CORS-permissive and fetched directly from the browser — they don't need a proxy. Azure is the **only** provider requiring a server-side hop.
+Azure's RSS feed (`rssfeed.azure.status.microsoft`) blocks browser CORS requests. The other three providers (AWS, GCP, OCI) are CORS-permissive and fetched directly from the browser — they don't need a proxy. Azure is the **only** provider requiring a server-side hop.
 
 ### What the Function Does (`api/status/azure.ts`)
 

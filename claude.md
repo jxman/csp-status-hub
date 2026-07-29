@@ -53,7 +53,7 @@ Three of the four providers are CORS-permissive and can be fetched directly from
 | AWS | `https://status.aws.amazon.com/rss/all.rss` | ✅ Confirmed — `fetch()` returns 200 |
 | GCP | `https://status.cloud.google.com/incidents.json` | ✅ Confirmed |
 | OCI | `https://ocistatus.oraclecloud.com/api/v2/status.json` | ✅ Confirmed |
-| Azure | `https://azurestatuscdn.azureedge.net/en-us/status/feed/` | ❌ Blocked — proxy required |
+| Azure | `https://rssfeed.azure.status.microsoft/en-us/status/feed/` | ❌ Blocked — proxy required |
 
 ### Data Fetching Architecture
 
@@ -66,7 +66,7 @@ React Client (Vite SPA)
         │       OCI:   https://ocistatus.oraclecloud.com/api/v2/status.json ✅  │
         │                                                                        │
         └─── Serverless proxy (browser → Vercel fn → CSP) ─────────────────────┘
-                Azure only: /api/status/azure → azurestatuscdn.azureedge.net/...
+                Azure only: /api/status/azure → rssfeed.azure.status.microsoft/...
 
                 Vercel function handles:
                   fetch → Atom XML parse → normalize → return JSON
@@ -263,10 +263,31 @@ function deduplicateItems(items: RssItem[]): RssItem[] {
 |---|---|
 | **Public Dashboard** | `https://azure.status.microsoft/` |
 | **Data Format** | Atom/XML |
-| **Feed URL** | `https://azurestatuscdn.azureedge.net/en-us/status/feed/` |
+| **Feed URL** | `https://rssfeed.azure.status.microsoft/en-us/status/feed/` |
 | **Auth Required** | No |
 | **CORS from Browser** | ❌ Blocked — use Vercel serverless `/api/status/azure` |
 | **Authenticated API** | Azure Service Health via ARM API (Azure AD required) |
+
+> **Update (2026-07-29):** feed URL switched from
+> `https://azurestatuscdn.azureedge.net/en-us/status/feed/` to
+> `https://rssfeed.azure.status.microsoft/en-us/status/feed/`. Confirmed
+> both serve the identical response (same body, same Azure Front Door
+> backend per the `x-azure-ref`/`request-context` headers) from the same
+> origin — this isn't a functional migration, just moving off the generic
+> `*.azureedge.net` CDN suffix onto a custom domain on the Azure Status
+> brand, ahead of Microsoft's broader retirement of classic `*.azureedge.net`
+> CDN infrastructure (Azure CDN from Edgio retired Jan 2025; Azure CDN
+> Standard from Microsoft classic retires Sept 30, 2027). CORS is still
+> blocked on the new URL too (no `Access-Control-Allow-Origin` header) —
+> the Vercel serverless proxy is still required either way. The old CDN URL
+> is still live and unchanged as of this date; this was a proactive switch,
+> not a reaction to breakage. Also note: this doc's "Data Format: Atom/XML"
+> row above is the original kickoff assumption — the feed actually serves
+> RSS 2.0 (`<rss><channel><item>`), not Atom (`<feed><entry>`).
+> `azureFetcher.ts` already parses both shapes (evidently discovered during
+> implementation even though this table was never corrected), so no code
+> change was needed here — flagging only so this table stops contradicting
+> the actual code.
 
 **⚠️ Critical Limitation — Region + Service Granularity:**
 
@@ -412,7 +433,7 @@ OCI's JSON is explicitly structured as `regionHealthReports[]` containing `servi
 | Provider | Dashboard | Primary Data URL | Format | Auth? | CORS? |
 |---|---|---|---|---|---|
 | AWS | `https://status.aws.amazon.com/` | `https://status.aws.amazon.com/rss/all.rss` | RSS/XML | No | ✅ Direct (confirmed) |
-| Azure | `https://azure.status.microsoft/` | `https://azurestatuscdn.azureedge.net/en-us/status/feed/` | Atom/XML | No | ❌ Proxy required |
+| Azure | `https://azure.status.microsoft/` | `https://rssfeed.azure.status.microsoft/en-us/status/feed/` | RSS/XML | No | ❌ Proxy required |
 | GCP | `https://status.cloud.google.com/` | `https://status.cloud.google.com/incidents.json` | JSON | No | ✅ Direct (confirmed) |
 | OCI | `https://ocistatus.oraclecloud.com/` | `https://ocistatus.oraclecloud.com/api/v2/status.json` | JSON | No | ✅ Direct (confirmed) |
 
@@ -560,7 +581,7 @@ Only **one** serverless function is needed — Azure is the only provider that c
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { XMLParser } from 'fast-xml-parser';
 
-const AZURE_FEED_URL = 'https://azurestatuscdn.azureedge.net/en-us/status/feed/';
+const AZURE_FEED_URL = 'https://rssfeed.azure.status.microsoft/en-us/status/feed/';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const response = await fetch(AZURE_FEED_URL);

@@ -21,8 +21,8 @@ Browser (React SPA)
         └─── Serverless proxy ──────────────────────────────────────────┘
              Azure only: /api/status/azure
                    └─→ Vercel Function (Node.js, cached s-maxage=300)
-                          └─→ azurestatuscdn.azureedge.net/en-us/status/feed/
-                                (Atom/XML → parsed → region × service breakdown → normalized JSON)
+                          └─→ rssfeed.azure.status.microsoft/en-us/status/feed/
+                                (RSS/XML → parsed → region × service breakdown → normalized JSON)
 
 ┌─────────────────────────────────────────────────────────────────────┐
 │  useStatusPolling (React hook)                                      │
@@ -72,7 +72,7 @@ Browser (React SPA)
 | Provider | Dashboard                          | Data URL                           | Format   | CORS       | Proxy               |
 | -------- | ---------------------------------- | ---------------------------------- | -------- | ---------- | ------------------- |
 | AWS      | https://status.aws.amazon.com/     | `.../rss/all.rss`                  | RSS/XML  | ✅ Direct  | None                |
-| Azure    | https://azure.status.microsoft/    | `azurestatuscdn.azureedge.net/...` | RSS/XML  | ❌ Blocked | `/api/status/azure` |
+| Azure    | https://azure.status.microsoft/    | `rssfeed.azure.status.microsoft/...` | RSS/XML  | ❌ Blocked | `/api/status/azure` |
 | OCI      | https://ocistatus.oraclecloud.com/ | `.../api/v2/status.json`           | JSON     | ✅ Direct  | None                |
 | GCP      | https://status.cloud.google.com/   | `.../incidents.json`               | JSON     | ✅ Direct  | None                |
 
