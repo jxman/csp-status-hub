@@ -65,9 +65,18 @@ export function ManagePage() {
       });
       if (!res.ok) throw new Error();
       setSaveState('saved');
+      // Give the "Saved." confirmation a beat to actually be seen before
+      // leaving, rather than whisking the page away the instant it appears.
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 1500);
     } catch {
       setSaveState('error');
     }
+  }
+
+  function handleCancel() {
+    window.location.href = '/';
   }
 
   return (
@@ -179,18 +188,29 @@ export function ManagePage() {
                   Unsubscribe
                 </button>
               )}
-              <button
-                onClick={handleSave}
-                disabled={saveState === 'saving'}
-                style={{
-                  marginLeft: 'auto',
-                  padding: '8px 18px', borderRadius: 7, border: '1px solid var(--border-strong)',
-                  background: 'var(--ink)', color: 'var(--bg)',
-                  fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
-                }}
-              >
-                {saveState === 'saving' ? 'Saving…' : 'Save changes'}
-              </button>
+              <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+                <button
+                  onClick={handleCancel}
+                  style={{
+                    padding: '8px 18px', borderRadius: 7, border: '1px solid var(--border-strong)',
+                    background: 'transparent', color: 'var(--ink)',
+                    fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saveState === 'saving'}
+                  style={{
+                    padding: '8px 18px', borderRadius: 7, border: '1px solid var(--border-strong)',
+                    background: 'var(--ink)', color: 'var(--bg)',
+                    fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >
+                  {saveState === 'saving' ? 'Saving…' : 'Save changes'}
+                </button>
+              </div>
             </div>
           </>
         )}

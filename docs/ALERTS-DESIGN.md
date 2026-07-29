@@ -285,6 +285,21 @@ change still stages and requires confirmation).
 - Provider-change emails after that point (from 4.1) do **not** re-send the
   manage/unsubscribe links — `manage_token` doesn't change on an update, so
   the subscriber's original welcome email still works.
+- **Cancel + post-save/cancel navigation (2026-07-29):** the page previously
+  had no way to leave without either saving or unsubscribing. Added a
+  **Cancel** button next to Save changes (`handleCancel()`), and both exit
+  paths now return to the home dashboard (`/`) — but not identically:
+  - **Cancel** navigates immediately (`window.location.href = '/'`) — nothing
+    changed, so there's nothing to confirm.
+  - **Save** deliberately does *not* redirect instantly: it shows the
+    existing inline "Saved." confirmation first, then navigates after a
+    1.5s pause (`setTimeout` in `handleSave()`). An instant redirect on
+    success was considered and rejected — the page would disappear before
+    the user had a chance to actually see "Saved.", which reads as "did
+    that work?" rather than confirming it did.
+  - Verified via Playwright (mocked `/api/subscribe/manage`): Cancel → `/`
+    immediately; Save → still on `/manage`, "Saved." visible at +200ms →
+    `/` by +1.9s, with the POST body carrying the correct token/providers.
 
 `manage_token` is generated fresh every time a row transitions from
 `pending_confirmation` → `confirmed` (including a post-unsubscribe resignup),
