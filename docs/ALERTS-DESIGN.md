@@ -272,6 +272,16 @@ change still stages and requires confirmation).
     the confirm panel initially *replaced* the Save-changes button instead
     of sitting alongside it, hiding the exact button the panel's own copy
     told you to use — fixed so both are always visible together.
+    **UX fix (2026-07-29):** editing any provider checkbox — "All providers"
+    or an individual one — while the confirm panel is open now dismisses it
+    (`toggleProvider()` and the "All providers" `onChange` both call
+    `setConfirmingUnsubscribe(false)`). The panel's own copy tells the user
+    to uncheck providers and hit Save instead of unsubscribing; leaving the
+    "Unsubscribe from all alerts?" warning on screen while they're actively
+    doing exactly that read as contradictory. Verified via Playwright against
+    a mocked `/api/subscribe/manage` response: confirm panel visible, click a
+    provider checkbox, panel gone — checked from both the "all providers" and
+    individual-provider-selected starting states.
 - Provider-change emails after that point (from 4.1) do **not** re-send the
   manage/unsubscribe links — `manage_token` doesn't change on an update, so
   the subscriber's original welcome email still works.
@@ -672,6 +682,17 @@ just the EventBridge API Destination (`scripts/setup-eventbridge-cron.sh`),
 but the same class of risk would apply to any future webhook registration,
 external monitor, or third-party integration configured with a literal
 callback URL.
+
+**Follow-up (2026-07-29):** the same self-heal pattern extended to the
+rule's `Description` field — `setup-eventbridge-cron.sh`'s rule-creation
+step now diffs the live `aws events describe-rule` description against the
+script's `RULE_DESCRIPTION` constant and calls `put-rule` to update it if
+they've drifted, instead of unconditionally skipping when the rule already
+exists (previously only the API Destination endpoint self-healed this way,
+not the rule's own metadata). `AdminPage.tsx` also gained a direct
+"EventBridge →" console link under its AWS ops group, alongside the
+existing Resend/domains links, so the rule can be checked without hunting
+through the AWS console by hand.
 
 ### 7.7 Neon compute-hour exhaustion — snapshot state moved to Upstash Redis (2026-07-29)
 

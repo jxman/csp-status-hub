@@ -43,6 +43,7 @@ export function ManagePage() {
   }, [token]);
 
   function toggleProvider(id: string) {
+    setConfirmingUnsubscribe(false);
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -103,7 +104,14 @@ export function ManagePage() {
               </span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: 'var(--ink)' }}>
-                  <input type="checkbox" checked={allProviders} onChange={(e) => setAllProviders(e.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={allProviders}
+                    onChange={(e) => {
+                      setConfirmingUnsubscribe(false);
+                      setAllProviders(e.target.checked);
+                    }}
+                  />
                   All providers
                 </label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', paddingLeft: 4, opacity: allProviders ? 0.5 : 1 }}>
