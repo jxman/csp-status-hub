@@ -129,7 +129,9 @@ ALTER TABLE subscribers ADD COLUMN pending_providers TEXT[];
 -- Added once it became clear the 4.1 update flow needed somewhere to stage
 -- an unconfirmed provider change without touching the live `providers` column.
 
--- 003_provider_status_snapshot.sql
+-- 003_provider_status_snapshot.sql — SUPERSEDED 2026-07-29, see 7.7.
+-- Table is left in place (unused) rather than dropped; the cron no longer
+-- reads or writes it. Snapshot state now lives in Upstash Redis.
 CREATE TABLE provider_status_snapshot (
   provider            TEXT PRIMARY KEY,
   overall_status      TEXT NOT NULL,
@@ -671,6 +673,52 @@ but the same class of risk would apply to any future webhook registration,
 external monitor, or third-party integration configured with a literal
 callback URL.
 
+### 7.7 Neon compute-hour exhaustion — snapshot state moved to Upstash Redis (2026-07-29)
+
+Neon's Free plan (`neon-bistre-zebra`) hit its 100 CU-hr/month compute
+allowance (102.06/100 used) partway through the billing cycle that started
+Jul 2, 2026.
+
+**Root cause:** every `check-status` tick — every 5 minutes, 24/7, via the
+EventBridge cron from 7.3 — did a `SELECT` against `provider_status_snapshot`
+for all four providers, whether or not anything had changed, just to diff
+state. Neon's Free plan autosuspend is fixed at 5 minutes and can't be
+shortened or disabled (only paid plans allow tuning it). Since the cron
+interval equals the suspend window, the compute's idle timer kept getting
+reset right as it was about to hit zero, so it never actually scaled to zero
+— effectively running 24/7 at 0.25 CU (~6 CU-hrs/day, well over the monthly
+allowance).
+
+**Fix:** `provider_status_snapshot` (Section 3) is retired in favor of
+Upstash Redis, installed via Vercel Marketplace
+(`vercel integration add upstash/upstash-kv`) — `api/_lib/redis.ts` exports
+a `Redis.fromEnv()` client (works against the Marketplace-provisioned
+`KV_REST_API_URL`/`KV_REST_API_TOKEN` vars — `@upstash/redis`'s `fromEnv()`
+falls back to those Vercel KV names automatically) plus a `ProviderSnapshot`
+type and `snapshotKey(provider)` helper. `api/cron/check-status.ts` now does
+`redis.get`/`redis.set` per provider instead of the old `SELECT`/`UPSERT`.
+
+This specifically targets the mismatch that caused the overage: Redis here
+is billed by request count (Upstash free tier: 500K commands/month), not
+compute-uptime, so a workload that's cheap-but-constant — exactly this
+polling pattern — no longer burns a metered resource just by staying alive.
+At the current 5-minute cadence this uses roughly 69K commands/month, ~14%
+of the free tier.
+
+`subscribers` and `notification_log` **stay on Neon** — deliberately not
+migrated. That data has real relational shape (foreign key from
+`notification_log.subscriber_id`, `email` uniqueness, `manage_token`
+lookups) and, more importantly, is only touched when an incident actually
+starts or resolves (inside `notifySubscribers()`), which is rare — on the
+order of a few times a week, not every 5 minutes. With the snapshot diff off
+Postgres entirely, Neon compute now only wakes for those genuine events and
+should scale to zero the rest of the time, keeping it comfortably inside the
+Free plan even without changing the cron cadence.
+
+`provider_status_snapshot` (and its `005_incident_titles.sql` follow-up) are
+left in place in Neon rather than dropped — nothing reads or writes them
+anymore, kept only as a historical record of the prior schema.
+
 ---
 
 ## 8. Notification Dispatch — As Built (Email); SMS Not Started
@@ -829,6 +877,7 @@ real Vercel login.
 {
   "dependencies": {
     "@neondatabase/serverless": "^...",
+    "@upstash/redis": "^...",
     "resend": "^...",
     "botid": "^..."
   }
@@ -838,7 +887,8 @@ real Vercel login.
 `twilio` is not yet installed — still Phase 6. Package names above are the
 actual installed ones (`botid`, not `@vercel/botid` as originally guessed;
 `@neondatabase/serverless`, not `@vercel/postgres`, per what the Neon
-Marketplace integration guide actually specified).
+Marketplace integration guide actually specified). `@upstash/redis` added
+2026-07-29 for the `provider_status_snapshot` migration — see 7.7.
 
 ---
 
@@ -865,7 +915,8 @@ CAN-SPAM, TCPA, and data-minimization notes unchanged from original design
 
 | Piece | Provider | Status |
 | --- | --- | --- |
-| Database | Neon Postgres via Vercel Marketplace | Live — `neon-bistre-zebra` |
+| Database | Neon Postgres via Vercel Marketplace | Live — `neon-bistre-zebra`. `subscribers`/`notification_log` only; see 7.7 |
+| Status snapshot cache | Upstash Redis via Vercel Marketplace | Live — `upstash-kv-orange-ball`. Added 2026-07-29 (7.7) to stop `check-status`'s every-5-min diff query from keeping Neon compute from autosuspending |
 | Email | Resend | Live — domain `alerts.synepho.com` verified |
 | SMS | Twilio | Not started (Phase 6) |
 | Bot protection | Vercel BotID | Live |

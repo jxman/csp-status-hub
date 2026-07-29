@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createHash } from 'node:crypto';
 import { sql } from '../_lib/db.js';
+import { redis, snapshotKey, type ProviderSnapshot } from '../_lib/redis.js';
 import { sendOutageNotificationEmail, sendResolutionNotificationEmail } from '../_lib/email.js';
 import { fetchAws } from '../../src/fetchers/awsFetcher.js';
 import { fetchGcp } from '../../src/fetchers/gcpFetcher.js';
@@ -93,12 +94,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .sort();
       const signature = computeSignature(status, activeIds);
 
-      const existing = await sql`
-        SELECT overall_status, active_incident_ids, active_incident_titles FROM provider_status_snapshot WHERE provider = ${provider}
-      `;
-      const previousStatus: string | null = existing[0]?.overall_status ?? null;
-      const previousIds: string[] = existing[0]?.active_incident_ids ?? [];
-      const previousTitles: Record<string, string> = existing[0]?.active_incident_titles ?? {};
+      const existing = await redis.get<ProviderSnapshot>(snapshotKey(provider));
+      const previousStatus: string | null = existing?.overallStatus ?? null;
+      const previousIds: string[] = existing?.activeIncidentIds ?? [];
+      const previousTitles: Record<string, string> = existing?.activeIncidentTitles ?? {};
 
       // Alert on any incident ID we haven't seen before, not just a transition off a
       // clean 'operational' baseline — a provider can have a long-running unrelated
@@ -110,7 +109,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // the feed once it clears (Azure, sometimes; OCI's synthesized single-incident-id).
       // Skip both on the very first-ever check for a provider (no row yet) so we don't
       // fire a notification storm for whatever is already in progress at bootstrap.
-      const isFirstCheck = existing.length === 0;
+      const isFirstCheck = existing === null;
       const newIncidentIds = activeIds.filter((id) => !previousIds.includes(id));
       const resolvedIncidentIds = previousIds.filter((id) => !activeIds.includes(id));
       const notifyWorthy = !isFirstCheck && newIncidentIds.length > 0;
@@ -126,16 +125,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const newIncidentTitles = newIncidentIds.map((id) => activeIncidentTitles[id] ?? id);
       const resolvedIncidentTitles = resolvedIncidentIds.map((id) => previousTitles[id] ?? id);
 
-      await sql`
-        INSERT INTO provider_status_snapshot (provider, overall_status, active_incident_ids, active_incident_titles, last_checked_at, raw_signature)
-        VALUES (${provider}, ${status.overallStatus}, ${activeIds}, ${JSON.stringify(activeIncidentTitles)}::jsonb, now(), ${signature})
-        ON CONFLICT (provider) DO UPDATE SET
-          overall_status = EXCLUDED.overall_status,
-          active_incident_ids = EXCLUDED.active_incident_ids,
-          active_incident_titles = EXCLUDED.active_incident_titles,
-          last_checked_at = EXCLUDED.last_checked_at,
-          raw_signature = EXCLUDED.raw_signature
-      `;
+      await redis.set<ProviderSnapshot>(snapshotKey(provider), {
+        overallStatus: status.overallStatus,
+        activeIncidentIds: activeIds,
+        activeIncidentTitles,
+        lastCheckedAt: new Date().toISOString(),
+        rawSignature: signature,
+      });
 
       results[provider] = { notifyWorthy, from: previousStatus, to: status.overallStatus, newIncidentIds, resolvedIncidentIds };
       if (notifyWorthy) {
