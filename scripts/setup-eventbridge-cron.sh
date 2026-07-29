@@ -32,6 +32,7 @@ API_DESTINATION_NAME="csp-status-hub-check-status"
 ROLE_NAME="csp-status-hub-eventbridge-role"
 RULE_NAME="csp-status-hub-check-status"
 TARGET_ENDPOINT="https://cloudstatus.synepho.com/api/cron/check-status"
+RULE_DESCRIPTION="Fires the csp-status-hub status-check cron every 5 minutes (Vercel Hobby native cron is capped at once/day, see ALERTS-DESIGN.md 7.3)."
 
 if [ -z "$CRON_SECRET" ]; then
   echo "CRON_SECRET is not set. Run: set -a; source .env.local; set +a" >&2
@@ -148,12 +149,23 @@ fi
 
 echo "== 4. EventBridge rule (rate(5 minutes)) =="
 if aws events describe-rule --name "$RULE_NAME" >/dev/null 2>&1; then
-  echo "  $RULE_NAME already exists, skipping"
+  CURRENT_DESCRIPTION=$(aws events describe-rule --name "$RULE_NAME" --query 'Description' --output text)
+  if [ "$CURRENT_DESCRIPTION" != "$RULE_DESCRIPTION" ]; then
+    echo "  $RULE_NAME exists but description is out of date, updating"
+    aws events put-rule \
+      --name "$RULE_NAME" \
+      --schedule-expression "rate(5 minutes)" \
+      --state ENABLED \
+      --description "$RULE_DESCRIPTION" >/dev/null
+  else
+    echo "  $RULE_NAME already exists and description is current, skipping"
+  fi
 else
   aws events put-rule \
     --name "$RULE_NAME" \
     --schedule-expression "rate(5 minutes)" \
     --state ENABLED \
+    --description "$RULE_DESCRIPTION" \
     --tags "$(tags_json "$RULE_NAME")" >/dev/null
   echo "  created $RULE_NAME"
 fi

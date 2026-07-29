@@ -56,6 +56,10 @@ const opsLinkGroups: { label: string; links: { label: string; href: string }[] }
       { label: 'Domains →', href: 'https://resend.com/domains' },
     ],
   },
+  {
+    label: 'AWS:',
+    links: [{ label: 'EventBridge →', href: 'https://600424110307.signin.aws.amazon.com/console' }],
+  },
 ];
 
 export function AdminPage() {
