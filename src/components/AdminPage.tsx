@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 interface Subscriber {
   id: string;
@@ -112,6 +113,7 @@ export function AdminPage() {
   const [linksOpen, setLinksOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<DeleteTarget | null>(null);
   const [testEmailOpen, setTestEmailOpen] = useState(false);
   const [testEmailType, setTestEmailType] = useState<TestEmailType>('outage');
@@ -154,10 +156,24 @@ export function AdminPage() {
     function handleClickOutside(e: MouseEvent) {
       const target = e.target as Element;
       if (!target.closest('[data-quick-links-root]')) setLinksOpen(false);
-      if (!target.closest('[data-row-menu-root]')) setOpenMenuId(null);
+      if (!target.closest('[data-row-menu-root]')) {
+        setOpenMenuId(null);
+        setMenuPos(null);
+      }
+    }
+    // The row menu is portaled with fixed positioning computed at open time, so
+    // it doesn't move with the row if the page scrolls — close it rather than
+    // let it drift away from its trigger button.
+    function closeRowMenuOnScroll() {
+      setOpenMenuId(null);
+      setMenuPos(null);
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    window.addEventListener('scroll', closeRowMenuOnScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('scroll', closeRowMenuOnScroll, true);
+    };
   }, []);
 
   async function runAction(id: string, action: 'resend_confirmation' | 'force_unsubscribe' | 'delete') {
@@ -460,34 +476,52 @@ export function AdminPage() {
                         </td>
                         <td style={cellStyle}>{new Date(s.created_at).toLocaleDateString()}</td>
                         <td style={{ ...cellStyle, position: 'relative' }} data-row-menu-root>
-                          <button className="icon-btn" onClick={() => setOpenMenuId((cur) => (cur === s.id ? null : s.id))}>⋯</button>
-                          {openMenuId === s.id && (
-                            <div style={{
-                              position: 'absolute', right: 12, top: 44, background: 'var(--card)', border: '1px solid var(--border)',
-                              borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.14)', zIndex: 20, overflow: 'hidden', minWidth: 160,
-                            }}>
+                          <button
+                            className="icon-btn"
+                            onClick={(e) => {
+                              if (openMenuId === s.id) {
+                                setOpenMenuId(null);
+                                setMenuPos(null);
+                                return;
+                              }
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setMenuPos({ top: rect.bottom + 6, right: window.innerWidth - rect.right });
+                              setOpenMenuId(s.id);
+                            }}
+                          >
+                            ⋯
+                          </button>
+                          {openMenuId === s.id && menuPos && createPortal(
+                            <div
+                              data-row-menu-root
+                              style={{
+                                position: 'fixed', top: menuPos.top, right: menuPos.right, background: 'var(--card)', border: '1px solid var(--border)',
+                                borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.14)', zIndex: 1000, overflow: 'hidden', minWidth: 170,
+                              }}
+                            >
                               {s.status === 'pending_confirmation' && (
-                                <button style={menuItemStyle} onClick={() => { setOpenMenuId(null); runAction(s.id, 'resend_confirmation'); }}>
+                                <button style={menuItemStyle} onClick={() => { setOpenMenuId(null); setMenuPos(null); runAction(s.id, 'resend_confirmation'); }}>
                                   Resend confirmation
                                 </button>
                               )}
                               {s.status !== 'unsubscribed' && (
-                                <button style={menuItemStyle} onClick={() => { setOpenMenuId(null); runAction(s.id, 'force_unsubscribe'); }}>
+                                <button style={menuItemStyle} onClick={() => { setOpenMenuId(null); setMenuPos(null); runAction(s.id, 'force_unsubscribe'); }}>
                                   Unsubscribe
                                 </button>
                               )}
                               {s.status === 'confirmed' && (
-                                <button style={menuItemStyle} onClick={() => openTestEmailFor(s)}>
+                                <button style={menuItemStyle} onClick={() => { setMenuPos(null); openTestEmailFor(s); }}>
                                   Send test email
                                 </button>
                               )}
                               <button
                                 style={{ ...menuItemStyle, color: 'var(--red-text)', borderTop: hasOtherActions ? '1px solid var(--border)' : 'none' }}
-                                onClick={() => requestDelete([s.id], s.email)}
+                                onClick={() => { setMenuPos(null); requestDelete([s.id], s.email); }}
                               >
                                 Delete
                               </button>
-                            </div>
+                            </div>,
+                            document.body
                           )}
                         </td>
                       </tr>
