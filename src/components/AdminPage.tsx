@@ -237,6 +237,15 @@ export function AdminPage() {
     }
   }
 
+  function openTestEmailFor(s: Subscriber) {
+    setOpenMenuId(null);
+    setTestEmailResult(null);
+    setTestEmailTo(s.email);
+    const specificProvider = s.providers.find((p) => p !== 'all');
+    if (specificProvider) setTestEmailProvider(specificProvider);
+    setTestEmailOpen(true);
+  }
+
   async function signOut() {
     await fetch('/api/auth/signout', { method: 'POST' });
     setState({ kind: 'signed-out' });
@@ -462,6 +471,11 @@ export function AdminPage() {
                               {s.status !== 'unsubscribed' && (
                                 <button style={menuItemStyle} onClick={() => { setOpenMenuId(null); runAction(s.id, 'force_unsubscribe'); }}>
                                   Unsubscribe
+                                </button>
+                              )}
+                              {s.status === 'confirmed' && (
+                                <button style={menuItemStyle} onClick={() => openTestEmailFor(s)}>
+                                  Send test email
                                 </button>
                               )}
                               <button
