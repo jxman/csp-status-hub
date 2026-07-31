@@ -1,6 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { randomBytes, createHash } from 'node:crypto';
 import { parseCookies } from '../_lib/cookies.js';
 import { createSessionCookie } from '../_lib/session.js';
+
+function randomString(): string {
+  return randomBytes(32).toString('base64url');
+}
 
 const CLEAR_OAUTH_COOKIES = [
   'oauth_state=; Max-Age=0; Path=/',
@@ -13,7 +18,37 @@ function decodeJwtPayload(token: string): Record<string, unknown> {
   return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function authorize(_req: VercelRequest, res: VercelResponse) {
+  const base = process.env.APP_BASE_URL ?? '';
+  const secure = base.startsWith('https') ? '; Secure' : '';
+
+  const state = randomString();
+  const nonce = randomString();
+  const codeVerifier = randomString();
+  const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url');
+
+  const cookieOpts = `Max-Age=600; Path=/; HttpOnly; SameSite=Lax${secure}`;
+  res.setHeader('Set-Cookie', [
+    `oauth_state=${state}; ${cookieOpts}`,
+    `oauth_nonce=${nonce}; ${cookieOpts}`,
+    `oauth_code_verifier=${codeVerifier}; ${cookieOpts}`,
+  ]);
+
+  const params = new URLSearchParams({
+    client_id: process.env.VERCEL_OAUTH_CLIENT_ID!,
+    redirect_uri: `${base}/api/auth/callback`,
+    state,
+    nonce,
+    code_challenge: codeChallenge,
+    code_challenge_method: 'S256',
+    response_type: 'code',
+    scope: 'openid email profile',
+  });
+
+  res.redirect(302, `https://vercel.com/oauth/authorize?${params.toString()}`);
+}
+
+async function callback(req: VercelRequest, res: VercelResponse) {
   const base = process.env.APP_BASE_URL ?? '';
   const cookies = parseCookies(req.headers.cookie);
   const code = typeof req.query.code === 'string' ? req.query.code : null;
@@ -70,5 +105,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error('auth callback error', err);
     res.setHeader('Set-Cookie', CLEAR_OAUTH_COOKIES);
     res.redirect(302, `${base}/admin?error=1`);
+  }
+}
+
+async function signout(_req: VercelRequest, res: VercelResponse) {
+  res.setHeader('Set-Cookie', 'admin_session=; Max-Age=0; Path=/; HttpOnly');
+  res.status(200).json({ message: 'Signed out' });
+}
+
+// Consolidates authorize/callback/signout into one function via Vercel's
+// dynamic-segment routing (api/auth/[action].ts matches /api/auth/<anything>
+// with no vercel.json rewrite needed) — kept the Hobby-plan 12-function cap
+// from being tripped by every new endpoint. External URLs are unchanged, which
+// matters here since redirect_uri is registered with the Vercel OAuth app.
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  switch (req.query.action) {
+    case 'authorize': return authorize(req, res);
+    case 'callback': return callback(req, res);
+    case 'signout': return signout(req, res);
+    default:
+      res.status(404).json({ error: 'Not found' });
   }
 }
