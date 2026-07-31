@@ -22,11 +22,16 @@ function computeSignature(status: ProviderStatus, activeIds: string[]): string {
 
 type NotificationEvent = 'new_incident' | 'incident_resolved';
 
+interface IncidentSummary {
+  title: string;
+  regions: string[];
+}
+
 async function notifySubscribers(
   provider: string,
   status: ProviderStatus,
   eventType: NotificationEvent,
-  incidentTitles: string[]
+  incidents: IncidentSummary[]
 ): Promise<number> {
   const subscribers = await sql`
     SELECT id, name, email, manage_token FROM subscribers
@@ -47,7 +52,7 @@ async function notifySubscribers(
         sub.name,
         status.displayName,
         status.overallStatus,
-        incidentTitles,
+        incidents,
         base || status.sourceUrl,
         manageUrl,
         unsubscribeUrl
@@ -98,6 +103,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const previousStatus: string | null = existing?.overallStatus ?? null;
       const previousIds: string[] = existing?.activeIncidentIds ?? [];
       const previousTitles: Record<string, string> = existing?.activeIncidentTitles ?? {};
+      const previousRegions: Record<string, string[]> = existing?.activeIncidentRegions ?? {};
 
       // Alert on any incident ID we haven't seen before, not just a transition off a
       // clean 'operational' baseline — a provider can have a long-running unrelated
@@ -115,20 +121,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const notifyWorthy = !isFirstCheck && newIncidentIds.length > 0;
       const resolutionWorthy = !isFirstCheck && resolvedIncidentIds.length > 0;
 
-      // Titles for new incidents come straight from this fetch. Titles for resolved
-      // incidents have to come from the *previous* snapshot — by the time an incident
-      // disappears from the feed (Azure/OCI-style), there's nothing left to read the
-      // title from in the current fetch.
+      // Titles/regions for new incidents come straight from this fetch. Titles/regions
+      // for resolved incidents have to come from the *previous* snapshot — by the time
+      // an incident disappears from the feed (Azure/OCI-style), there's nothing left to
+      // read them from in the current fetch.
       const activeIncidentTitles: Record<string, string> = Object.fromEntries(
         status.activeIncidents.filter((i) => activeIds.includes(i.id)).map((i) => [i.id, i.title])
       );
-      const newIncidentTitles = newIncidentIds.map((id) => activeIncidentTitles[id] ?? id);
-      const resolvedIncidentTitles = resolvedIncidentIds.map((id) => previousTitles[id] ?? id);
+      const activeIncidentRegions: Record<string, string[]> = Object.fromEntries(
+        status.activeIncidents.filter((i) => activeIds.includes(i.id)).map((i) => [i.id, i.affectedRegions])
+      );
+      const newIncidents = newIncidentIds.map((id) => ({
+        title: activeIncidentTitles[id] ?? id,
+        regions: activeIncidentRegions[id] ?? [],
+      }));
+      const resolvedIncidents = resolvedIncidentIds.map((id) => ({
+        title: previousTitles[id] ?? id,
+        regions: previousRegions[id] ?? [],
+      }));
 
       await redis.set<ProviderSnapshot>(snapshotKey(provider), {
         overallStatus: status.overallStatus,
         activeIncidentIds: activeIds,
         activeIncidentTitles,
+        activeIncidentRegions,
         lastCheckedAt: new Date().toISOString(),
         rawSignature: signature,
       });
@@ -136,11 +152,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       results[provider] = { notifyWorthy, from: previousStatus, to: status.overallStatus, newIncidentIds, resolvedIncidentIds };
       if (notifyWorthy) {
         console.log(`[check-status] notify-worthy change: ${provider} new incident(s) ${newIncidentIds.join(', ')} (status ${previousStatus} -> ${status.overallStatus})`);
-        results[provider].notified = await notifySubscribers(provider, status, 'new_incident', newIncidentTitles);
+        results[provider].notified = await notifySubscribers(provider, status, 'new_incident', newIncidents);
       }
       if (resolutionWorthy) {
         console.log(`[check-status] resolution: ${provider} incident(s) resolved ${resolvedIncidentIds.join(', ')} (status ${previousStatus} -> ${status.overallStatus})`);
-        results[provider].resolvedNotified = await notifySubscribers(provider, status, 'incident_resolved', resolvedIncidentTitles);
+        results[provider].resolvedNotified = await notifySubscribers(provider, status, 'incident_resolved', resolvedIncidents);
       }
     } catch (err) {
       // Leave the last-known snapshot untouched on a transient fetch failure

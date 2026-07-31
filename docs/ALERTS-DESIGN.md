@@ -824,6 +824,18 @@ snapshot's `overall_status` is no longer `operational`) — verified live by
 running the cron twice in a row against a real triggered outage and
 confirming `notification_log` stayed at exactly one row.
 
+> **Update (2026-07-31):** outage/resolution emails previously named only the
+> provider and incident title, with no indication of scope. `notifySubscribers()`
+> in `check-status.ts` now carries each incident's `affectedRegions` alongside its
+> title (both new and resolved), and `ProviderSnapshot` gained
+> `activeIncidentRegions: Record<id, string[]>` so resolved-incident emails —
+> whose incident has already dropped out of the current fetch — can still look
+> up the regions from the *previous* snapshot, the same trick already used for
+> `activeIncidentTitles`. `email.ts`'s `renderIncidentTitles()` prints a
+> "Region(s): ..." line under each incident title; an incident with no parsed
+> regions (or one explicitly tagged `"global"`, AWS's edge-service convention)
+> renders as "Global" rather than being silently omitted.
+
 **SMS — Twilio**, still deferred to Phase 6 per the original plan (A2P 10DLC
 registration lead time). Not started; user opted to skip for now.
 

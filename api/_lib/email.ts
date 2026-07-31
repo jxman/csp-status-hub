@@ -53,18 +53,39 @@ const STATUS_LABELS: Record<string, string> = {
   unknown: 'an unknown status',
 };
 
-// Renders as a single bolded line for one incident, or a bullet list for several —
-// callers always pass at least one title (falling back to the raw incident id in
-// the rare case a title couldn't be resolved).
-function renderIncidentTitles(incidentTitles: string[]): string {
-  if (incidentTitles.length === 1) {
-    return `<p><strong>${escapeHtml(incidentTitles[0])}</strong></p>`;
-  }
-  return `<ul>${incidentTitles.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}</ul>`;
+export interface EmailIncident {
+  title: string;
+  regions: string[];
 }
 
-function incidentSubjectFragment(incidentTitles: string[]): string {
-  return incidentTitles.length === 1 ? incidentTitles[0] : `${incidentTitles.length} incidents`;
+// No regions parsed (or the fetcher explicitly labeled it "global"/unscoped) reads
+// as a worldwide incident, not a missing-data gap — so it renders as "Global" rather
+// than being silently dropped from the email.
+function formatRegions(regions: string[]): string {
+  if (regions.length === 0 || regions.some((r) => r.toLowerCase() === 'global')) {
+    return 'Global';
+  }
+  return regions.join(', ');
+}
+
+// Renders as a single bolded line for one incident, or a bullet list for several —
+// callers always pass at least one title (falling back to the raw incident id in
+// the rare case a title couldn't be resolved). Each line is followed by the
+// affected region(s) so subscribers don't have to click through to find out scope.
+function renderIncidentTitles(incidents: EmailIncident[]): string {
+  if (incidents.length === 1) {
+    return `<p><strong>${escapeHtml(incidents[0].title)}</strong><br/><span style="color:#666;font-size:13px;">Region(s): ${escapeHtml(formatRegions(incidents[0].regions))}</span></p>`;
+  }
+  return `<ul>${incidents
+    .map(
+      (i) =>
+        `<li><strong>${escapeHtml(i.title)}</strong><br/><span style="color:#666;font-size:13px;">Region(s): ${escapeHtml(formatRegions(i.regions))}</span></li>`
+    )
+    .join('')}</ul>`;
+}
+
+function incidentSubjectFragment(incidents: EmailIncident[]): string {
+  return incidents.length === 1 ? incidents[0].title : `${incidents.length} incidents`;
 }
 
 export async function sendOutageNotificationEmail(
@@ -72,7 +93,7 @@ export async function sendOutageNotificationEmail(
   name: string,
   providerDisplayName: string,
   status: StatusLevel,
-  incidentTitles: string[],
+  incidents: EmailIncident[],
   dashboardUrl: string,
   manageUrl: string,
   unsubscribeUrl: string
@@ -82,11 +103,11 @@ export async function sendOutageNotificationEmail(
   const { error } = await resend.emails.send({
     from: FROM,
     to,
-    subject: `${dot} ${providerDisplayName}: ${incidentSubjectFragment(incidentTitles)}`,
+    subject: `${dot} ${providerDisplayName}: ${incidentSubjectFragment(incidents)}`,
     html: `
       <p>Hi ${escapeHtml(name)},</p>
       <p>${dot} <strong>${escapeHtml(providerDisplayName)}</strong> just started reporting <strong>${escapeHtml(statusLabel)}</strong>:</p>
-      ${renderIncidentTitles(incidentTitles)}
+      ${renderIncidentTitles(incidents)}
       <p><a href="${dashboardUrl}">View on Cloud Status Hub</a> — from there you can click through to the official status page.</p>
       <p style="margin-top:24px;font-size:12px;color:#666;">
         <a href="${manageUrl}">Manage your subscription</a> ·
@@ -107,7 +128,7 @@ export async function sendResolutionNotificationEmail(
   name: string,
   providerDisplayName: string,
   currentStatus: StatusLevel,
-  incidentTitles: string[],
+  incidents: EmailIncident[],
   dashboardUrl: string,
   manageUrl: string,
   unsubscribeUrl: string
@@ -120,19 +141,19 @@ export async function sendResolutionNotificationEmail(
   // the "still reporting X" note below explains it. See feedback_email_no_emoji memory.
   const resolvedIcon = '✅';
   const intro = stillOngoing
-    ? `The following, affecting <strong>${escapeHtml(providerDisplayName)}</strong>, ${incidentTitles.length === 1 ? 'has' : 'have'} been resolved. Note: ${escapeHtml(providerDisplayName)} is still reporting <strong>${escapeHtml(statusLabel)}</strong> due to other ongoing issues:`
+    ? `The following, affecting <strong>${escapeHtml(providerDisplayName)}</strong>, ${incidents.length === 1 ? 'has' : 'have'} been resolved. Note: ${escapeHtml(providerDisplayName)} is still reporting <strong>${escapeHtml(statusLabel)}</strong> due to other ongoing issues:`
     : `<strong>${escapeHtml(providerDisplayName)}</strong> has resolved the following and is back to normal operations:`;
 
   const { error } = await resend.emails.send({
     from: FROM,
     to,
     subject: stillOngoing
-      ? `${resolvedIcon} ${providerDisplayName}: resolved — ${incidentSubjectFragment(incidentTitles)}`
-      : `${resolvedIcon} ${providerDisplayName} is back to normal — ${incidentSubjectFragment(incidentTitles)}`,
+      ? `${resolvedIcon} ${providerDisplayName}: resolved — ${incidentSubjectFragment(incidents)}`
+      : `${resolvedIcon} ${providerDisplayName} is back to normal — ${incidentSubjectFragment(incidents)}`,
     html: `
       <p>Hi ${escapeHtml(name)},</p>
       <p>${resolvedIcon} ${intro}</p>
-      ${renderIncidentTitles(incidentTitles)}
+      ${renderIncidentTitles(incidents)}
       <p><a href="${dashboardUrl}">View on Cloud Status Hub</a> — from there you can click through to the official status page.</p>
       <p style="margin-top:24px;font-size:12px;color:#666;">
         <a href="${manageUrl}">Manage your subscription</a> ·

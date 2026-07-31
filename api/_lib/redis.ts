@@ -13,6 +13,7 @@ export interface ProviderSnapshot {
   overallStatus: string;
   activeIncidentIds: string[];
   activeIncidentTitles: Record<string, string>;
+  activeIncidentRegions: Record<string, string[]>;
   lastCheckedAt: string;
   rawSignature: string;
 }
