@@ -29,6 +29,16 @@ interface DeleteTarget {
   label: string;
 }
 
+type TestEmailType = 'confirmation' | 'update_confirmation' | 'welcome' | 'outage' | 'resolution';
+
+const TEST_EMAIL_TYPES: { value: TestEmailType; label: string; needsProvider: boolean }[] = [
+  { value: 'confirmation', label: 'Confirm subscription', needsProvider: false },
+  { value: 'update_confirmation', label: 'Confirm changes', needsProvider: false },
+  { value: 'welcome', label: "You're subscribed", needsProvider: false },
+  { value: 'outage', label: 'Incident started', needsProvider: true },
+  { value: 'resolution', label: 'Incident resolved', needsProvider: true },
+];
+
 const cellStyle: React.CSSProperties = { padding: '10px 12px', fontSize: 13, borderTop: '1px solid var(--border)' };
 const linkStyle: React.CSSProperties = {
   padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border-strong)',
@@ -39,6 +49,12 @@ const menuItemStyle: React.CSSProperties = {
   display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', border: 'none',
   background: 'var(--card)', color: 'var(--ink)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
 };
+const fieldStyle: React.CSSProperties = {
+  padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border-strong)',
+  background: 'var(--bg)', color: 'var(--ink)', fontSize: 13, width: '100%', fontFamily: 'inherit',
+  boxSizing: 'border-box',
+};
+const fieldLabelStyle: React.CSSProperties = { display: 'block', fontSize: 12, color: 'var(--ink-3)', marginBottom: 4 };
 
 const APP_URL = 'https://cloudstatus.synepho.com';
 const VERCEL_PROJECT_URL = 'https://vercel.com/johns-projects-2d2073fd/csp-status-hub';
@@ -97,6 +113,12 @@ export function AdminPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<DeleteTarget | null>(null);
+  const [testEmailOpen, setTestEmailOpen] = useState(false);
+  const [testEmailType, setTestEmailType] = useState<TestEmailType>('outage');
+  const [testEmailProvider, setTestEmailProvider] = useState('aws');
+  const [testEmailTo, setTestEmailTo] = useState('');
+  const [testEmailSending, setTestEmailSending] = useState(false);
+  const [testEmailResult, setTestEmailResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const authError = new URLSearchParams(window.location.search).get('error');
 
@@ -196,6 +218,25 @@ export function AdminPage() {
     window.location.href = `/api/admin/subscribers?${params.toString()}`;
   }
 
+  async function sendTestEmail() {
+    setTestEmailSending(true);
+    setTestEmailResult(null);
+    try {
+      const res = await fetch('/api/admin/test-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: testEmailType, to: testEmailTo, provider: testEmailProvider }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? 'Send failed');
+      setTestEmailResult({ ok: true, message: body.message ?? 'Sent' });
+    } catch (err) {
+      setTestEmailResult({ ok: false, message: err instanceof Error ? err.message : 'Send failed' });
+    } finally {
+      setTestEmailSending(false);
+    }
+  }
+
   async function signOut() {
     await fetch('/api/auth/signout', { method: 'POST' });
     setState({ kind: 'signed-out' });
@@ -221,6 +262,9 @@ export function AdminPage() {
             >
               Open App ↗
             </a>
+            <button className="btn-ghost" onClick={() => { setTestEmailResult(null); setTestEmailOpen(true); }}>
+              Send test email
+            </button>
             <div style={{ position: 'relative' }} data-quick-links-root>
               <button className="btn-ghost" onClick={() => setLinksOpen((o) => !o)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 Quick links <span style={{ fontSize: 10 }}>▾</span>
@@ -478,6 +522,89 @@ export function AdminPage() {
                 onClick={confirmDeleteAction}
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {testEmailOpen && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+          }}
+          onClick={() => setTestEmailOpen(false)}
+        >
+          <div
+            style={{
+              background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14,
+              padding: '26px 28px', width: 380, maxWidth: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4, color: 'var(--ink)' }}>
+              Send test email
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--ink-3)', marginBottom: 18, lineHeight: 1.4 }}>
+              Sends a real email via Resend using sample data — for previewing templates offline.
+            </div>
+
+            <label style={fieldLabelStyle}>Template</label>
+            <select
+              value={testEmailType}
+              onChange={(e) => setTestEmailType(e.target.value as TestEmailType)}
+              style={{ ...fieldStyle, marginBottom: 12 }}
+            >
+              {TEST_EMAIL_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+
+            {TEST_EMAIL_TYPES.find((t) => t.value === testEmailType)?.needsProvider && (
+              <>
+                <label style={fieldLabelStyle}>Provider</label>
+                <select
+                  value={testEmailProvider}
+                  onChange={(e) => setTestEmailProvider(e.target.value)}
+                  style={{ ...fieldStyle, marginBottom: 12 }}
+                >
+                  <option value="aws">AWS</option>
+                  <option value="azure">Azure</option>
+                  <option value="gcp">GCP</option>
+                  <option value="oci">OCI</option>
+                </select>
+              </>
+            )}
+
+            <label style={fieldLabelStyle}>Send to</label>
+            <input
+              type="email"
+              placeholder="you@example.com"
+              value={testEmailTo}
+              onChange={(e) => setTestEmailTo(e.target.value)}
+              style={{ ...fieldStyle, marginBottom: 14 }}
+            />
+
+            {testEmailResult && (
+              <div style={{ fontSize: 13, color: testEmailResult.ok ? 'var(--green-text)' : 'var(--red-text)', marginBottom: 14 }}>
+                {testEmailResult.message}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button className="btn-ghost" onClick={() => setTestEmailOpen(false)}>Close</button>
+              <button
+                disabled={!testEmailTo || testEmailSending}
+                style={{
+                  padding: '9px 16px', borderRadius: 8, border: 'none', background: 'var(--ink)',
+                  color: 'var(--bg)', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                  opacity: !testEmailTo || testEmailSending ? 0.5 : 1,
+                }}
+                onClick={sendTestEmail}
+              >
+                {testEmailSending ? 'Sending…' : 'Send'}
               </button>
             </div>
           </div>
