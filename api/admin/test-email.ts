@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireAdmin } from '../_lib/auth.js';
+import { sql } from '../_lib/db.js';
 import {
   sendConfirmationEmail,
   sendUpdateConfirmationEmail,
@@ -45,6 +46,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
+  const normalizedTo = to.trim().toLowerCase();
+  // Test emails should only ever reach real, currently-confirmed subscribers —
+  // not arbitrary addresses — so this is enforced here too, not just hidden
+  // from the admin UI's recipient picker.
+  const rows = await sql`SELECT name FROM subscribers WHERE email = ${normalizedTo} AND status = 'confirmed'`;
+  if (rows.length === 0) {
+    res.status(400).json({ error: 'That address is not a confirmed subscriber' });
+    return;
+  }
+  const recipientName = rows[0].name as string;
+
   const providerId = typeof provider === 'string' && provider in PROVIDER_NAMES ? provider : 'aws';
   const providerName = PROVIDER_NAMES[providerId];
 
@@ -55,18 +67,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     switch (type as TestEmailType) {
       case 'confirmation':
-        await sendConfirmationEmail(to, 'Test Subscriber', `${base}/api/subscribe/confirm?token=test-token`);
+        await sendConfirmationEmail(normalizedTo, recipientName, `${base}/api/subscribe/confirm?token=test-token`);
         break;
       case 'update_confirmation':
-        await sendUpdateConfirmationEmail(to, 'Test Subscriber', `${base}/api/subscribe/confirm?token=test-token`);
+        await sendUpdateConfirmationEmail(normalizedTo, recipientName, `${base}/api/subscribe/confirm?token=test-token`);
         break;
       case 'welcome':
-        await sendWelcomeEmail(to, 'Test Subscriber', manageUrl, unsubscribeUrl);
+        await sendWelcomeEmail(normalizedTo, recipientName, manageUrl, unsubscribeUrl);
         break;
       case 'outage':
         await sendOutageNotificationEmail(
-          to,
-          'Test Subscriber',
+          normalizedTo,
+          recipientName,
           providerName,
           'outage' as StatusLevel,
           SAMPLE_INCIDENTS,
@@ -77,8 +89,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       case 'resolution':
         await sendResolutionNotificationEmail(
-          to,
-          'Test Subscriber',
+          normalizedTo,
+          recipientName,
           providerName,
           'operational' as StatusLevel,
           SAMPLE_INCIDENTS,
@@ -97,5 +109,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  res.status(200).json({ message: `Test email sent to ${to}` });
+  res.status(200).json({ message: `Test email sent to ${normalizedTo}` });
 }

@@ -230,6 +230,7 @@ export function AdminPage() {
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? 'Send failed');
       setTestEmailResult({ ok: true, message: body.message ?? 'Sent' });
+      setTestEmailTo('');
     } catch (err) {
       setTestEmailResult({ ok: false, message: err instanceof Error ? err.message : 'Send failed' });
     } finally {
@@ -251,6 +252,8 @@ export function AdminPage() {
     setState({ kind: 'signed-out' });
   }
 
+  const confirmedSubscribers = state.kind === 'ready' ? state.subscribers.filter((s) => s.status === 'confirmed') : [];
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '32px 24px', fontFamily: 'inherit' }}>
       <div style={{ maxWidth: 1040, margin: '0 auto' }}>
@@ -271,7 +274,7 @@ export function AdminPage() {
             >
               Open App ↗
             </a>
-            <button className="btn-ghost" onClick={() => { setTestEmailResult(null); setTestEmailOpen(true); }}>
+            <button className="btn-ghost" onClick={() => { setTestEmailResult(null); setTestEmailTo(''); setTestEmailOpen(true); }}>
               Send test email
             </button>
             <div style={{ position: 'relative' }} data-quick-links-root>
@@ -593,13 +596,16 @@ export function AdminPage() {
             )}
 
             <label style={fieldLabelStyle}>Send to</label>
-            <input
-              type="email"
-              placeholder="you@example.com"
+            <select
               value={testEmailTo}
               onChange={(e) => setTestEmailTo(e.target.value)}
               style={{ ...fieldStyle, marginBottom: 14 }}
-            />
+            >
+              <option value="">Select a confirmed subscriber…</option>
+              {confirmedSubscribers.map((s) => (
+                <option key={s.id} value={s.email}>{s.name} — {s.email}</option>
+              ))}
+            </select>
 
             {testEmailResult && (
               <div style={{ fontSize: 13, color: testEmailResult.ok ? 'var(--green-text)' : 'var(--red-text)', marginBottom: 14 }}>
