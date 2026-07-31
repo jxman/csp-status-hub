@@ -33,12 +33,17 @@ const linkStyle: React.CSSProperties = {
   ...buttonStyle, textDecoration: 'none', display: 'inline-block',
 };
 
+const APP_URL = 'https://cloudstatus.synepho.com';
 const VERCEL_PROJECT_URL = 'https://vercel.com/johns-projects-2d2073fd/csp-status-hub';
 const NEON_PROJECT_URL = 'https://console.neon.tech/app/projects/misty-truth-00063689';
+// Upstash Redis is provisioned via the Vercel Marketplace (store: upstash-kv-orange-ball),
+// not a standalone Upstash account, so it's managed from the project's Storage tab rather
+// than console.upstash.com — see docs/ALERTS-DESIGN.md Section 7.7.
+const REDIS_STORE_URL = `${VERCEL_PROJECT_URL}/stores`;
 
 const opsLinkGroups: { label: string; links: { label: string; href: string }[] }[] = [
   {
-    label: 'Vercel:',
+    label: 'Vercel',
     links: [
       { label: 'Cron Jobs →', href: `${VERCEL_PROJECT_URL}/settings/cron-jobs` },
       { label: 'Runtime Logs →', href: `${VERCEL_PROJECT_URL}/logs` },
@@ -46,18 +51,22 @@ const opsLinkGroups: { label: string; links: { label: string; href: string }[] }
     ],
   },
   {
-    label: 'Neon:',
+    label: 'Neon',
     links: [{ label: 'Console →', href: NEON_PROJECT_URL }],
   },
   {
-    label: 'Resend:',
+    label: 'Redis',
+    links: [{ label: 'Storage →', href: REDIS_STORE_URL }],
+  },
+  {
+    label: 'Resend',
     links: [
       { label: 'Emails →', href: 'https://resend.com/emails' },
       { label: 'Domains →', href: 'https://resend.com/domains' },
     ],
   },
   {
-    label: 'AWS:',
+    label: 'AWS',
     links: [{ label: 'EventBridge →', href: 'https://600424110307.signin.aws.amazon.com/console' }],
   },
 ];
@@ -130,9 +139,23 @@ export function AdminPage() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '32px 24px', fontFamily: 'inherit' }}>
       <div style={{ maxWidth: 960, margin: '0 auto' }}>
-        <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--ink)', marginBottom: 20 }}>
-          Cloud Status Hub — Admin
-        </h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
+          <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--ink)' }}>
+            Cloud Status Hub — Admin
+          </h1>
+          <a
+            href={APP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border-strong)',
+              background: 'var(--ink)', color: 'var(--bg)', fontSize: 13, fontWeight: 500,
+              textDecoration: 'none', whiteSpace: 'nowrap',
+            }}
+          >
+            Open App ↗
+          </a>
+        </div>
 
         {state.kind === 'loading' && <div style={{ color: 'var(--ink-2)', fontSize: 14 }}>Loading…</div>}
 
@@ -163,17 +186,27 @@ export function AdminPage() {
 
         {state.kind === 'ready' && (
           <>
-            <div style={{ display: 'flex', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
-              {opsLinkGroups.map((group) => (
-                <div key={group.label} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>{group.label}</span>
-                  {group.links.map((link) => (
-                    <a key={link.href} href={link.href} target="_blank" rel="noopener noreferrer" style={linkStyle}>
-                      {link.label}
-                    </a>
-                  ))}
-                </div>
-              ))}
+            <div style={{
+              background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10,
+              padding: '14px 16px', marginBottom: 16,
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+                Quick Links
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
+                {opsLinkGroups.map((group) => (
+                  <div key={group.label}>
+                    <div style={{ fontSize: 11, color: 'var(--ink-3)', marginBottom: 4 }}>{group.label}</div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {group.links.map((link) => (
+                        <a key={link.href} href={link.href} target="_blank" rel="noopener noreferrer" style={linkStyle}>
+                          {link.label}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
