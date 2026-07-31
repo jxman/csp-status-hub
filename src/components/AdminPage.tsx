@@ -128,6 +128,16 @@ export function AdminPage() {
     return () => clearTimeout(id);
   }, [load]);
 
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as Element;
+      if (!target.closest('[data-quick-links-root]')) setLinksOpen(false);
+      if (!target.closest('[data-row-menu-root]')) setOpenMenuId(null);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   async function runAction(id: string, action: 'resend_confirmation' | 'force_unsubscribe' | 'delete') {
     setActionError('');
     try {
@@ -211,7 +221,7 @@ export function AdminPage() {
             >
               Open App ↗
             </a>
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: 'relative' }} data-quick-links-root>
               <button className="btn-ghost" onClick={() => setLinksOpen((o) => !o)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 Quick links <span style={{ fontSize: 10 }}>▾</span>
               </button>
@@ -393,7 +403,7 @@ export function AdminPage() {
                           </span>
                         </td>
                         <td style={cellStyle}>{new Date(s.created_at).toLocaleDateString()}</td>
-                        <td style={{ ...cellStyle, position: 'relative' }}>
+                        <td style={{ ...cellStyle, position: 'relative' }} data-row-menu-root>
                           <button className="icon-btn" onClick={() => setOpenMenuId((cur) => (cur === s.id ? null : s.id))}>⋯</button>
                           {openMenuId === s.id && (
                             <div style={{
