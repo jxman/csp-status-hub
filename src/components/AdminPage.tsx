@@ -24,13 +24,20 @@ type PageState =
   | { kind: 'signed-out' }
   | { kind: 'ready'; summary: Summary; subscribers: Subscriber[] };
 
-const cellStyle: React.CSSProperties = { padding: '8px 12px', fontSize: 13, borderBottom: '1px solid var(--border)' };
-const buttonStyle: React.CSSProperties = {
-  padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border-strong)',
-  background: 'transparent', color: 'var(--ink)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
-};
+interface DeleteTarget {
+  ids: string[];
+  label: string;
+}
+
+const cellStyle: React.CSSProperties = { padding: '10px 12px', fontSize: 13, borderTop: '1px solid var(--border)' };
 const linkStyle: React.CSSProperties = {
-  ...buttonStyle, textDecoration: 'none', display: 'inline-block',
+  padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border-strong)',
+  background: 'var(--card)', color: 'var(--ink-2)', fontSize: 12.5, cursor: 'pointer',
+  fontFamily: 'inherit', textDecoration: 'none', display: 'inline-block', whiteSpace: 'nowrap',
+};
+const menuItemStyle: React.CSSProperties = {
+  display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', border: 'none',
+  background: 'var(--card)', color: 'var(--ink)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
 };
 
 const APP_URL = 'https://cloudstatus.synepho.com';
@@ -71,12 +78,25 @@ const opsLinkGroups: { label: string; links: { label: string; href: string }[] }
   },
 ];
 
+function subscriberPill(status: string): { cls: string; label: string } {
+  switch (status) {
+    case 'confirmed': return { cls: 'pill ok', label: 'Confirmed' };
+    case 'pending_confirmation': return { cls: 'pill warn', label: 'Pending' };
+    case 'unsubscribed': return { cls: 'pill muted', label: 'Unsubscribed' };
+    default: return { cls: 'pill muted', label: status };
+  }
+}
+
 export function AdminPage() {
   const [state, setState] = useState<PageState>({ kind: 'loading' });
   const [status, setStatus] = useState('');
   const [provider, setProvider] = useState('');
   const [search, setSearch] = useState('');
   const [actionError, setActionError] = useState('');
+  const [linksOpen, setLinksOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<DeleteTarget | null>(null);
 
   const authError = new URLSearchParams(window.location.search).get('error');
 
@@ -95,7 +115,10 @@ export function AdminPage() {
         return res.json();
       })
       .then((data) => {
-        if (data) setState({ kind: 'ready', summary: data.summary, subscribers: data.subscribers });
+        if (data) {
+          setState({ kind: 'ready', summary: data.summary, subscribers: data.subscribers });
+          setSelected(new Set());
+        }
       })
       .catch(() => setState({ kind: 'signed-out' }));
   }, [status, provider, search]);
@@ -123,6 +146,38 @@ export function AdminPage() {
     }
   }
 
+  async function bulkUnsubscribe() {
+    const ids = Array.from(selected);
+    await Promise.all(ids.map((id) => runAction(id, 'force_unsubscribe')));
+  }
+
+  function requestDelete(ids: string[], label: string) {
+    setOpenMenuId(null);
+    setConfirmDelete({ ids, label });
+  }
+
+  async function confirmDeleteAction() {
+    if (!confirmDelete) return;
+    const ids = confirmDelete.ids;
+    setConfirmDelete(null);
+    await Promise.all(ids.map((id) => runAction(id, 'delete')));
+  }
+
+  function toggleSelected(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (state.kind !== 'ready') return;
+    const allSelected = state.subscribers.length > 0 && state.subscribers.every((s) => selected.has(s.id));
+    setSelected(allSelected ? new Set() : new Set(state.subscribers.map((s) => s.id)));
+  }
+
   function exportCsv() {
     const params = new URLSearchParams({ format: 'csv' });
     if (status) params.set('status', status);
@@ -138,23 +193,51 @@ export function AdminPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', padding: '32px 24px', fontFamily: 'inherit' }}>
-      <div style={{ maxWidth: 960, margin: '0 auto' }}>
+      <div style={{ maxWidth: 1040, margin: '0 auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
           <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--ink)' }}>
             Cloud Status Hub — Admin
           </h1>
-          <a
-            href={APP_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border-strong)',
-              background: 'var(--ink)', color: 'var(--bg)', fontSize: 13, fontWeight: 500,
-              textDecoration: 'none', whiteSpace: 'nowrap',
-            }}
-          >
-            Open App ↗
-          </a>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <a
+              href={APP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border-strong)',
+                background: 'var(--ink)', color: 'var(--bg)', fontSize: 13, fontWeight: 500,
+                textDecoration: 'none', whiteSpace: 'nowrap',
+              }}
+            >
+              Open App ↗
+            </a>
+            <div style={{ position: 'relative' }}>
+              <button className="btn-ghost" onClick={() => setLinksOpen((o) => !o)} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                Quick links <span style={{ fontSize: 10 }}>▾</span>
+              </button>
+              {linksOpen && (
+                <div style={{
+                  position: 'absolute', right: 0, top: 40, background: 'var(--card)', border: '1px solid var(--border)',
+                  borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: 14, width: 260, zIndex: 10,
+                }}>
+                  {opsLinkGroups.map((group) => (
+                    <div key={group.label} style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', color: 'var(--ink-3)', marginBottom: 6, textTransform: 'uppercase' }}>
+                        {group.label}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {group.links.map((link) => (
+                          <a key={link.href} href={link.href} target="_blank" rel="noopener noreferrer" style={linkStyle}>
+                            {link.label}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {state.kind === 'loading' && <div style={{ color: 'var(--ink-2)', fontSize: 14 }}>Loading…</div>}
@@ -187,126 +270,161 @@ export function AdminPage() {
         {state.kind === 'ready' && (
           <>
             <div style={{
-              background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10,
-              padding: '14px 16px', marginBottom: 16,
+              display: 'flex', alignItems: 'center', background: 'var(--card)', border: '1px solid var(--border)',
+              borderRadius: 10, padding: '12px 4px', marginBottom: 20, overflowX: 'auto',
             }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
-                Quick Links
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
-                {opsLinkGroups.map((group) => (
-                  <div key={group.label}>
-                    <div style={{ fontSize: 11, color: 'var(--ink-3)', marginBottom: 4 }}>{group.label}</div>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {group.links.map((link) => (
-                        <a key={link.href} href={link.href} target="_blank" rel="noopener noreferrer" style={linkStyle}>
-                          {link.label}
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
-              {[
-                ['Total', state.summary.total],
-                ['Confirmed', state.summary.confirmed],
-                ['Pending', state.summary.pending],
-                ['Unsubscribed', state.summary.unsubscribed],
-                ['AWS', state.summary.byProvider.aws],
-                ['Azure', state.summary.byProvider.azure],
-                ['GCP', state.summary.byProvider.gcp],
-                ['OCI', state.summary.byProvider.oci],
-              ].map(([label, value]) => (
-                <div key={label} style={{
-                  background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8,
-                  padding: '10px 14px', minWidth: 80,
-                }}>
-                  <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--ink)' }}>{value}</div>
-                  <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>{label}</div>
+              {([
+                ['Total', state.summary.total, 'var(--ink)'],
+                ['Confirmed', state.summary.confirmed, 'var(--green-text)'],
+                ['Pending', state.summary.pending, 'var(--amber)'],
+                ['Unsubscribed', state.summary.unsubscribed, 'var(--ink-3)'],
+                ['AWS', state.summary.byProvider.aws, 'var(--ink-2)'],
+                ['Azure', state.summary.byProvider.azure, 'var(--ink-2)'],
+                ['GCP', state.summary.byProvider.gcp, 'var(--ink-2)'],
+                ['OCI', state.summary.byProvider.oci, 'var(--ink-2)'],
+              ] as [string, number, string][]).map(([label, value, color], i, arr) => (
+                <div
+                  key={label}
+                  style={{
+                    display: 'flex', alignItems: 'baseline', gap: 6, padding: '0 16px', whiteSpace: 'nowrap',
+                    borderRight: i < arr.length - 1 ? '1px solid var(--border)' : 'none',
+                  }}
+                >
+                  <span style={{ fontSize: 18, fontWeight: 700, color }}>{value}</span>
+                  <span style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>{label}</span>
                 </div>
               ))}
             </div>
 
-            <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-              <input
-                placeholder="Search name or email…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border-strong)', background: 'var(--bg)', color: 'var(--ink)', fontSize: 13, flex: 1, minWidth: 180 }}
-              />
-              <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border-strong)', background: 'var(--bg)', color: 'var(--ink)', fontSize: 13 }}>
-                <option value="">All statuses</option>
-                <option value="pending_confirmation">Pending</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="unsubscribed">Unsubscribed</option>
-              </select>
-              <select value={provider} onChange={(e) => setProvider(e.target.value)} style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border-strong)', background: 'var(--bg)', color: 'var(--ink)', fontSize: 13 }}>
-                <option value="">All providers</option>
-                <option value="aws">AWS</option>
-                <option value="azure">Azure</option>
-                <option value="gcp">GCP</option>
-                <option value="oci">OCI</option>
-              </select>
-              <button onClick={load} style={buttonStyle}>Refresh</button>
-              <button onClick={exportCsv} style={buttonStyle}>Export CSV</button>
-              <button onClick={signOut} style={buttonStyle}>Sign out</button>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1, flexWrap: 'wrap' }}>
+                <input
+                  placeholder="Search name or email…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border-strong)', background: 'var(--bg)', color: 'var(--ink)', fontSize: 13, flex: 1, minWidth: 180 }}
+                />
+                <select value={status} onChange={(e) => setStatus(e.target.value)} style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border-strong)', background: 'var(--bg)', color: 'var(--ink)', fontSize: 13 }}>
+                  <option value="">All statuses</option>
+                  <option value="pending_confirmation">Pending</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="unsubscribed">Unsubscribed</option>
+                </select>
+                <select value={provider} onChange={(e) => setProvider(e.target.value)} style={{ padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border-strong)', background: 'var(--bg)', color: 'var(--ink)', fontSize: 13 }}>
+                  <option value="">All providers</option>
+                  <option value="aws">AWS</option>
+                  <option value="azure">Azure</option>
+                  <option value="gcp">GCP</option>
+                  <option value="oci">OCI</option>
+                </select>
+                <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>{state.subscribers.length} results</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <button className="btn-ghost" onClick={load}>Refresh</button>
+                <button className="btn-ghost" onClick={exportCsv}>Export CSV</button>
+                <div style={{ width: 1, height: 20, background: 'var(--border-strong)' }} />
+                <button className="btn-ghost" onClick={signOut}>Sign out</button>
+              </div>
             </div>
 
             {actionError && <div style={{ fontSize: 13, color: 'var(--red-text)', marginBottom: 10 }}>{actionError}</div>}
+
+            {selected.size > 0 && (
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                background: 'var(--chip-bg)', border: '1px solid var(--border-strong)', borderRadius: 8,
+                padding: '10px 16px', marginBottom: 12,
+              }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{selected.size} selected</span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn-ghost" onClick={bulkUnsubscribe}>Unsubscribe</button>
+                  <button
+                    className="btn-ghost"
+                    style={{ color: 'var(--red-text)' }}
+                    onClick={() => requestDelete(Array.from(selected), `${selected.size} subscriber${selected.size === 1 ? '' : 's'}`)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: 'var(--chip-bg)' }}>
-                    <th style={{ ...cellStyle, textAlign: 'left' }}>Name</th>
-                    <th style={{ ...cellStyle, textAlign: 'left' }}>Email</th>
-                    <th style={{ ...cellStyle, textAlign: 'left' }}>Providers</th>
-                    <th style={{ ...cellStyle, textAlign: 'left' }}>Status</th>
-                    <th style={{ ...cellStyle, textAlign: 'left' }}>Created</th>
-                    <th style={{ ...cellStyle, textAlign: 'left' }}>Actions</th>
+                    <th style={{ ...cellStyle, borderTop: 'none', width: 32 }}>
+                      <input
+                        type="checkbox"
+                        checked={state.subscribers.length > 0 && state.subscribers.every((s) => selected.has(s.id))}
+                        onChange={toggleSelectAll}
+                        style={{ width: 15, height: 15 }}
+                      />
+                    </th>
+                    <th style={{ ...cellStyle, borderTop: 'none', textAlign: 'left' }}>Name</th>
+                    <th style={{ ...cellStyle, borderTop: 'none', textAlign: 'left' }}>Email</th>
+                    <th style={{ ...cellStyle, borderTop: 'none', textAlign: 'left' }}>Providers</th>
+                    <th style={{ ...cellStyle, borderTop: 'none', textAlign: 'left' }}>Status</th>
+                    <th style={{ ...cellStyle, borderTop: 'none', textAlign: 'left' }}>Created</th>
+                    <th style={{ ...cellStyle, borderTop: 'none', width: 40 }} />
                   </tr>
                 </thead>
                 <tbody>
-                  {state.subscribers.map((s) => (
-                    <tr key={s.id}>
-                      <td style={cellStyle}>{s.name}</td>
-                      <td style={cellStyle}>{s.email}</td>
-                      <td style={cellStyle}>
-                        {s.providers.join(', ')}
-                        {s.pending_providers && (
-                          <span style={{ color: 'var(--amber)' }}> (pending: {s.pending_providers.join(', ')})</span>
-                        )}
-                      </td>
-                      <td style={cellStyle}>{s.status}</td>
-                      <td style={cellStyle}>{new Date(s.created_at).toLocaleDateString()}</td>
-                      <td style={cellStyle}>
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          {s.status === 'pending_confirmation' && (
-                            <button style={buttonStyle} onClick={() => runAction(s.id, 'resend_confirmation')}>Resend</button>
+                  {state.subscribers.map((s) => {
+                    const pill = subscriberPill(s.status);
+                    const hasOtherActions = s.status !== 'unsubscribed';
+                    return (
+                      <tr key={s.id}>
+                        <td style={cellStyle}>
+                          <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggleSelected(s.id)} style={{ width: 15, height: 15 }} />
+                        </td>
+                        <td style={cellStyle}>{s.name}</td>
+                        <td style={cellStyle}>{s.email}</td>
+                        <td style={cellStyle}>
+                          {s.providers.join(', ')}
+                          {s.pending_providers && (
+                            <span style={{ color: 'var(--amber)' }}> (pending: {s.pending_providers.join(', ')})</span>
                           )}
-                          {s.status !== 'unsubscribed' && (
-                            <button style={buttonStyle} onClick={() => runAction(s.id, 'force_unsubscribe')}>Unsubscribe</button>
+                        </td>
+                        <td style={cellStyle}>
+                          <span className={pill.cls}>
+                            <span className="dot" />
+                            {pill.label}
+                          </span>
+                        </td>
+                        <td style={cellStyle}>{new Date(s.created_at).toLocaleDateString()}</td>
+                        <td style={{ ...cellStyle, position: 'relative' }}>
+                          <button className="icon-btn" onClick={() => setOpenMenuId((cur) => (cur === s.id ? null : s.id))}>⋯</button>
+                          {openMenuId === s.id && (
+                            <div style={{
+                              position: 'absolute', right: 12, top: 44, background: 'var(--card)', border: '1px solid var(--border)',
+                              borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.14)', zIndex: 20, overflow: 'hidden', minWidth: 160,
+                            }}>
+                              {s.status === 'pending_confirmation' && (
+                                <button style={menuItemStyle} onClick={() => { setOpenMenuId(null); runAction(s.id, 'resend_confirmation'); }}>
+                                  Resend confirmation
+                                </button>
+                              )}
+                              {s.status !== 'unsubscribed' && (
+                                <button style={menuItemStyle} onClick={() => { setOpenMenuId(null); runAction(s.id, 'force_unsubscribe'); }}>
+                                  Unsubscribe
+                                </button>
+                              )}
+                              <button
+                                style={{ ...menuItemStyle, color: 'var(--red-text)', borderTop: hasOtherActions ? '1px solid var(--border)' : 'none' }}
+                                onClick={() => requestDelete([s.id], s.email)}
+                              >
+                                Delete
+                              </button>
+                            </div>
                           )}
-                          <button
-                            style={{ ...buttonStyle, color: 'var(--red-text)' }}
-                            onClick={() => {
-                              if (window.confirm(`Delete ${s.email}? This can't be undone.`)) {
-                                runAction(s.id, 'delete');
-                              }
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {state.subscribers.length === 0 && (
                     <tr>
-                      <td colSpan={6} style={{ ...cellStyle, textAlign: 'center', color: 'var(--ink-3)' }}>
+                      <td colSpan={7} style={{ ...cellStyle, textAlign: 'center', color: 'var(--ink-3)' }}>
                         No subscribers match these filters.
                       </td>
                     </tr>
@@ -317,6 +435,44 @@ export function AdminPage() {
           </>
         )}
       </div>
+
+      {confirmDelete && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+          }}
+          onClick={() => setConfirmDelete(null)}
+        >
+          <div
+            style={{
+              background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14,
+              padding: '26px 28px', width: 380, maxWidth: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 8, color: 'var(--ink)' }}>
+              Delete {confirmDelete.ids.length === 1 ? 'subscriber' : 'subscribers'}?
+            </div>
+            <div style={{ fontSize: 14, color: 'var(--ink-2)', lineHeight: 1.5, marginBottom: 20 }}>
+              This removes {confirmDelete.label} permanently. This can't be undone.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button className="btn-ghost" onClick={() => setConfirmDelete(null)}>Cancel</button>
+              <button
+                style={{
+                  padding: '9px 16px', borderRadius: 8, border: 'none', background: 'var(--red)',
+                  color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                }}
+                onClick={confirmDeleteAction}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
