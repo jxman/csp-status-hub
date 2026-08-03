@@ -7,6 +7,7 @@ import { StatusHeader } from './components/StatusHeader';
 import { ProviderGrid } from './components/ProviderGrid';
 import { IncidentList } from './components/IncidentList';
 import { SubscribeModal } from './components/SubscribeModal';
+import { AboutModal } from './components/AboutModal';
 import { formatRelative } from './utils/formatters';
 import type { ProviderStatus } from './types/status';
 
@@ -157,8 +158,9 @@ export default function App() {
     manualRefresh,
   } = useStatusPolling();
 
-  const { theme, toggle } = useTheme();
+  const { mode: themeMode, setMode: setThemeMode } = useTheme();
   const [showAlertsModal, setShowAlertsModal] = useState(false);
+  const [showAboutModal, setShowAboutModal] = useState(false);
   const [urlBanner, dismissUrlBanner] = useUrlBanner();
 
   const hasDegradedProvider = dashboard?.providers.some(
@@ -170,6 +172,7 @@ export default function App() {
       <Analytics />
       <SpeedInsights />
       {showAlertsModal && <SubscribeModal onClose={() => setShowAlertsModal(false)} />}
+      {showAboutModal && <AboutModal onClose={() => setShowAboutModal(false)} />}
 
       {urlBanner && (
         <div style={{
@@ -197,8 +200,9 @@ export default function App() {
         cooldownUntil={cooldownUntil}
         isOnline={isOnline}
         hasDegradedProvider={hasDegradedProvider}
-        theme={theme}
-        onToggleTheme={toggle}
+        themeMode={themeMode}
+        onThemeModeChange={setThemeMode}
+        onShowAbout={() => setShowAboutModal(true)}
         onSubscribe={() => setShowAlertsModal(true)}
       />
 

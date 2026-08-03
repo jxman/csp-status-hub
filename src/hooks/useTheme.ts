@@ -1,28 +1,44 @@
 import { useEffect, useState } from 'react';
 
-type Theme = 'light' | 'dark';
+type ThemeMode = 'light' | 'dark' | 'system';
+type ResolvedTheme = 'light' | 'dark';
 
-function getInitial(): Theme {
-  if (typeof window === 'undefined') return 'light';
-  const stored = localStorage.getItem('csp-theme') as Theme | null;
-  if (stored === 'light' || stored === 'dark') return stored;
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+function getInitialMode(): ThemeMode {
+  if (typeof window === 'undefined') return 'system';
+  const stored = localStorage.getItem('csp-theme');
+  if (stored === 'light' || stored === 'dark' || stored === 'system') return stored;
+  return 'system';
+}
+
+function systemPrefersDark(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>(getInitial);
+  const [mode, setMode] = useState<ThemeMode>(getInitialMode);
+  const [systemDark, setSystemDark] = useState<boolean>(systemPrefersDark);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = (e: MediaQueryListEvent) => setSystemDark(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  const resolvedTheme: ResolvedTheme = mode === 'system' ? (systemDark ? 'dark' : 'light') : mode;
 
   useEffect(() => {
     const root = document.documentElement;
-    if (theme === 'dark') {
+    if (resolvedTheme === 'dark') {
       root.classList.add('dark', 'theme-dark');
     } else {
       root.classList.remove('dark', 'theme-dark');
     }
-    localStorage.setItem('csp-theme', theme);
-  }, [theme]);
+  }, [resolvedTheme]);
 
-  const toggle = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+  useEffect(() => {
+    localStorage.setItem('csp-theme', mode);
+  }, [mode]);
 
-  return { theme, toggle };
+  return { mode, resolvedTheme, setMode };
 }

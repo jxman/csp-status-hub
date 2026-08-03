@@ -150,6 +150,41 @@ body {
 }
 .icon-btn:hover { background: var(--chip-bg); }
 
+.settings-root { position: relative; }
+.settings-panel {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 100;
+  width: 200px; padding: 10px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,0.16);
+}
+.settings-section-label {
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--ink-4); padding: 2px 6px 6px;
+}
+.settings-theme-switch {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+}
+.settings-theme-opt {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 8px 4px; border-radius: 8px; border: 1px solid transparent;
+  background: none; color: var(--ink-3); font-size: 11px; cursor: pointer;
+  font-family: inherit;
+}
+.settings-theme-opt:hover { background: var(--chip-bg); }
+.settings-theme-opt.active {
+  background: var(--chip-bg); border-color: var(--border-strong); color: var(--ink);
+  font-weight: 600;
+}
+.settings-divider { height: 1px; background: var(--border); margin: 10px 2px; }
+.settings-menu-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 6px; border-radius: 6px; border: none;
+  background: none; color: var(--ink-2); font-size: 13px; cursor: pointer;
+  font-family: inherit; text-align: left; text-decoration: none; box-sizing: border-box;
+}
+.settings-menu-item:hover { background: var(--chip-bg); color: var(--ink); }
+.settings-menu-item--coffee:hover { color: var(--amber); }
+
 /* ===== Status pills ===== */
 .pill {
   display: inline-flex; align-items: center; gap: 5px;
