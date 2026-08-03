@@ -21,6 +21,12 @@ export function formatDateTime(iso: string): string {
   });
 }
 
+export function formatDate(iso: string): string {
+  const d = parseDate(iso);
+  if (!d) return '—';
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 export function formatRelative(iso: string): string {
   const d = parseDate(iso);
   if (!d) return '—';
