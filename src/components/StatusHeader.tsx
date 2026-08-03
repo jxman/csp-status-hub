@@ -73,7 +73,7 @@ export function StatusHeader({
     <header className="dash-head">
       <div className="brand">
         <span className={`brand-dot${hasDegradedProvider ? ' bad' : ''}`} />
-        <span className="brand-name">Cloud Status Hub</span>
+        <h1 className="brand-name">Cloud Status Hub</h1>
         <span className="brand-live">LIVE</span>
       </div>
 

@@ -109,7 +109,7 @@ body {
   50%       { box-shadow: 0 0 0 7px color-mix(in oklab, var(--red) 8%,  transparent); }
 }
 .brand-name {
-  font-weight: 600; font-size: 17px; letter-spacing: -0.01em;
+  margin: 0; font-weight: 600; font-size: 17px; letter-spacing: -0.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   color: var(--ink);
 }

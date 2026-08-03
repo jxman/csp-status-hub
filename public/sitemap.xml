@@ -2,7 +2,8 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://cloudstatus.synepho.com/</loc>
-    <changefreq>always</changefreq>
+    <lastmod>2026-08-03</lastmod>
+    <changefreq>hourly</changefreq>
     <priority>1.0</priority>
   </url>
 </urlset>
