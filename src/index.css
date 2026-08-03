@@ -216,11 +216,6 @@ body {
 .footer-short { display: none; }
 
 .footer-about { margin: 6px 0 0; }
-.footer-coffee {
-  display: inline-flex; align-items: center; gap: 4px;
-  color: var(--ink-4); text-decoration: none;
-}
-.footer-coffee:hover { color: var(--amber); text-decoration: underline; }
 
 
 .a-summary {
