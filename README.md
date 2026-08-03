@@ -16,6 +16,7 @@ Browser (React SPA)
         ├─── Direct fetch (CORS-permissive) ─────────────────────────────┐
         │    AWS   → https://status.aws.amazon.com/rss/all.rss           │
         │    OCI   → https://ocistatus.oraclecloud.com/api/v2/status.json│
+        │             + api/v2/incident-summary.rss (per-incident detail)│
         │    GCP   → https://status.cloud.google.com/incidents.json      │
         │                                                                 │
         └─── Serverless proxy ──────────────────────────────────────────┘
@@ -38,7 +39,7 @@ Browser (React SPA)
 ┌─────────────────────────────────────────────────────────────────────┐
 │  UI Layout                                                          │
 │  ┌─────────────────────────────────────────────────────────────┐   │
-│  │ StatusHeader: title · live indicator · refresh · theme      │   │
+│  │ StatusHeader: title · live indicator · refresh · settings   │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 │  ┌──────────┬──────────┬──────────┬──────────────────────────┐    │
 │  │ AWS      │ Azure    │ OCI      │ GCP                      │    │
@@ -51,35 +52,43 @@ Browser (React SPA)
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
+This diagram covers the live dashboard's own data path. Alerts and admin
+tooling sit behind it as a separate backend — see
+[Alerts & Admin](#alerts--admin) for that architecture.
+
 ---
 
 ## Tech Stack
 
-| Layer       | Technology                                      |
-| ----------- | ----------------------------------------------- |
-| Frontend    | React 18 + Vite 6                               |
-| Language    | TypeScript 5.6                                  |
-| Styling     | Tailwind CSS 3 (dark mode via `class` strategy) |
-| XML Parsing | `fast-xml-parser` 5 (browser + serverless)      |
-| Serverless  | Vercel Functions (Node.js, auto-detected)       |
-| Deployment  | Vercel (Vite SPA + `/api` routes)               |
-| Analytics   | Vercel Web Analytics + Speed Insights           |
+| Layer            | Technology                                       |
+| ----------------- | ------------------------------------------------- |
+| Frontend          | React 18 + Vite 6                                 |
+| Language           | TypeScript 5.6                                     |
+| Styling            | Tailwind CSS 3 (dark mode via `class` strategy, plus a system-preference mode) |
+| XML Parsing        | `fast-xml-parser` 5 (browser + serverless)         |
+| Serverless          | Vercel Functions (Node.js, auto-detected)          |
+| Database            | Neon Postgres (Vercel Marketplace)                 |
+| Cache               | Upstash Redis (Vercel Marketplace)                 |
+| Email               | Resend                                             |
+| Deployment          | Vercel (Vite SPA + `/api` routes)                  |
+| Analytics           | Vercel Web Analytics + Speed Insights              |
 
 ---
 
 ## Data Sources
 
 | Provider | Dashboard                          | Data URL                           | Format   | CORS       | Proxy               |
-| -------- | ---------------------------------- | ---------------------------------- | -------- | ---------- | ------------------- |
+| -------- | ----------------------------------- | ----------------------------------- | -------- | ----------- | -------------------- |
 | AWS      | https://status.aws.amazon.com/     | `.../rss/all.rss`                  | RSS/XML  | ✅ Direct  | None                |
 | Azure    | https://azure.status.microsoft/    | `rssfeed.azure.status.microsoft/...` | RSS/XML  | ❌ Blocked | `/api/status/azure` |
-| OCI      | https://ocistatus.oraclecloud.com/ | `.../api/v2/status.json`           | JSON     | ✅ Direct  | None                |
+| OCI      | https://ocistatus.oraclecloud.com/ | `.../api/v2/status.json` + `.../api/v2/incident-summary.rss` | JSON + RSS | ✅ Direct  | None                |
 | GCP      | https://status.cloud.google.com/   | `.../incidents.json`               | JSON     | ✅ Direct  | None                |
 
 **Coverage notes:**
 
 - **AWS** — `all.rss` covers only incidents AWS publishes publicly (significant/widespread events). Minor single-service degradations appear only in per-service feeds.
 - **Azure** — Public RSS feed covers only major widespread incidents. Affected services and regions are extracted from structured `<category>` elements (or title text as a fallback) and rolled up into a region × service breakdown, same as AWS/GCP/OCI — matched against a canonical top-10 service list by keyword, with anything else collapsed into a "Multiple Services *" row. Still bounded by whatever Microsoft's feed itself names; full authenticated-account granularity would require the Azure Service Health ARM API.
+- **OCI** — `status.json` is only a bare `{indicator, description}` summary (no incident-level data); `incident-summary.rss` supplies one persistent, stable-guid `<item>` per incident (no dedup pass needed, unlike AWS), with region/service parsed from its `"{service} | {region} | {ref}"` title format.
 
 ---
 
@@ -92,28 +101,203 @@ Panels and data are always returned in this order: **AWS → Azure → OCI → G
 ## Alerts & Admin
 
 Opt-in email alerting: sign up (bell icon), confirm via email, get notified
-the moment a provider you follow transitions from operational to something
-else. Full design, decisions, and as-built notes (including a few real
-gotchas hit along the way) live in **[docs/ALERTS-DESIGN.md](./docs/ALERTS-DESIGN.md)**
-— this section is just the map.
+the moment a provider you follow reports a new incident — or when one
+resolves. Live in production, alongside a session-gated admin view.
 
 | Route | Purpose |
 | --- | --- |
 | `/` (bell icon) | Sign up — name, email, provider checkboxes, invisible bot check |
 | `/manage?token=...` | Edit providers or unsubscribe (link comes from your confirmation email) |
-| `/admin` | Subscriber list, search/filter, CSV export, manual actions — gated behind Sign in with Vercel |
+| `/admin` | Subscriber list, search/filter, CSV export, manual actions, ad hoc test-email tool — gated behind Sign in with Vercel |
 
-**Backend pieces beyond the dashboard itself:**
+### Backend architecture
 
-- **Neon Postgres** (Vercel Marketplace) — subscriber and status-snapshot data
-- **Resend** — transactional + outage-notification email, sending from `alerts.synepho.com`
+```
+┌──────────────────────────────┐
+│  React SPA                    │
+│  /  (bell icon → sign-up)      │
+│  /manage?token=... (edit/unsub)│
+│  /admin (Sign in with Vercel) │
+└──────────────┬─────────────────┘
+               │ POST/GET
+               ▼
+┌───────────────────────────────────────────────────────────────────┐
+│  Vercel Serverless Functions                                        │
+│  /api/subscribe             create/stage a subscription (BotID-gated)│
+│  /api/subscribe/confirm     finalize signup or a staged update       │
+│  /api/subscribe/manage      view/edit providers (token-authed)       │
+│  /api/subscribe/unsubscribe one-click, idempotent opt-out            │
+│  /api/auth/*                 Sign in with Vercel (PKCE) + session     │
+│  /api/admin/subscribers*     list/filter/CSV/actions (session-gated)  │
+│  /api/admin/test-email       ad hoc template preview (session-gated)  │
+│  /api/cron/check-status      status diff + notification dispatch      │
+│  /api/cron/cleanup           daily retention purge                    │
+└───────┬────────────────┬────────────────┬─────────────────┬─────────┘
+        │                │                │                 │
+        ▼                ▼                ▼                 ▼
+ ┌─────────────┐  ┌───────────────┐  ┌───────────┐  ┌────────────────┐
+ │Neon Postgres │  │ Upstash Redis  │  │  Resend   │  │ Vercel Firewall │
+ │ subscribers  │  │ per-provider   │  │ transact-  │  │ rate limit on   │
+ │ notification_│  │ status snapshot│  │ ional +    │  │ /api/subscribe  │
+ │ log          │  │ (5-min cron    │  │ outage/    │  │ 5 req/60s/IP    │
+ │              │  │ diff cache)    │  │ resolution │  │                 │
+ │              │  │                │  │ email, from│  │                 │
+ │              │  │                │  │ alerts.    │  │                 │
+ │              │  │                │  │ synepho.com│  │                 │
+ └─────────────┘  └───────────────┘  └───────────┘  └────────────────┘
+                          ▲
+                          │ every 5 min
+              ┌────────────────────────────┐
+              │ AWS EventBridge Rule         │
+              │ → API Destination (HTTPS)    │
+              │ → Authorization: Bearer       │
+              │   $CRON_SECRET                │
+              │ (Vercel native daily cron =   │
+              │  free fallback, Hobby-safe)   │
+              └────────────────────────────┘
+```
+
+### Data model
+
+```sql
+CREATE TABLE subscribers (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name               TEXT NOT NULL,
+  email              TEXT NOT NULL UNIQUE,
+  phone              TEXT,
+  providers          TEXT[] NOT NULL,       -- e.g. {aws,gcp} or the {'all'} sentinel
+  pending_providers  TEXT[],                -- staged change awaiting re-confirmation
+  status             TEXT NOT NULL DEFAULT 'pending_confirmation',
+                     -- pending_confirmation | confirmed | unsubscribed
+  email_verified_at  TIMESTAMPTZ,
+  confirm_token      TEXT,
+  confirm_token_expires_at TIMESTAMPTZ,
+  manage_token       TEXT UNIQUE,           -- regenerated every time a row (re)confirms
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  unsubscribed_at    TIMESTAMPTZ
+);
+
+CREATE TABLE notification_log (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  subscriber_id UUID REFERENCES subscribers(id) ON DELETE CASCADE,
+  provider      TEXT NOT NULL,
+  channel       TEXT NOT NULL,
+  event_type    TEXT NOT NULL,              -- new_incident | incident_resolved
+  sent_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  success       BOOLEAN NOT NULL
+);
+```
+
+One person, one row — a subscriber's email and provider selection live
+together; `pending_providers` holds a staged edit awaiting re-confirmation
+(see the sign-up flow below). `"all"` is stored as a literal sentinel rather
+than expanded to all four, so future providers get included automatically.
+
+Per-provider **status snapshot state** (used for change detection) lives in
+**Upstash Redis**, not Postgres — one key per provider (`snapshot:<provider>`),
+read/written on every 5-minute cron tick. An earlier `provider_status_snapshot`
+Postgres table did this instead, but querying it every 5 minutes, 24/7, kept
+Neon's compute from ever autosuspending and blew through the Free plan's
+100 CU-hr/month allowance. Redis is billed by request count, not
+compute-uptime, so a workload that's cheap-but-constant no longer burns a
+metered resource just by staying alive. The old table is left in place
+(unused) rather than dropped, as a historical record.
+
+### Sign-up & confirmation (double opt-in)
+
+- Bell icon opens a form (name, email, provider checkboxes) gated by an
+  invisible **Vercel BotID** check on the `POST /api/subscribe` handler.
+- New sign-ups **and** any provider change to an already-confirmed
+  subscription require clicking a confirmation link before taking effect —
+  the public form is unauthenticated, so a change here always needs
+  re-verification. Resubmitting with an email already `pending_confirmation`
+  just reissues the same confirm link; resubmitting an `unsubscribed` email
+  resets it as a fresh sign-up.
+- A **welcome email**, sent once right after first confirmation, carries the
+  `/manage` and unsubscribe links — `manage_token` doesn't exist until that
+  point, so it can't be included in the original confirmation email.
+- Editing via `/manage?token=...` takes effect immediately, no
+  re-confirmation — the token itself already proves inbox ownership, unlike
+  the public sign-up form.
+- The email's "Unsubscribe" link lands on `/manage?token=...&action=unsubscribe`
+  with a confirmation panel (Cancel / "Yes, unsubscribe") rather than
+  unsubscribing directly on click — still one click past the email
+  (CAN-SPAM's "one step" requirement), but immune to an automated
+  link-scanner silently unsubscribing someone by prefetching a raw mutating
+  URL. The underlying `GET /api/subscribe/unsubscribe` endpoint stays
+  idempotent; it's just no longer linked to directly from outside the app.
+
+### Change detection & notification dispatch
+
+- `/api/cron/check-status` runs the same four fetchers the live dashboard
+  uses, then diffs each provider's fresh incident list against its Redis
+  snapshot.
+- **Notify-worthy = a new incident ID appears** that wasn't in the previous
+  snapshot — not simply "overall status went non-operational." A status-gated
+  trigger would miss a brand-new incident while an unrelated one is already
+  keeping that provider non-operational; ID diffing catches new incidents
+  independent of whatever else is ongoing. The very first check ever
+  recorded for a provider is a baseline only, not a notification trigger.
+- **Resolution notifications** are the mirror case: any ID present in the
+  last snapshot but missing from the fresh fetch is treated as resolved and
+  triggers a separate resolution email. Works whether a provider publishes
+  an explicit resolved marker or just silently drops the entry once cleared.
+- Confirmed subscribers following the affected provider (or `"all"`) are
+  emailed in parallel via Resend; every attempt — success or failure — is
+  logged to `notification_log`. Outage and resolution emails both list the
+  affected region(s) alongside the incident title.
+- **Cadence:** an AWS EventBridge Rule triggers `check-status` every 5
+  minutes via an API Destination (`Authorization: Bearer $CRON_SECRET`) —
+  Vercel Hobby's native cron caps at once/day, too coarse for alerting.
+  Vercel's own daily cron stays wired as a free, redundant fallback.
+  Provisioned via `scripts/setup-eventbridge-cron.sh` (idempotent,
+  self-heals if the target endpoint or rule description drift — see
+  **Known constraints** below).
+
+### Admin
+
+- **Auth:** Sign in with Vercel (OAuth, PKCE). Any Vercel user can complete
+  the OAuth flow — the actual access boundary is the app's own check: the
+  callback decodes the `id_token` and compares its `email` claim against a
+  single hardcoded `ADMIN_EMAIL`, bouncing anyone else with `?error=forbidden`.
+  A separate HMAC-signed session cookie (7-day expiry) is then issued,
+  decoupled from Vercel's own 1-hour access-token lifetime.
+- **List/search/filter:** `GET /api/admin/subscribers` — `status`,
+  `provider`, and `q` (name/email substring) query params.
+- **CSV export:** same endpoint, `?format=csv`, respects active filters.
+- **Manual actions:** `PATCH /api/admin/subscribers/[id]` —
+  `resend_confirmation` / `force_unsubscribe`; `DELETE` for a hard delete.
+- **Ad hoc test email:** `/api/admin/test-email` — preview any notification
+  template against a real confirmed subscriber's address, from the admin UI.
+
+### Backend pieces
+
+- **Neon Postgres** (Vercel Marketplace) — `subscribers` and `notification_log`
+- **Upstash Redis** (Vercel Marketplace) — per-provider status snapshot cache for change detection
+- **Resend** — transactional + outage/resolution email, from `alerts.synepho.com`
 - **Vercel BotID** — invisible bot check on the sign-up form
 - **Sign in with Vercel** — admin auth, restricted to a single hardcoded `ADMIN_EMAIL`
-- **AWS EventBridge** (Rules + Connection + API Destination) — polls `/api/cron/check-status` every 5 minutes; Vercel's own Hobby-plan cron only allows once/day, so this fills that gap. Provisioned via `scripts/setup-eventbridge-cron.sh`
-- **Vercel Firewall** — rate limiting on the sign-up endpoint
+- **AWS EventBridge** (Rule + Connection + API Destination) — triggers `/api/cron/check-status` every 5 minutes; provisioned via `scripts/setup-eventbridge-cron.sh`
+- **Vercel Firewall** — rate limiting on the sign-up endpoint (5 req/60s/IP)
+- **AWS Route 53** (`synepho.com` zone) — pre-existing DNS, also hosts Resend's domain-verification records
+
+| Piece | Status |
+| --- | --- |
+| Database — Neon Postgres | Live |
+| Status snapshot cache — Upstash Redis | Live |
+| Email — Resend | Live, domain verified |
+| SMS — Twilio | Not built (deferred, Twilio A2P 10DLC registration) |
+| Bot protection — Vercel BotID | Live |
+| Admin auth — Sign in with Vercel + custom session | Live |
+| Cron (primary) — AWS EventBridge | Live |
+| Cron (fallback) — Vercel native daily cron | Live |
+| Rate limiting — Vercel Firewall | Live |
+
+Everything above runs on a free tier.
 
 **Environment variables** (see `.env.local`, gitignored — pull with `vercel env pull`):
-`DATABASE_URL`, `RESEND_API_KEY`, `RESEND_EMAIL_DOMAIN`, `APP_BASE_URL`, `CRON_SECRET`, `VERCEL_OAUTH_CLIENT_ID`, `VERCEL_OAUTH_CLIENT_SECRET`, `SESSION_SECRET`, `ADMIN_EMAIL`.
+`DATABASE_URL`, `RESEND_API_KEY`, `RESEND_EMAIL_DOMAIN`, `APP_BASE_URL`, `CRON_SECRET`, `VERCEL_OAUTH_CLIENT_ID`, `VERCEL_OAUTH_CLIENT_SECRET`, `SESSION_SECRET`, `ADMIN_EMAIL`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`.
 
 **Database migrations** live in `scripts/db/*.sql`, applied via:
 ```bash
@@ -121,6 +305,25 @@ vercel env pull .env.local
 set -a && source .env.local && set +a
 node scripts/db-migrate.mjs
 ```
+Redis needs no migration step — it's just a key-value cache, provisioned once via the Vercel Marketplace integration.
+
+### Known constraints
+
+- **EventBridge's target endpoint is a literal value, not driven by
+  `APP_BASE_URL`.** It lives in the live AWS API Destination resource and in
+  `scripts/setup-eventbridge-cron.sh`'s `TARGET_ENDPOINT` constant, outside
+  the app's own deploy. Any future domain change must re-run that script —
+  it self-heals drift on the endpoint and the rule description instead of
+  skipping when the resource already exists, but only if it's actually run.
+- **Bracket-syntax dynamic routes (`api/admin/subscribers/[id].ts`) aren't
+  auto-wired outside Next.js.** A Vite project needs an explicit `vercel.json`
+  rewrite (`/api/admin/subscribers/:id` → `/api/admin/subscribers/[id]`) —
+  already in place, but worth knowing before adding another bracket route.
+- **Diffing-and-dispatching endpoints aren't safe read-only healthchecks.**
+  `check-status` both detects state changes *and* sends real emails on a
+  detected change in the same request — curling it manually to "just check"
+  can trigger live notifications if something genuinely changed since the
+  last tick.
 
 ---
 
@@ -140,16 +343,19 @@ csp-status-hub/
 │   │   ├── authorize.ts           GET  — start Sign in with Vercel (PKCE)
 │   │   ├── callback.ts            GET  — token exchange, email allowlist check, session cookie
 │   │   └── signout.ts             POST — clear session cookie
-│   ├── admin/subscribers/
-│   │   ├── index.ts               GET  — list/filter/CSV export + summary counts
-│   │   └── [id].ts                PATCH/DELETE — resend/unsubscribe/delete
+│   ├── admin/
+│   │   ├── subscribers/
+│   │   │   ├── index.ts           GET  — list/filter/CSV export + summary counts
+│   │   │   └── [id].ts            PATCH/DELETE — resend/unsubscribe/delete
+│   │   └── test-email.ts          POST — send an ad hoc template preview to a confirmed subscriber
 │   ├── cron/
 │   │   ├── check-status.ts        Status diffing + notification dispatch (EventBridge + Vercel cron)
 │   │   └── cleanup.ts             Daily retention purge (unconfirmed 7d, unsubscribed 90d)
 │   └── _lib/
 │       ├── types.ts               Re-exports shared types for API functions
 │       ├── db.ts                  Neon client
-│       ├── email.ts               Resend templates (confirm, update-confirm, welcome, outage)
+│       ├── redis.ts               Upstash Redis client + status-snapshot helpers
+│       ├── email.ts               Resend templates (confirm, update-confirm, welcome, outage, resolution)
 │       ├── azureFetcher.ts        Azure fetch/parse logic shared by api/status/azure.ts and the cron job
 │       ├── auth.ts                requireAdmin() session gate
 │       ├── session.ts             HMAC-signed admin session cookie (sign/verify)
@@ -160,7 +366,9 @@ csp-status-hub/
 │   ├── main.tsx                   React entry point + path-based routing (/, /manage, /admin)
 │   ├── botid.ts                   Client-side BotID init, protects POST /api/subscribe
 │   ├── components/
-│   │   ├── StatusHeader.tsx       Header: title, live dot, refresh, bell (subscribe), theme toggle
+│   │   ├── StatusHeader.tsx       Header: title, live dot, refresh, bell (subscribe), Settings menu
+│   │   ├── SettingsMenu.tsx       Appearance (light/dark/system), About, Buy Me a Coffee
+│   │   ├── AboutModal.tsx         About dialog: description, creator credit, version/build info
 │   │   ├── ProviderGrid.tsx       4-column responsive grid
 │   │   ├── ProviderPanel.tsx      Per-provider expandable card + service list
 │   │   ├── RegionTable.tsx        Region → top-10 service status rows (all four providers)
@@ -172,24 +380,24 @@ csp-status-hub/
 │   │   ├── ErrorState.tsx         Per-provider fetch failure fallback
 │   │   ├── SubscribeModal.tsx     Sign-up form (name, email, provider checkboxes)
 │   │   ├── ManagePage.tsx         /manage — edit providers, confirm-before-unsubscribe
-│   │   └── AdminPage.tsx          /admin — subscriber list, filters, CSV export, actions
+│   │   └── AdminPage.tsx          /admin — subscriber list, filters, CSV export, actions, test-email tool
 │   ├── fetchers/
 │   │   ├── awsFetcher.ts          RSS parse + GUID parsing + deduplication
 │   │   ├── azureFetcher.ts        Calls /api/status/azure proxy, normalizes response
 │   │   ├── gcpFetcher.ts          incidents.json → normalized schema
-│   │   └── ociFetcher.ts          status.json → normalized schema
+│   │   └── ociFetcher.ts          status.json + incident-summary.rss → normalized schema
 │   ├── hooks/
 │   │   ├── useStatusPolling.ts    60s polling, cooldown, offline detection, 60s cache
-│   │   └── useTheme.ts            Light/dark toggle, localStorage persistence
+│   │   └── useTheme.ts            Light/dark/system appearance mode, localStorage persistence
 │   ├── types/
 │   │   └── status.ts              Unified schema (StatusLevel, ProviderStatus, etc.)
 │   └── utils/
 │       ├── awsServices.ts         AWS top-10 canonical service list
 │       ├── azureServices.ts       Azure top-10 canonical service list + keyword matchers
 │       ├── gcpServices.ts         GCP top-10 canonical service list
-│       ├── ociServices.ts         OCI top-10 canonical service list
+│       ├── ociServices.ts         OCI top-10 canonical service list + keyword matchers
 │       ├── statusHelpers.ts       Status → color/label/dot mapping
-│       └── formatters.ts          Relative time formatting
+│       └── formatters.ts          Relative/absolute time formatting
 │
 ├── scripts/
 │   ├── db/*.sql                   Migrations, applied in filename order
@@ -203,14 +411,13 @@ csp-status-hub/
 │   └── favicon.svg                Cloud icon with green status dot
 │
 ├── vercel.json                    Rewrites, function config, cron schedules
-├── vite.config.ts
+├── vite.config.ts                 Injects __APP_VERSION__/__BUILD_DATE__ from package.json + build time
 ├── tailwind.config.ts
 ├── tsconfig.json
 ├── claude.md                      Original architecture handoff and data source research
 │
 ├── docs/
 │   ├── ENHANCEMENTS.md            Backlog of dashboard optimizations and improvements
-│   ├── ALERTS-DESIGN.md           Full design/decisions/as-built notes for the alerts feature
 │   ├── AWS-MIGRATION-ASSESSMENT.md  Assessment for a potential move off Vercel to AWS
 │   └── CUSTOM-DOMAIN-PLAN.md      Plan to move the app to a synepho.com subdomain
 ```
@@ -285,7 +492,8 @@ needs `vercel env pull .env.local` rather than sourcing new values.
 **Cron:** `/api/cron/check-status` (every 5 min) is triggered by AWS
 EventBridge, provisioned separately via `scripts/setup-eventbridge-cron.sh`
 — it isn't part of `vercel deploy` and doesn't need re-running on every
-deploy, only if the cron infrastructure itself needs to change.
+deploy, only if the cron infrastructure itself needs to change (including
+after a domain change — see **Known constraints** above).
 `/api/cron/cleanup` (daily) uses Vercel's own native cron, which *is*
 covered by `vercel.json` and needs no separate provisioning step.
 
@@ -294,11 +502,12 @@ covered by `vercel.json` and needs no separate provisioning step.
 ## Refresh and Caching Behavior
 
 | Behavior                    | Detail                                                          |
-| --------------------------- | --------------------------------------------------------------- |
+| ----------------------------- | ------------------------------------------------------------------ |
 | Auto-refresh interval       | 60 seconds                                                      |
 | Manual refresh cooldown     | 60 seconds (starts after fetch completes)                       |
 | Client cache (localStorage) | 60s TTL — hydrated on page load, matches poll interval          |
 | Azure CDN cache             | `s-maxage=300, stale-while-revalidate=60` on Vercel Function    |
+| Alerts change-detection cadence | 5 minutes (AWS EventBridge → `/api/cron/check-status`)      |
 | Offline behavior            | Auto-refresh pauses; banner shown; cached data displayed        |
 | Stale data indicator        | Yellow banner if last fetch failed but cached data is available |
 
@@ -307,10 +516,11 @@ covered by `vercel.json` and needs no separate provisioning step.
 ## Observability
 
 | Feature        | Status  | Notes                                          |
-| -------------- | ------- | ---------------------------------------------- |
+| --------------- | --------- | -------------------------------------------------- |
 | Web Analytics  | ✅ Live | Vercel Web Analytics — enable in dashboard     |
 | Speed Insights | ✅ Live | Core Web Vitals tracking — enable in dashboard |
 | Function logs  | ✅ Live | `vercel logs <url> --follow` or Logs tab       |
+| Notification log | ✅ Live (data only) | `notification_log` table records every send attempt; no dedicated admin UI reads it yet |
 
 ---
 
@@ -327,7 +537,7 @@ covered by `vercel.json` and needs no separate provisioning step.
 - Recently resolved incidents shown with green styling (24h window)
 - Auto-refresh + manual refresh with cooldown
 - Offline detection + localStorage caching (60s TTL)
-- Light/dark mode
+- Light/dark/system appearance modes, moved under a Settings menu
 - Responsive mobile layout
 - Provider order: AWS → Azure → OCI → GCP
 - Dynamic browser tab title (shows active incident count)
@@ -338,39 +548,39 @@ covered by `vercel.json` and needs no separate provisioning step.
 - Page Visibility API — polling pauses when tab is hidden, resumes with immediate fetch on focus
 - Stats summary strip (providers degraded, regions impacted, services impacted, active incidents)
 - Services impacted count with `+` suffix when broad multi-service incidents are active
-- Bell icon in header opens a real sign-up form (double opt-in email alerting — see [Alerts & Admin](#alerts--admin) and `docs/ALERTS-DESIGN.md` for the full build)
-- Footer disclaimer (data source attribution, non-affiliation notice)
+- Bell icon in header opens a real sign-up form (double opt-in email alerting — see [Alerts & Admin](#alerts--admin) for the full build)
+- Footer disclaimer (data source attribution, non-affiliation notice) + short About sentence for SEO
 - Mobile-optimised 1×4 stat strip with condensed tile layout
 - Deployment scripts: `npm run deploy` and `npm run deploy:preview` (lint → build → deploy → open)
 - Operational service status now shown in green (was gray)
 - Equal-width provider cards (4×1fr grid — first card no longer wider during outages)
 - Azure RSS parser fix — feed returns RSS format (`rss.channel.item`), not Atom (`feed.entry`); services and regions now extracted from structured `<category>` elements
-- `IncidentTable` component: active incidents shown as expandable rows in provider panels (consistent with AWS region rows); clicking reveals affected services and latest update text
+- Active incidents shown as expandable rows in provider panels; clicking reveals affected services and latest update text
 - AWS region rows normalized — removed canonical region ID (e.g. `me-central-1`) from header; display name only
 - Date parsing hardened — Azure RFC 2822 dates normalized to ISO 8601 server-side; client formatters guard against `Invalid Date` with `isNaN` check
 - GCP active incidents no longer silently dropped — `incidents.json` omits `end` entirely for ongoing incidents instead of setting it `null`; strict `!== null` check treated `undefined` as closed
 - GCP incident detail link fixed — `uri` field is a relative path (`incidents/{id}`), not an absolute URL; now resolved against `status.cloud.google.com`
 - Active incident cards show "Updated X ago" (latest update time) instead of the static original start date
 - `ProviderGrid` no longer re-sorts by severity — renders the documented fixed order (AWS → Azure → OCI → GCP) on every refresh
-- GCP region/service matrix now follows the same top-10-plus-"Multiple Services *" display pattern as AWS — previously every affected product outside the canonical list was listed individually because GCP service matching used hardcoded slugs that never matched real feed data
-- GCP canonical top-10 now matches services by stable `productId` (verified against the authoritative `status.cloud.google.com/products.json` catalog), with title keyword as a fallback; replaced the non-existent "Cloud Networking" entry with "Virtual Private Cloud (VPC)"
+- GCP region/service matrix now follows the same top-10-plus-"Multiple Services *" display pattern as AWS, matched by stable `productId` (verified against `status.cloud.google.com/products.json`) with title keyword as fallback
 - `npm run verify:gcp` — re-validates the 10 hardcoded GCP `productId`s against the live product catalog on demand
 - Custom domain — dashboard moved to `cloudstatus.synepho.com`, permanent redirect from the old `csp-status-hub.vercel.app` URL (see `docs/CUSTOM-DOMAIN-PLAN.md`)
-- Azure region/service breakdown now matches AWS/GCP/OCI — `azureFetcher.ts` groups each active incident's parsed regions/services into a real region → service map instead of always returning an empty region list; `RegionTable.tsx` gained `buildAzureServiceList()` (top-10 always shown, extras collapsed into "Multiple Services *"); the old ad hoc `IncidentTable` component this replaced was removed
-- Azure "View timeline" link fixed — the feed's own `<link>` element pointed at Microsoft's internal backend hostname (e.g. `azurestatusprodeus.azurewebsites.net`) rather than the public `azure.status.microsoft` domain, and wasn't incident-specific anyway; `detailUrl` now always uses the canonical public domain
-- Azure canonical service list: replaced `Monitor` with `Network Infrastructure`, matching what the feed's categories actually report
-- AWS EventBridge cron target endpoint drift fixed — the custom-domain redirect (above) 308'd every EventBridge invocation of the old `.vercel.app` URL, silently failing status checks and alerts for days; `scripts/setup-eventbridge-cron.sh` now points at the current domain and self-heals endpoint drift on re-run instead of skipping
+- Azure region/service breakdown now matches AWS/GCP/OCI — grouped from parsed incident regions/services into a real region → service map, with a canonical top-10 list and "Multiple Services *" catch-all
+- Azure "View timeline" link fixed — the feed's own `<link>` pointed at an internal backend hostname, not the public `azure.status.microsoft` domain, and wasn't incident-specific; `detailUrl` now always uses the canonical public domain
+- AWS EventBridge cron target endpoint drift fixed — see **Known constraints** in Alerts & Admin
+- OCI real per-incident feed (`incident-summary.rss`) wired in — region/service breakdown and the incident table now populate the same way AWS/GCP/Azure do, replacing the earlier `status.json`-only summary
+- Alerts & Admin: sign-up, double opt-in confirmation, manage/unsubscribe, admin subscriber list with CSV export and manual actions, ad hoc test-email tool, Sign in with Vercel admin auth, AWS EventBridge 5-minute change detection, resolution notifications (fires when a previously-active incident disappears from a provider's feed, not just when new ones appear), Upstash Redis status-snapshot cache (replacing an earlier Postgres table that kept Neon compute from autosuspending) — full architecture in [Alerts & Admin](#alerts--admin)
+- SEO: page `<h1>`, sitemap `lastmod`, `noindex` header on `/admin` and `/manage`, crawlable About text in the footer
 
 ### Pending (see docs/ENHANCEMENTS.md)
 
-- OCI per-service status (API returns it; fetcher currently uses overall status)
 - Aggregate status indicator in the header
 - localStorage cache schema versioning
 - Vite manual chunk splitting for `fast-xml-parser`
 - Keyboard accessibility (`aria-expanded`, `aria-controls`) on expandable panels
 - Top-level React error boundary
-- SMS alerts (Phase 6 of `docs/ALERTS-DESIGN.md` — deferred pending Twilio A2P 10DLC registration)
-- Resolution/escalation notices and per-subscriber severity thresholds (optional widening, see `docs/ALERTS-DESIGN.md` Section 14.7)
+- SMS alerts (deferred pending Twilio A2P 10DLC registration)
+- Escalation notices and per-subscriber severity thresholds (optional widening — resolution notices are already built, see [Alerts & Admin](#alerts--admin))
 
 ---
 

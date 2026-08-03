@@ -3,7 +3,7 @@
 # email from csp-status-hub. Idempotent (UPSERT) — safe to re-run.
 #
 # Source of truth for these values: `curl -H "Authorization: Bearer $RESEND_API_KEY"
-# https://api.resend.com/domains/<domain-id>` (see ALERTS-DESIGN.md Section 8/14.2).
+# https://api.resend.com/domains/<domain-id>` (see README.md's Alerts & Admin section).
 # Re-run that lookup if Resend ever rotates the DKIM key.
 set -e
 

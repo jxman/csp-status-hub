@@ -62,7 +62,7 @@ const VERCEL_PROJECT_URL = 'https://vercel.com/johns-projects-2d2073fd/csp-statu
 const NEON_PROJECT_URL = 'https://console.neon.tech/app/projects/misty-truth-00063689';
 // Upstash Redis is provisioned via the Vercel Marketplace (store: upstash-kv-orange-ball),
 // not a standalone Upstash account, so it's managed from the project's Storage tab rather
-// than console.upstash.com — see docs/ALERTS-DESIGN.md Section 7.7.
+// than console.upstash.com — see README.md's Alerts & Admin section.
 const REDIS_STORE_URL = `${VERCEL_PROJECT_URL}/stores`;
 
 const opsLinkGroups: { label: string; links: { label: string; href: string }[] }[] = [

@@ -10,7 +10,7 @@ the move). **The cron item on that checklist was found broken 2026-07-23 —
 see the follow-up below, now fixed.**
 **Author:** Claude Code (drafted for John Xanthopoulos)
 **Date:** 2026-07-17
-**Depends on:** `../claude.md` (base architecture), `ALERTS-DESIGN.md` (`APP_BASE_URL` usage, Sign in with Vercel OAuth)
+**Depends on:** `../claude.md` (base architecture), `../README.md`'s Alerts & Admin section (`APP_BASE_URL` usage, Sign in with Vercel OAuth)
 
 ---
 
@@ -240,7 +240,7 @@ remove it.
 Done via **Team Settings → Apps → [app] → Authentication tab →
 Authorization Callback URLs**, alongside the existing `.vercel.app` and
 `localhost:3002` entries. This step cannot be done from the CLI — confirmed
-in Section 10 of `ALERTS-DESIGN.md` that callback URL config only exists on
+in `README.md`'s Alerts & Admin section that callback URL config only exists on
 the dashboard-managed app object.
 
 ### Step 8 — Redeploy ✅ Done (2026-07-17)
@@ -284,7 +284,7 @@ root now redirects correctly with query strings preserved.
       `0 3 * * *` UTC) complete without error in Vercel's cron logs — but
       **this checklist item only covers Vercel's own native cron**. It missed
       that `check-status` is *primarily* triggered by a separate piece of AWS
-      infrastructure (EventBridge, see `ALERTS-DESIGN.md` Section 7.3) with
+      infrastructure (EventBridge, see `README.md`'s Alerts & Admin section) with
       its own hardcoded target URL — that one kept silently failing for days
       after this cutover. See "Follow-up: EventBridge target endpoint drift"
       below.
@@ -297,7 +297,7 @@ This plan's Step 6 states "every absolute URL the app builds is driven by
 polls it every 5 minutes via an API Destination whose `InvocationEndpoint` is
 a literal string baked into that AWS resource (and into
 `scripts/setup-eventbridge-cron.sh`'s `TARGET_ENDPOINT`), set up independently
-of this migration in `ALERTS-DESIGN.md` Section 7.3. Nothing in this domain
+of this migration, per `README.md`'s Alerts & Admin section. Nothing in this domain
 cutover touched it.
 
 Consequence: from this migration's Step 4 redirect going live (2026-07-17)
@@ -321,7 +321,7 @@ Verified via CloudWatch: zero `FailedInvocations` across the first four real
 ticks after the fix. Full writeup, root-cause detail, and the notable side
 effect of verifying it (a live curl against the fixed endpoint triggered a
 real outage-notification email, since it's the same code path as the actual
-cron) are in `ALERTS-DESIGN.md` Section 7.6 / decision 14.12.
+cron) are in `README.md`'s Alerts & Admin section ("Known constraints").
 
 **Takeaway for any future domain change on this project:** grep for the
 current domain across `scripts/` as well as `api/`/`src/` before assuming

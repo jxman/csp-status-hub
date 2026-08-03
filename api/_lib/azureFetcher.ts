@@ -29,8 +29,8 @@ const AZURE_REGIONS = new Set([
 ]);
 
 // Azure's region names are already an enumerated display-name set (AZURE_REGIONS
-// above), not a canonical slug — same situation as OCI (see ALERTS-DESIGN.md 14.10),
-// so geographic grouping is done by exact/word match rather than a hand-built slug table.
+// above), not a canonical slug — same situation as OCI's incident feed — so
+// geographic grouping is done by exact/word match rather than a hand-built slug table.
 function azureRegionToGeo(regionName: string): string {
   if (regionName === 'Global' || regionName === 'Multiple Regions') return 'Global';
   const words = regionName.split(' ');

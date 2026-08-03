@@ -7,9 +7,11 @@
 > **Scope update (2026-07):** Section 1's "Out of Scope" list below reflects
 > the *original* kickoff decision and is left as a historical record. Alerting
 > and subscriptions are now in scope and built — see
-> [`docs/ALERTS-DESIGN.md`](./docs/ALERTS-DESIGN.md) for that feature's full design,
-> decisions, and as-built notes. This document still accurately describes the
-> dashboard itself (data sources, fetchers, unified schema).
+> [`README.md`](./README.md)'s **Alerts & Admin** section for that feature's
+> architecture, data model, and as-built notes (previously its own
+> `docs/ALERTS-DESIGN.md`, consolidated into the README once the feature went
+> live). This document still accurately describes the dashboard itself (data
+> sources, fetchers, unified schema).
 
 ---
 
@@ -304,7 +306,7 @@ Azure's public status page intentionally covers only three categories of inciden
 > region → service map and renders it through the same `<RegionTable />` matrix
 > AWS/GCP/OCI use, with a canonical top-10 critical-service list
 > (`azureServices.ts`) and a "Multiple Services *" catch-all for anything outside
-> it. See `docs/ALERTS-DESIGN.md` Section 7.5 / 14.11 for the as-built details —
+> it. See `README.md`'s Alerts & Admin section for the as-built details —
 > the "UI Treatment for Azure" bullets below describe the original kickoff plan,
 > which predates this and no longer matches exactly (there's no "Limited Data"
 > badge; the coverage note is a plain info banner).
@@ -625,15 +627,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 | **AWS global/edge services** | GUIDs for CloudFront, Route 53, IAM, etc. carry no region segment (e.g. `#cloudfront_1784201243`) — found in production 2026-07-16 when a live CloudFront incident rendered as region "unknown" | `parseGuid()` labels these region `"global"` instead of falling through to `unknown`/`unknown` (see Section 3.1) |
 | **Azure coverage** | Only major widespread incidents | UI disclaimer; link to full dashboard |
 | **CORS — Azure only** | Azure Atom feed blocks direct browser fetches | Handled by single Vercel serverless function |
-| **Azure region/service data now built from the feed's own `<category>`/title parsing** (2026-07-23) | The Section 3.2 "no structured per-region or per-service breakdown" limitation was true of the raw feed, but `azureFetcher.ts` now groups each active incident's parsed `affectedRegions` × `affectedServices` into a real region → service map — the same shape AWS/GCP/OCI already produce, rather than always returning `regions: []` | `RegionTable.tsx` gained `buildAzureServiceList()` (top-10 always shown from `AZURE_CRITICAL_SERVICES`, extras collapsed into "Multiple Services *"), matching `buildGcpServiceList()`/`buildOciServiceList()`. `IncidentTable.tsx` — the old ad hoc per-incident list this replaced — was deleted as dead code. See `docs/ALERTS-DESIGN.md` Section 7.5 / 14.11 |
+| **Azure region/service data now built from the feed's own `<category>`/title parsing** (2026-07-23) | The Section 3.2 "no structured per-region or per-service breakdown" limitation was true of the raw feed, but `azureFetcher.ts` now groups each active incident's parsed `affectedRegions` × `affectedServices` into a real region → service map — the same shape AWS/GCP/OCI already produce, rather than always returning `regions: []` | `RegionTable.tsx` gained `buildAzureServiceList()` (top-10 always shown from `AZURE_CRITICAL_SERVICES`, extras collapsed into "Multiple Services *"), matching `buildGcpServiceList()`/`buildOciServiceList()`. `IncidentTable.tsx` — the old ad hoc per-incident list this replaced — was deleted as dead code. See `README.md`'s Alerts & Admin section |
 | **Azure feed `<link>` points at an internal backend host, not the public domain** (found 2026-07-23) | Each RSS/Atom entry's `<link>` is a raw backend App Service hostname (e.g. `azurestatusprodeus.azurewebsites.net`), not `azure.status.microsoft` — and it's the same generic root URL on every entry, not an incident-specific deep link | `entryToIncident()` ignores the feed's `<link>` and always sets `detailUrl` to the canonical `azure.status.microsoft` dashboard URL |
 | **AWS XML in browser** | `fast-xml-parser` must run client-side to parse RSS | Pure JS lib — bundles cleanly with Vite, no issues |
 | **Vercel cold starts** | First Azure call after inactivity may add 1–2s | Loading indicator in UI; other three providers unaffected |
 | **Vercel free tier** | 100k fn invocations/month — only Azure calls count now | Even more headroom than before |
 | **Stale data** | 60s poll cycle; AWS TTL is 5min — status may lag | Show `dataFetchedAt` timestamp in UI |
 | **OCI gov regions** | `gov.ocistatus.com` is a separate endpoint | Out of scope v1 |
-| **OCI `status.json` alone has no incident-level data** | `api/v2/status.json` is a bare `{indicator, description}` page summary, not the `regionHealthReports[]` schema shown above (that schema was never actually implemented against a real endpoint) | `ociFetcher.ts` now also reads `api/v2/incident-summary.rss` (this section's own RSS URL, above) — one stable-guid `<item>` per incident, no dedup needed, status keyword maps directly to `Incident['status']` — for real region/service/incident detail. `status.json` is kept only as the `overallStatus` source and as a safety net (14.7b's synthetic `oci-current-incident` id still fires if the two sources disagree). See `docs/ALERTS-DESIGN.md` Section 7.4 / 14.10 |
-| **OCI region ids are display names, not canonical slugs** | `incident-summary.rss` gives human region names (`"US East (Ashburn)"`), not a slug like AWS's `us-east-1` | `regionId` uses the raw display name as-is rather than a hand-built name→slug table that would need per-region verification and upkeep — see `docs/ALERTS-DESIGN.md` 14.10 |
+| **OCI `status.json` alone has no incident-level data** | `api/v2/status.json` is a bare `{indicator, description}` page summary, not the `regionHealthReports[]` schema shown above (that schema was never actually implemented against a real endpoint) | `ociFetcher.ts` now also reads `api/v2/incident-summary.rss` (this section's own RSS URL, above) — one stable-guid `<item>` per incident, no dedup needed, status keyword maps directly to `Incident['status']` — for real region/service/incident detail. `status.json` is kept only as the `overallStatus` source and as a safety net (a synthetic `oci-current-incident` id still fires if the two sources disagree). See `README.md`'s Alerts & Admin section |
+| **OCI region ids are display names, not canonical slugs** | `incident-summary.rss` gives human region names (`"US East (Ashburn)"`), not a slug like AWS's `us-east-1` | `regionId` uses the raw display name as-is rather than a hand-built name→slug table that would need per-region verification and upkeep |
 | **GCP `end` field omitted** | `incidents.json` omits `end` entirely for ongoing incidents instead of setting it `null` | Treat `end == null` (loose) rather than `end !== null` (strict) — see `isIncidentOpen()` in `gcpFetcher.ts` |
 | **GCP `uri` is relative** | `incidents.json`'s `uri` field is a path like `incidents/{id}`, not an absolute URL | Prefix with `https://status.cloud.google.com/` — see `buildGcpDetailUrl()` in `gcpFetcher.ts` |
 | **GCP `affected_products[].id` is opaque but stable** | Each product ID is an opaque doc-style hash (e.g. `BSGtCUnz6ZmyajsjgTKv` for VPC), not a human-readable slug like AWS's — but it IS permanent. Verified via `https://status.cloud.google.com/products.json` (the full 207-product catalog): all IDs seen across sampled incidents matched the catalog exactly | Match canonical top-10 services by hardcoded `productId` (sourced from `products.json`) with title-keyword as fallback — see `GCP_CRITICAL_SERVICES` in `gcpServices.ts` and `buildGcpServiceList()` in `RegionTable.tsx`. Run `npm run verify:gcp` to re-validate all 10 `productId`s against the live catalog at any time |

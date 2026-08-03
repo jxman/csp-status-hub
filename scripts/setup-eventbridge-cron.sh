@@ -1,7 +1,7 @@
 #!/bin/bash
 # Provisions AWS EventBridge to hit /api/cron/check-status every 5 minutes,
-# working around Vercel Hobby's once-per-day native cron cap (see
-# ALERTS-DESIGN.md Section 7.3 for why). Idempotent — safe to re-run; each
+# working around Vercel Hobby's once-per-day native cron cap (see README.md's
+# Alerts & Admin section for why). Idempotent — safe to re-run; each
 # step checks for an existing resource before creating one.
 #
 # Uses classic EventBridge Rules + Targets, not the newer EventBridge
@@ -32,7 +32,7 @@ API_DESTINATION_NAME="csp-status-hub-check-status"
 ROLE_NAME="csp-status-hub-eventbridge-role"
 RULE_NAME="csp-status-hub-check-status"
 TARGET_ENDPOINT="https://cloudstatus.synepho.com/api/cron/check-status"
-RULE_DESCRIPTION="Fires the csp-status-hub status-check cron every 5 minutes (Vercel Hobby native cron is capped at once/day, see ALERTS-DESIGN.md 7.3)."
+RULE_DESCRIPTION="Fires the csp-status-hub status-check cron every 5 minutes (Vercel Hobby native cron is capped at once/day, see README.md's Alerts & Admin section)."
 
 if [ -z "$CRON_SECRET" ]; then
   echo "CRON_SECRET is not set. Run: set -a; source .env.local; set +a" >&2

@@ -8,7 +8,7 @@ export const redis = Redis.fromEnv();
 // 24/7), which kept the Neon compute from ever autosuspending and blew
 // through the Free plan's 100 CU-hr/month limit. Postgres is still used for
 // `subscribers` and `notification_log`, which are only touched when an
-// incident actually starts/resolves — see docs/ALERTS-DESIGN.md.
+// incident actually starts/resolves — see README.md's Alerts & Admin section.
 export interface ProviderSnapshot {
   overallStatus: string;
   activeIncidentIds: string[];
