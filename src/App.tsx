@@ -8,6 +8,7 @@ import { ProviderGrid } from './components/ProviderGrid';
 import { IncidentList } from './components/IncidentList';
 import { SubscribeModal } from './components/SubscribeModal';
 import { AboutModal } from './components/AboutModal';
+import { SynephoLogo } from './components/SynephoLogo';
 import { formatRelative } from './utils/formatters';
 import type { ProviderStatus } from './types/status';
 
@@ -238,9 +239,19 @@ export default function App() {
             <span className="footer-short">Public status data · 60s refresh · Local time · No vendor affiliation</span>
             <p className="footer-about">
               <span className="footer-full">
-                Built by John Xanthopoulos (Synepho) to check AWS, Azure, GCP, and Oracle Cloud status in one place instead of four browser tabs.
+                Built by John Xanthopoulos (
+                <a href="https://synepho.com" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                  <SynephoLogo height={13} />
+                </a>
+                ) to check AWS, Azure, GCP, and Oracle Cloud status in one place instead of four browser tabs.
               </span>
-              <span className="footer-short">Built by John Xanthopoulos (Synepho).</span>
+              <span className="footer-short">
+                Built by John Xanthopoulos (
+                <a href="https://synepho.com" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                  <SynephoLogo height={13} />
+                </a>
+                ).
+              </span>
             </p>
           </footer>
         </>

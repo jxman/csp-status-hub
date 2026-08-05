@@ -1,4 +1,5 @@
 import { formatDate } from '../utils/formatters';
+import { SynephoLogo } from './SynephoLogo';
 
 interface Props {
   onClose: () => void;
@@ -66,15 +67,14 @@ export function AboutModal({ onClose }: Props) {
         <div style={{ borderTop: '1px solid var(--border)', margin: '0 0 20px' }} />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
-          <div style={{
-            width: 40, height: 40, borderRadius: 8, flex: '0 0 auto',
-            background: 'linear-gradient(to bottom right, oklch(0.4912 0.3096 275.75), oklch(0.6971 0.329 342.55))',
-            boxShadow: '0 4px 10px rgba(0,0,0,0.18)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 15, fontWeight: 700, color: '#fff',
-          }}>
-            JX
-          </div>
+          <a
+            href="https://synepho.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: 'inline-flex', alignItems: 'center', flex: '0 0 auto' }}
+          >
+            <SynephoLogo height={30} />
+          </a>
           <div>
             <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--ink)' }}>
               John Xanthopoulos

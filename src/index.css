@@ -217,6 +217,11 @@ body {
 
 .footer-about { margin: 6px 0 0; }
 
+/* ===== Synepho logo — swap PNG by resolved theme ===== */
+.synepho-logo-dark { display: none; }
+.theme-dark .synepho-logo-light { display: none; }
+.theme-dark .synepho-logo-dark { display: inline; }
+
 
 .a-summary {
   display: grid; grid-template-columns: 1fr auto;
