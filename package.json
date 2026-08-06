@@ -10,7 +10,11 @@
     "preview": "vite preview",
     "deploy": "npm run lint && npm run build && bash scripts/deploy.sh --prod",
     "deploy:preview": "npm run lint && npm run build && bash scripts/deploy.sh",
-    "verify:gcp": "node scripts/verify-gcp-services.mjs"
+    "verify:gcp": "node scripts/verify-gcp-services.mjs",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": "eslint --fix"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
@@ -21,8 +25,7 @@
     "fast-xml-parser": "^5.5.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "resend": "^6.16.0",
-    "vercel": "^58.7.1"
+    "resend": "^6.16.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
@@ -35,6 +38,8 @@
     "eslint-plugin-react-hooks": "^5.0.0",
     "eslint-plugin-react-refresh": "^0.4.14",
     "globals": "^15.11.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.3.0",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
     "typescript": "~5.6.2",
