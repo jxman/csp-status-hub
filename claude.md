@@ -571,6 +571,25 @@ const fetchAll = async (): Promise<DashboardStatus> => {
 // Immediate fetch on mount; manual refresh with 15s cooldown
 ```
 
+> **Update (2026-08-06):** the pseudocode above (single `Promise.allSettled` gating
+> one `dashboard` state) reflects the original kickoff plan but no longer matches
+> `useStatusPolling.ts`. In production, the header rendered instantly but the rest of
+> the page — `ProviderGrid`, `StatsBanner`, `IncidentList` — stayed on the loading
+> skeleton until *all four* providers had settled, so the slowest provider (and there
+> was no fetch timeout anywhere) determined how long the whole page waited. The hook
+> now holds a per-provider map (`Record<Provider, ProviderStatus | null>`) instead of
+> one atomic `DashboardStatus`; each of the four fetches is wrapped in the new
+> `withTimeout()` (`src/utils/withTimeout.ts`, 12s budget) and updates its own slot
+> in state the instant it resolves, so `ProviderGrid` can render three real cards
+> immediately while a fourth still shows `<ProviderCardSkeleton />`. `Promise.all`
+> (not `allSettled`) is still awaited across the four wrapped promises, but only to
+> drive whole-cycle bookkeeping (`isRefreshing`, cooldowns, cache save) — not to gate
+> any card's render. The one exception: if *all four* time out or fail (e.g. the
+> user's network is down), the previous known-good per-provider data is left in
+> place rather than replaced with four error cards — same "preserve stale data over
+> showing nothing" behavior the original design had, just re-implemented per-provider
+> instead of as one all-or-nothing swap.
+
 ---
 
 ## 8. Vercel Serverless Functions
@@ -639,6 +658,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 | **GCP `end` field omitted** | `incidents.json` omits `end` entirely for ongoing incidents instead of setting it `null` | Treat `end == null` (loose) rather than `end !== null` (strict) — see `isIncidentOpen()` in `gcpFetcher.ts` |
 | **GCP `uri` is relative** | `incidents.json`'s `uri` field is a path like `incidents/{id}`, not an absolute URL | Prefix with `https://status.cloud.google.com/` — see `buildGcpDetailUrl()` in `gcpFetcher.ts` |
 | **GCP `affected_products[].id` is opaque but stable** | Each product ID is an opaque doc-style hash (e.g. `BSGtCUnz6ZmyajsjgTKv` for VPC), not a human-readable slug like AWS's — but it IS permanent. Verified via `https://status.cloud.google.com/products.json` (the full 207-product catalog): all IDs seen across sampled incidents matched the catalog exactly | Match canonical top-10 services by hardcoded `productId` (sourced from `products.json`) with title-keyword as fallback — see `GCP_CRITICAL_SERVICES` in `gcpServices.ts` and `buildGcpServiceList()` in `RegionTable.tsx`. Run `npm run verify:gcp` to re-validate all 10 `productId`s against the live catalog at any time |
+| **No fetcher had a request timeout** (found 2026-08-06 — user noticed the header drew instantly but the rest of the page lagged behind it) | None of the four fetchers or `api/status/azure.ts` used `AbortController`/a timeout, and `useStatusPolling.ts` gated the entire page on `Promise.allSettled` across all four — so the slowest (or a genuinely hung) provider blocked every card, not just its own | `useStatusPolling.ts` now updates each provider's own state slot as soon as its fetch resolves (see Section 7's 2026-08-06 update), and wraps each fetch in `withTimeout()` (`src/utils/withTimeout.ts`, 12s) so a hung provider surfaces as an error card within a bounded time instead of stalling indefinitely |
 
 ---
 

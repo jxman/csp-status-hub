@@ -31,8 +31,10 @@ Browser (React SPA)
 │  │awsFetcher│ │azureFetcher  │ │ociFetcher│ │gcpFetcher│          │
 │  └────┬─────┘ └──────┬───────┘ └────┬─────┘ └────┬─────┘          │
 │       └──────────────┴──────────────┴─────────────┘                │
-│                    Promise.allSettled()                              │
-│                    → DashboardStatus (unified schema)               │
+│         each wrapped in withTimeout() (12s) and settled            │
+│         independently — a card renders the instant its own         │
+│         fetch resolves, a slow/hung provider only blocks itself    │
+│                    → per-provider ProviderStatus map (unified schema)│
 │                    → localStorage cache (60s TTL)                   │
 └─────────────────────────────────────────────────────────────────────┘
 
@@ -369,7 +371,8 @@ csp-status-hub/
 │   │   ├── StatusHeader.tsx       Header: title, live dot, refresh, bell (subscribe), Settings menu
 │   │   ├── SettingsMenu.tsx       Appearance (light/dark/system), About, Buy Me a Coffee
 │   │   ├── AboutModal.tsx         About dialog: description, creator credit, version/build info
-│   │   ├── ProviderGrid.tsx       4-column responsive grid
+│   │   ├── ProviderGrid.tsx       4-column responsive grid; renders a skeleton slot for any provider still loading
+│   │   ├── ProviderCardSkeleton.tsx  Single-card loading placeholder, shown per-slot until that provider's fetch resolves
 │   │   ├── ProviderPanel.tsx      Per-provider expandable card + service list
 │   │   ├── RegionTable.tsx        Region → top-10 service status rows (all four providers)
 │   │   ├── FlatServiceList.tsx    Flat top-10 list for the no-active-incident state (no regions to show yet)
@@ -387,7 +390,7 @@ csp-status-hub/
 │   │   ├── gcpFetcher.ts          incidents.json → normalized schema
 │   │   └── ociFetcher.ts          status.json + incident-summary.rss → normalized schema
 │   ├── hooks/
-│   │   ├── useStatusPolling.ts    60s polling, cooldown, offline detection, 60s cache
+│   │   ├── useStatusPolling.ts    60s polling, cooldown, offline detection, 60s cache; tracks each provider independently so one slow/failed fetch doesn't block the others
 │   │   └── useTheme.ts            Light/dark/system appearance mode, localStorage persistence
 │   ├── types/
 │   │   └── status.ts              Unified schema (StatusLevel, ProviderStatus, etc.)
@@ -397,7 +400,8 @@ csp-status-hub/
 │       ├── gcpServices.ts         GCP top-10 canonical service list
 │       ├── ociServices.ts         OCI top-10 canonical service list + keyword matchers
 │       ├── statusHelpers.ts       Status → color/label/dot mapping
-│       └── formatters.ts          Relative/absolute time formatting
+│       ├── formatters.ts          Relative/absolute time formatting
+│       └── withTimeout.ts         Races a fetch against a timeout (12s) so one hung provider can't stall the page
 │
 ├── scripts/
 │   ├── db/*.sql                   Migrations, applied in filename order

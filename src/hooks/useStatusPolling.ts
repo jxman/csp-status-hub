@@ -3,64 +3,82 @@ import { fetchAws } from '../fetchers/awsFetcher';
 import { fetchAzure } from '../fetchers/azureFetcher';
 import { fetchGcp } from '../fetchers/gcpFetcher';
 import { fetchOci } from '../fetchers/ociFetcher';
-import type { DashboardStatus, ProviderStatus } from '../types/status';
+import { withTimeout } from '../utils/withTimeout';
+import type { DashboardStatus, Provider, ProviderStatus } from '../types/status';
 
 const POLL_INTERVAL_MS = 60_000;
 const MANUAL_COOLDOWN_MS = 15_000; // shorter than the auto-refresh interval so the button isn't dead for a full minute
+const FETCH_TIMEOUT_MS = 12_000; // generous enough for AWS's worst case (up to 3 fetch legs during broad-impact incidents)
 const CACHE_KEY = 'csp-status-hub:dashboard';
 const CACHE_TTL_MS = 60_000; // 60 seconds — matches poll interval
 
+export const PROVIDER_ORDER: Provider[] = ['aws', 'azure', 'oci', 'gcp'];
+
+const DISPLAY_NAMES: Record<Provider, string> = {
+  aws: 'Amazon Web Services',
+  azure: 'Microsoft Azure',
+  oci: 'Oracle Cloud',
+  gcp: 'Google Cloud',
+};
+
+const FETCHERS: Record<Provider, () => Promise<ProviderStatus>> = {
+  aws: fetchAws,
+  azure: fetchAzure,
+  oci: fetchOci,
+  gcp: fetchGcp,
+};
+
+export type ProviderMap = Record<Provider, ProviderStatus | null>;
+
+const EMPTY_PROVIDER_MAP: ProviderMap = { aws: null, azure: null, oci: null, gcp: null };
+
 // --- localStorage cache helpers ---
 
-function loadCache(): DashboardStatus | null {
+function loadCache(): ProviderMap | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const { data, savedAt } = JSON.parse(raw) as { data: DashboardStatus; savedAt: number };
     if (Date.now() - savedAt > CACHE_TTL_MS) return null;
-    return data;
+    const map: ProviderMap = { ...EMPTY_PROVIDER_MAP };
+    for (const p of data.providers) map[p.provider] = p;
+    return map;
   } catch {
     return null;
   }
 }
 
-function saveCache(data: DashboardStatus) {
+function saveCache(providers: ProviderMap) {
   try {
+    const data: DashboardStatus = {
+      providers: PROVIDER_ORDER.map((id) => providers[id]).filter((p): p is ProviderStatus => p != null),
+      lastRefreshedAt: new Date().toISOString(),
+    };
     localStorage.setItem(CACHE_KEY, JSON.stringify({ data, savedAt: Date.now() }));
   } catch {
     // Silently ignore — private browsing or quota exceeded
   }
 }
 
-// --- dashboard builder ---
-
-function buildDashboardStatus(results: PromiseSettledResult<ProviderStatus>[]): DashboardStatus {
-  const fallbackProviders = ['aws', 'azure', 'oci', 'gcp'] as const;
-  const fallbackNames = ['Amazon Web Services', 'Microsoft Azure', 'Oracle Cloud', 'Google Cloud'];
-
-  const providers: ProviderStatus[] = results.map((result, index) => {
-    if (result.status === 'fulfilled') return result.value;
-    const err = result.reason instanceof Error ? result.reason.message : String(result.reason);
-    return {
-      provider: fallbackProviders[index],
-      displayName: fallbackNames[index],
-      overallStatus: 'unknown',
-      regions: [],
-      activeIncidents: [],
-      sourceUrl: '',
-      dataFetchedAt: new Date().toISOString(),
-      fetchError: err,
-    };
-  });
-
-  return { providers, lastRefreshedAt: new Date().toISOString() };
+function buildFetchErrorStatus(provider: Provider, reason: unknown): ProviderStatus {
+  const err = reason instanceof Error ? reason.message : String(reason);
+  return {
+    provider,
+    displayName: DISPLAY_NAMES[provider],
+    overallStatus: 'unknown',
+    regions: [],
+    activeIncidents: [],
+    sourceUrl: '',
+    dataFetchedAt: new Date().toISOString(),
+    fetchError: err,
+  };
 }
 
 // --- hook ---
 
 export function useStatusPolling() {
   // Hydrate from cache immediately so the page isn't blank on load
-  const [dashboard, setDashboard] = useState<DashboardStatus | null>(loadCache);
+  const [providers, setProviders] = useState<ProviderMap>(() => loadCache() ?? EMPTY_PROVIDER_MAP);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastSuccessfulRefresh, setLastSuccessfulRefresh] = useState<string | null>(null);
   const [lastFetchFailed, setLastFetchFailed] = useState(false);
@@ -113,24 +131,40 @@ export function useStatusPolling() {
   const fetchAll = useCallback(async () => {
     setIsRefreshing(true);
 
-    const results = await Promise.allSettled([
-      fetchAws(),
-      fetchAzure(),
-      fetchOci(),
-      fetchGcp(),
-    ]);
+    // Each provider updates its own slot the instant its fetch succeeds, instead of
+    // waiting for every provider to finish — so a slow or hung provider only holds
+    // up its own card, not the rest of the dashboard. FETCH_TIMEOUT_MS bounds how
+    // long any one card can stay in "loading" before it's treated as failed.
+    // Failures are held back until the whole batch settles (see allFailed below) so
+    // a total outage doesn't wipe good cached data with four error cards.
+    const results = await Promise.all(
+      PROVIDER_ORDER.map((id) =>
+        withTimeout(FETCHERS[id](), FETCH_TIMEOUT_MS, DISPLAY_NAMES[id])
+          .then((status) => {
+            setProviders((prev) => ({ ...prev, [id]: status }));
+            return { id, status: 'fulfilled' as const };
+          })
+          .catch((reason) => ({ id, status: 'rejected' as const, reason }))
+      )
+    );
 
     const allFailed = results.every((r) => r.status === 'rejected');
 
     if (allFailed) {
-      // Network is down or all providers unreachable — preserve last good data
+      // Network down or all providers unreachable — preserve last good data
+      // rather than replacing every card with an error state.
       setLastFetchFailed(true);
     } else {
-      const status = buildDashboardStatus(results);
-      setDashboard(status);
-      setLastSuccessfulRefresh(status.lastRefreshedAt);
-      saveCache(status);
+      setProviders((prev) => {
+        const next = { ...prev };
+        for (const r of results) {
+          if (r.status === 'rejected') next[r.id] = buildFetchErrorStatus(r.id, r.reason);
+        }
+        saveCache(next);
+        return next;
+      });
       setLastFetchFailed(false);
+      setLastSuccessfulRefresh(new Date().toISOString());
     }
 
     setIsRefreshing(false);
@@ -171,7 +205,7 @@ export function useStatusPolling() {
   const canRefresh = !isRefreshing && canManualRefresh && isOnline;
 
   return {
-    dashboard,
+    providers,
     isRefreshing,
     lastSuccessfulRefresh,
     lastFetchFailed,

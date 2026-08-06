@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
-import { useStatusPolling } from './hooks/useStatusPolling';
+import { useStatusPolling, PROVIDER_ORDER } from './hooks/useStatusPolling';
 import { useTheme } from './hooks/useTheme';
 import { StatusHeader } from './components/StatusHeader';
-import { ProviderGrid } from './components/ProviderGrid';
+import { ProviderGrid, type ProviderSlot } from './components/ProviderGrid';
+import { ProviderCardSkeleton } from './components/ProviderCardSkeleton';
 import { IncidentList } from './components/IncidentList';
 import { SubscribeModal } from './components/SubscribeModal';
 import { AboutModal } from './components/AboutModal';
@@ -128,19 +129,14 @@ function StatsBanner({ providers }: { providers: ProviderStatus[] }) {
 function LoadingSkeleton() {
   return (
     <div className="a-grid" style={{ paddingTop: 20 }}>
-      {[0, 1, 2, 3].map((i) => (
-        <div key={i} className="pcard" style={{ padding: 16, minHeight: 120 }}>
-          <div style={{ height: 16, width: '60%', background: 'var(--border)', borderRadius: 4, marginBottom: 10, animation: 'pulse-skeleton 1.4s ease-in-out infinite' }} />
-          <div style={{ height: 12, width: '40%', background: 'var(--border)', borderRadius: 4 }} />
-        </div>
-      ))}
+      {PROVIDER_ORDER.map((id) => <ProviderCardSkeleton key={id} />)}
     </div>
   );
 }
 
 export default function App() {
   const {
-    dashboard,
+    providers,
     isRefreshing,
     lastSuccessfulRefresh,
     lastFetchFailed,
@@ -155,9 +151,16 @@ export default function App() {
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [urlBanner, dismissUrlBanner] = useUrlBanner();
 
-  const hasDegradedProvider = dashboard?.providers.some(
+  const slots: ProviderSlot[] = PROVIDER_ORDER.map((id) => ({ provider: id, status: providers[id] }));
+  const loadedProviders: ProviderStatus[] = slots
+    .map((s) => s.status)
+    .filter((p): p is ProviderStatus => p != null);
+  const hasAnyData = loadedProviders.length > 0;
+  const pendingCount = PROVIDER_ORDER.length - loadedProviders.length;
+
+  const hasDegradedProvider = loadedProviders.some(
     (p) => p.overallStatus === 'degraded' || p.overallStatus === 'outage'
-  ) ?? false;
+  );
 
   return (
     <div className="dash">
@@ -212,7 +215,7 @@ export default function App() {
       )}
 
       {/* Stale data banner */}
-      {isOnline && lastFetchFailed && dashboard && (
+      {isOnline && lastFetchFailed && hasAnyData && (
         <div style={{
           padding: '10px 32px',
           background: 'var(--amber-soft)', borderBottom: '1px solid color-mix(in oklab, var(--amber) 25%, transparent)',
@@ -222,13 +225,25 @@ export default function App() {
         </div>
       )}
 
-      {!dashboard ? (
+      {!hasAnyData ? (
         <LoadingSkeleton />
       ) : (
         <>
-          <StatsBanner providers={dashboard.providers} />
-          <ProviderGrid providers={dashboard.providers} />
-          <IncidentList providers={dashboard.providers} />
+          {pendingCount > 0 && (
+            <div style={{
+              padding: '8px 32px', fontSize: 12, color: 'var(--ink-4)',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <span style={{
+                width: 6, height: 6, borderRadius: '50%', background: 'var(--ink-4)',
+                display: 'inline-block', animation: 'pulse-skeleton 1.4s ease-in-out infinite',
+              }} />
+              Loading {pendingCount} more provider{pendingCount !== 1 ? 's' : ''}…
+            </div>
+          )}
+          <StatsBanner providers={loadedProviders} />
+          <ProviderGrid slots={slots} />
+          <IncidentList providers={loadedProviders} />
           <footer style={{
             padding: '16px 32px 24px', fontSize: 11,
             color: 'var(--ink-4)', borderTop: '1px solid var(--border)',
