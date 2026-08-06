@@ -129,7 +129,7 @@ function StatsBanner({ providers }: { providers: ProviderStatus[] }) {
 function LoadingSkeleton() {
   return (
     <div className="a-grid" style={{ paddingTop: 20 }}>
-      {PROVIDER_ORDER.map((id) => <ProviderCardSkeleton key={id} />)}
+      {PROVIDER_ORDER.map((id) => <ProviderCardSkeleton key={id} provider={id} />)}
     </div>
   );
 }

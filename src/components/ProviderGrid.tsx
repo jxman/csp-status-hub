@@ -20,7 +20,7 @@ export function ProviderGrid({ slots }: Props) {
     <section className={`a-grid${allHealthy ? ' all-healthy' : ''}`}>
       {slots.map((slot) =>
         slot.status === null
-          ? <ProviderCardSkeleton key={slot.provider} />
+          ? <ProviderCardSkeleton key={slot.provider} provider={slot.provider} />
           : <ProviderPanel key={slot.provider} provider={slot.status} />
       )}
     </section>
