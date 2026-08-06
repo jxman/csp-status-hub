@@ -92,7 +92,13 @@ body {
   gap: 16px;
   background: var(--card);
 }
-.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand { display: flex; align-items: flex-end; gap: 16px; min-width: 0; }
+.brand-logo-link {
+  display: inline-flex; align-items: flex-end; flex: 0 0 auto;
+  opacity: 0.9; transition: opacity 0.15s ease;
+}
+.brand-logo-link:hover { opacity: 1; }
+.brand-title-group { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .brand-dot {
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--green);
@@ -409,6 +415,7 @@ body {
   .btn-ghost { padding: 5px 8px; font-size: 12px; }
   .brand-name { font-size: 15px; }
   .brand-live { display: none; }
+  .brand-logo-link { display: none; }
 
   .a-summary { grid-template-columns: 1fr; padding: 10px 12px; gap: 10px; background: color-mix(in oklab, var(--blue) 5%, var(--card)); }
   .a-summary .stat {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { SettingsMenu } from './SettingsMenu';
+import { SynephoLogo } from './SynephoLogo';
 
 type ThemeMode = 'light' | 'dark' | 'system';
 
@@ -64,9 +65,20 @@ export function StatusHeader({
   return (
     <header className="dash-head">
       <div className="brand">
-        <span className={`brand-dot${hasDegradedProvider ? ' bad' : ''}`} />
-        <h1 className="brand-name">Cloud Status Hub</h1>
-        <span className="brand-live">LIVE</span>
+        <a
+          href="https://synepho.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Synepho"
+          className="brand-logo-link"
+        >
+          <SynephoLogo height={28} />
+        </a>
+        <div className="brand-title-group">
+          <span className={`brand-dot${hasDegradedProvider ? ' bad' : ''}`} />
+          <h1 className="brand-name">Cloud Status Hub</h1>
+          <span className="brand-live">LIVE</span>
+        </div>
       </div>
 
       <div className="head-right">
