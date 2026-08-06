@@ -415,7 +415,7 @@ body {
   .btn-ghost { padding: 5px 8px; font-size: 12px; }
   .brand-name { font-size: 15px; }
   .brand-live { display: none; }
-  .brand-logo-link { display: none; }
+  .brand-logo-link img { height: 20px; }
 
   .a-summary { grid-template-columns: 1fr; padding: 10px 12px; gap: 10px; background: color-mix(in oklab, var(--blue) 5%, var(--card)); }
   .a-summary .stat {
