@@ -206,6 +206,11 @@ compute-uptime, so a workload that's cheap-but-constant no longer burns a
 metered resource just by staying alive. The old table is left in place
 (unused) rather than dropped, as a historical record.
 
+**Confirmed fix, via Neon's usage panel:** July (pre-fix, hit the cap on Jul 29)
+used 102 of the 100 CU-hr Free plan allowance — ≈3.52 CU-hr/day averaged over
+the month. August (post-fix) sat at 0.36 CU-hr through Aug 7 — ≈0.051
+CU-hr/day, a ~69x drop — projecting to roughly 1.6 CU-hr for the full month.
+
 ### Sign-up & confirmation (double opt-in)
 
 - Bell icon opens a form (name, email, provider checkboxes) gated by an
