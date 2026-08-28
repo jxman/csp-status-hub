@@ -154,6 +154,28 @@ function toIso(val: unknown): string {
   return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
 
+// Microsoft's own <guid> turns out to be a slug of the entry's title (confirmed via
+// an archived feed snapshot: guid "issues-connecting-to-resources-in-west-us" for
+// title "Issues connecting to resources in West US"), not a persistent incident
+// number. When Azure rewords an ongoing incident's headline between polls — as it
+// moves through Active/Investigating/Monitoring phases, or the affected scope is
+// updated — the guid changes even though the underlying incident hasn't. check-status.ts
+// diffs incident IDs between 5-minute polls, so a changing guid reads as the old
+// incident resolving and a brand-new one starting, producing a spurious
+// resolved+new-incident notification pair for the same real event (observed
+// 2026-08-28: an "Active - Multiple Service impacted affecting West US Regions"
+// incident fired resolved/new twice in 40 minutes). The structured <category> tags
+// (parsed into services/regions below) describe *what's* impacted and are far more
+// stable across updates to the same incident than the free-text headline is, so
+// prefer a fingerprint built from those over the upstream guid.
+function buildIncidentId(rawId: string, index: number, services: string[], regions: string[]): string {
+  if (services.length > 0 || regions.length > 0) {
+    const fingerprint = `${[...services].sort().join(',')}::${[...regions].sort().join(',')}`;
+    return encodeURIComponent(fingerprint).slice(0, 128);
+  }
+  return encodeURIComponent(rawId || `azure-${index}`).slice(0, 128);
+}
+
 function entryToIncident(entry: RawEntry, index: number, feedUpdatedAt?: string): Incident {
   const title = extractText(entry.title) || 'Azure Incident';
   // RSS uses <description>; Atom uses <summary>
@@ -162,13 +184,13 @@ function entryToIncident(entry: RawEntry, index: number, feedUpdatedAt?: string)
   // updatedAt = channel lastBuildDate (when feed was last updated) > item updated > pubDate
   const published = toIso(entry.published ?? entry.pubDate);
   const updated = toIso(entry.updated ?? feedUpdatedAt ?? entry.pubDate ?? entry.published);
-  const rawId = extractText(entry.id || entry.guid) || `azure-${index}`;
-  const id = encodeURIComponent(rawId).slice(0, 128);
+  const rawId = extractText(entry.id || entry.guid);
 
   const incidentStatus = parseStatus(title);
   const severity = parseSeverity(title);
   const categories = extractCategories(entry.category);
   const { services, regions } = parseAffected(title, categories);
+  const id = buildIncidentId(rawId, index, services, regions);
   const isResolved = incidentStatus === 'resolved';
 
   return {
