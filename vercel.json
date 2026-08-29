@@ -38,7 +38,8 @@
   ],
   "functions": {
     "api/analysis/run.ts": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "includeFiles": "node_modules/pdfkit/js/standard-fonts/**"
     },
     "api/**/*.ts": {
       "maxDuration": 30

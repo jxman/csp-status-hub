@@ -5,6 +5,8 @@ export interface BriefVersion {
   triggerEvent: 'new' | 'content_changed' | 'resolved';
   technicalBrief: string;
   executiveBrief: string;
+  pdfTechnicalUrl: string | null;
+  pdfExecutiveUrl: string | null;
   model: string;
   createdAt: string;
 }

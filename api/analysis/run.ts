@@ -9,6 +9,7 @@ import { sql } from '../_lib/db.js';
 import { redis } from '../_lib/redis.js';
 import { bedrock, BEDROCK_MODEL_ID } from '../_lib/bedrock.js';
 import { buildSystemPrompt, buildUserMessage, buildToolConfig, EMIT_INCIDENT_BRIEF_TOOL_NAME } from '../_lib/analysisPrompt.js';
+import { renderAndUploadBriefPdfs } from '../_lib/pdf/render.js';
 import type { Incident, Provider } from '../../src/types/status.js';
 
 const DEBOUNCE_SETTING_KEY = 'settings:analysis-debounce-minutes';
@@ -101,12 +102,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    await sql`
+    const [{ id: rowId }] = await sql`
       INSERT INTO incident_analysis
         (provider, incident_id, trigger_event, incident_snapshot, technical_brief, executive_brief, model, input_tokens, output_tokens, status)
       VALUES
         (${provider}, ${incidentId}, ${triggerEvent}, ${incidentSnapshot}::jsonb, ${briefs.technical}, ${briefs.executive}, ${BEDROCK_MODEL_ID}, ${response.usage?.inputTokens ?? null}, ${response.usage?.outputTokens ?? null}, 'complete')
+      RETURNING id
     `;
+
+    // PDF generation is best-effort, after the text brief has already
+    // published — a failure here must never affect the response the text
+    // brief already earned (see README.md's Alerts & Admin section).
+    try {
+      const { technicalUrl, executiveUrl } = await renderAndUploadBriefPdfs({
+        provider,
+        incidentId,
+        rowId: rowId as string,
+        incident,
+        triggerEvent,
+        createdAt: new Date().toISOString(),
+        technicalBrief: briefs.technical,
+        executiveBrief: briefs.executive,
+      });
+      if (technicalUrl || executiveUrl) {
+        await sql`
+          UPDATE incident_analysis
+          SET pdf_technical_url = COALESCE(${technicalUrl}, pdf_technical_url),
+              pdf_executive_url = COALESCE(${executiveUrl}, pdf_executive_url)
+          WHERE id = ${rowId}
+        `;
+      }
+    } catch (pdfErr) {
+      console.error(`[analysis/run] PDF generation failed for ${provider}/${incidentId} (row ${rowId}), text brief already published`, pdfErr);
+    }
+
     res.status(200).json({ status: 'complete' });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

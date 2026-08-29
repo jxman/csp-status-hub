@@ -16,6 +16,8 @@ interface BriefVersion {
   triggerEvent: string;
   technicalBrief: string;
   executiveBrief: string;
+  pdfTechnicalUrl: string | null;
+  pdfExecutiveUrl: string | null;
   model: string;
   createdAt: string;
 }
@@ -38,7 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const rows = await sql`
-      SELECT id, trigger_event, technical_brief, executive_brief, model, created_at
+      SELECT id, trigger_event, technical_brief, executive_brief, pdf_technical_url, pdf_executive_url, model, created_at
       FROM incident_analysis
       WHERE provider = ${provider} AND incident_id = ${incidentId} AND status = 'complete'
       ORDER BY created_at DESC
@@ -50,6 +52,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       triggerEvent: row.trigger_event as string,
       technicalBrief: row.technical_brief as string,
       executiveBrief: row.executive_brief as string,
+      pdfTechnicalUrl: row.pdf_technical_url as string | null,
+      pdfExecutiveUrl: row.pdf_executive_url as string | null,
       model: row.model as string,
       createdAt: row.created_at as string,
     }));

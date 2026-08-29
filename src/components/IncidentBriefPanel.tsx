@@ -89,6 +89,17 @@ export function IncidentBriefPanel({ provider, incidentId }: Props) {
                 {formatBriefText(activeTab === 'technical' ? version.technicalBrief : version.executiveBrief)}
               </div>
 
+              {(activeTab === 'technical' ? version.pdfTechnicalUrl : version.pdfExecutiveUrl) && (
+                <a
+                  className="brief-pdf-link"
+                  href={(activeTab === 'technical' ? version.pdfTechnicalUrl : version.pdfExecutiveUrl) ?? undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Download PDF
+                </a>
+              )}
+
               {versions.length > 1 && (
                 <div className="brief-version-stepper">
                   <button
