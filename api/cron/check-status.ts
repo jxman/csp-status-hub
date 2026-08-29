@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createHash } from 'node:crypto';
+import { waitUntil } from '@vercel/functions';
 import { sql } from '../_lib/db.js';
 import { redis, snapshotKey, type ProviderSnapshot } from '../_lib/redis.js';
 import { sendOutageNotificationEmail, sendResolutionNotificationEmail } from '../_lib/email.js';
@@ -7,7 +8,7 @@ import { fetchAws } from '../../src/fetchers/awsFetcher.js';
 import { fetchGcp } from '../../src/fetchers/gcpFetcher.js';
 import { fetchOci } from '../../src/fetchers/ociFetcher.js';
 import { fetchAzure } from '../_lib/azureFetcher.js';
-import type { ProviderStatus } from '../../src/types/status.js';
+import type { Incident, Provider, ProviderStatus } from '../../src/types/status.js';
 
 const FETCHERS: Record<string, () => Promise<ProviderStatus>> = {
   aws: fetchAws,
@@ -16,8 +17,39 @@ const FETCHERS: Record<string, () => Promise<ProviderStatus>> = {
   oci: fetchOci,
 };
 
-function computeSignature(status: ProviderStatus, activeIds: string[]): string {
-  return createHash('sha256').update(`${status.overallStatus}:${activeIds.join(',')}`).digest('hex');
+// Content hash for a single incident (Incident Briefing Engine trigger —
+// see README.md's Alerts & Admin section). Distinct from the notify-worthy
+// diff above: an incident whose ID hasn't changed can still get a real
+// vendor update to its status/description, which this hash is meant to
+// catch. affectedServices/affectedRegions are sorted since these fetchers
+// don't guarantee stable array ordering between polls.
+function hashIncidentContent(incident: Incident): string {
+  const services = [...incident.affectedServices].sort().join(',');
+  const regions = [...incident.affectedRegions].sort().join(',');
+  return createHash('sha256').update(`${incident.status}|${incident.latestUpdate}|${services}|${regions}`).digest('hex');
+}
+
+type AnalysisTriggerEvent = 'new' | 'content_changed' | 'resolved';
+
+// Fire-and-forget POST to the Bedrock analysis endpoint. Never awaited by
+// the caller — waitUntil() schedules this after the response is already
+// sent, so a slow or failed Bedrock call can never delay check-status.ts's
+// own response or the outage-notification email path above it.
+function triggerAnalysis(provider: Provider, incidentId: string, triggerEvent: AnalysisTriggerEvent, incident: Incident): void {
+  const base = process.env.APP_BASE_URL;
+  if (!base) return;
+  waitUntil(
+    fetch(`${base}/api/analysis/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(process.env.CRON_SECRET ? { Authorization: `Bearer ${process.env.CRON_SECRET}` } : {}),
+      },
+      body: JSON.stringify({ provider, incidentId, triggerEvent, incident }),
+    }).catch((err) => {
+      console.error(`[check-status] analysis trigger failed for ${provider}/${incidentId}`, err);
+    })
+  );
 }
 
 type NotificationEvent = 'new_incident' | 'incident_resolved';
@@ -93,17 +125,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   for (const [provider, fetcher] of Object.entries(FETCHERS)) {
     try {
       const status = await fetcher();
-      const activeIds = status.activeIncidents
-        .filter((i) => i.status !== 'resolved')
-        .map((i) => i.id)
-        .sort();
-      const signature = computeSignature(status, activeIds);
+      const activeIncidents = status.activeIncidents.filter((i) => i.status !== 'resolved');
+      const activeIds = activeIncidents.map((i) => i.id).sort();
 
       const existing = await redis.get<ProviderSnapshot>(snapshotKey(provider));
       const previousStatus: string | null = existing?.overallStatus ?? null;
       const previousIds: string[] = existing?.activeIncidentIds ?? [];
       const previousTitles: Record<string, string> = existing?.activeIncidentTitles ?? {};
       const previousRegions: Record<string, string[]> = existing?.activeIncidentRegions ?? {};
+      const previousContentHashes: Record<string, string> = existing?.activeIncidentContentHashes ?? {};
+      const previousIncidentSnapshots: Record<string, Incident> = existing?.activeIncidentSnapshots ?? {};
 
       // Alert on any incident ID we haven't seen before, not just a transition off a
       // clean 'operational' baseline — a provider can have a long-running unrelated
@@ -140,13 +171,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         regions: previousRegions[id] ?? [],
       }));
 
+      // Incident Briefing Engine trigger classification (see README.md's
+      // Alerts & Admin section) — layered additively on top of the
+      // notify-worthy diff above, which stays exactly as it was.
+      const activeIncidentContentHashes: Record<string, string> = Object.fromEntries(
+        activeIncidents.map((i) => [i.id, hashIncidentContent(i)])
+      );
+      const activeIncidentSnapshots: Record<string, Incident> = Object.fromEntries(
+        activeIncidents.map((i) => [i.id, i])
+      );
+      const contentChangedIncidentIds = isFirstCheck
+        ? []
+        : activeIds.filter(
+            (id) => previousIds.includes(id) && previousContentHashes[id] !== activeIncidentContentHashes[id]
+          );
+
       await redis.set<ProviderSnapshot>(snapshotKey(provider), {
         overallStatus: status.overallStatus,
         activeIncidentIds: activeIds,
         activeIncidentTitles,
         activeIncidentRegions,
+        activeIncidentContentHashes,
+        activeIncidentSnapshots,
         lastCheckedAt: new Date().toISOString(),
-        rawSignature: signature,
       });
 
       results[provider] = { notifyWorthy, from: previousStatus, to: status.overallStatus, newIncidentIds, resolvedIncidentIds };
@@ -157,6 +204,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (resolutionWorthy) {
         console.log(`[check-status] resolution: ${provider} incident(s) resolved ${resolvedIncidentIds.join(', ')} (status ${previousStatus} -> ${status.overallStatus})`);
         results[provider].resolvedNotified = await notifySubscribers(provider, status, 'incident_resolved', resolvedIncidents);
+      }
+
+      // Fire-and-forget analysis triggers — deliberately placed after both
+      // notifySubscribers() awaits above and never awaited themselves, so a
+      // slow or failed Bedrock call can never delay this provider's
+      // notifications or the next provider's iteration of this loop.
+      if (!isFirstCheck) {
+        for (const id of newIncidentIds) {
+          const incident = activeIncidentSnapshots[id];
+          if (incident) triggerAnalysis(provider as Provider, id, 'new', incident);
+        }
+        for (const id of contentChangedIncidentIds) {
+          const incident = activeIncidentSnapshots[id];
+          if (incident) triggerAnalysis(provider as Provider, id, 'content_changed', incident);
+        }
+        for (const id of resolvedIncidentIds) {
+          const incident = previousIncidentSnapshots[id];
+          if (incident) triggerAnalysis(provider as Provider, id, 'resolved', { ...incident, status: 'resolved' });
+        }
       }
     } catch (err) {
       // Leave the last-known snapshot untouched on a transient fetch failure

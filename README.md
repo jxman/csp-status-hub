@@ -262,6 +262,55 @@ CU-hr/day, a ~69x drop — projecting to roughly 1.6 CU-hr for the full month.
   self-heals if the target endpoint or rule description drift — see
   **Known constraints** below).
 
+### Incident Briefing Engine (Phase 1 — headless, no UI yet)
+
+AI-generated technical + executive briefs per incident, built on AWS Bedrock.
+Full design in the artifact-linked design doc; Phase 1 scope is the pipeline
+only, no dashboard surface or PDFs yet — briefs are read straight out of
+Postgres.
+
+- **Trigger, layered on top of the notify-worthy diff above:**
+  `check-status.ts` also hashes each active incident's
+  `status + latestUpdate + affectedServices + affectedRegions` and stores the
+  hash per incident ID in the same Redis snapshot
+  (`activeIncidentContentHashes`). An incident is `new` (same predicate as
+  the notify-worthy diff), `content_changed` (ID was already active but its
+  hash changed — catches a vendor editing an ongoing incident's text without
+  the ID changing), or `resolved` (same predicate as the resolution diff).
+- **Never in the critical path of an outage email.** For every
+  new/content_changed/resolved incident, `check-status.ts` fires one
+  `waitUntil(fetch('/api/analysis/run', ...))` per incident — never awaited,
+  placed after the existing `notifySubscribers()` calls — so a slow or
+  failed Bedrock call can't delay or block a notification.
+- **`/api/analysis/run`** debounces (default 30 min per incident, a live
+  Redis override `settings:analysis-debounce-minutes` beats the
+  `ANALYSIS_DEBOUNCE_MINUTES` env default without a redeploy), then calls
+  Bedrock's Converse API against Claude Sonnet 5
+  (`us.anthropic.claude-sonnet-5`, a cross-region inference profile — the
+  model has no bare on-demand ID) with a forced tool-use call
+  (`emit_incident_brief`) to get schema-shaped `{technical, executive}`
+  briefs in one request. A hand-curated per-service-category resiliency
+  reference table (`api/_lib/analysisPrompt.ts`) keeps the model selecting
+  from reviewed guidance instead of inventing specifics from a thin vendor
+  paragraph, and a hard prompt rule keeps DR/failover language conditional
+  ("if a failover path exists, consider...") rather than a blanket
+  instruction to fail over.
+- **Auth to Bedrock:** Vercel's native OIDC → AWS federation
+  (`sts:AssumeRoleWithWebIdentity` via `@vercel/oidc-aws-credentials-provider`)
+  — no static AWS keys, matching this account's OIDC-over-static-keys
+  standard. IAM OIDC provider + role provisioned via
+  `scripts/setup-bedrock-oidc.sh` (idempotent, mirrors
+  `scripts/setup-eventbridge-cron.sh`'s structure).
+- **Storage:** one row per trigger (not per incident) in Postgres'
+  `incident_analysis` table — an incident accumulates rows across its
+  lifecycle, and the debounce check reads `MAX(created_at)` per
+  `(provider, incident_id)`. A failed run (Bedrock error, malformed
+  tool-use response) still writes a `status='failed'` row with the error
+  message rather than losing the trigger silently.
+- **Not yet built:** the dashboard "AI Insight" panel, PDF export, admin
+  controls for the debounce interval — see the design doc for the full
+  phased rollout.
+
 ### Admin
 
 - **Auth:** Sign in with Vercel (OAuth, PKCE). Any Vercel user can complete
@@ -286,6 +335,7 @@ CU-hr/day, a ~69x drop — projecting to roughly 1.6 CU-hr for the full month.
 - **Vercel BotID** — invisible bot check on the sign-up form
 - **Sign in with Vercel** — admin auth, restricted to a single hardcoded `ADMIN_EMAIL`
 - **AWS EventBridge** (Rule + Connection + API Destination) — triggers `/api/cron/check-status` every 5 minutes; provisioned via `scripts/setup-eventbridge-cron.sh`
+- **AWS Bedrock** (Claude Sonnet 5, via Vercel OIDC federation) — powers the Incident Briefing Engine's `/api/analysis/run`; IAM role provisioned via `scripts/setup-bedrock-oidc.sh`
 - **Vercel Firewall** — rate limiting on the sign-up endpoint (5 req/60s/IP)
 - **AWS Route 53** (`synepho.com` zone) — pre-existing DNS, also hosts Resend's domain-verification records
 
@@ -300,11 +350,20 @@ CU-hr/day, a ~69x drop — projecting to roughly 1.6 CU-hr for the full month.
 | Cron (primary) — AWS EventBridge | Live |
 | Cron (fallback) — Vercel native daily cron | Live |
 | Rate limiting — Vercel Firewall | Live |
+| Incident Briefing Engine — AWS Bedrock | Phase 1 (pipeline live, no UI yet) |
 
 Everything above runs on a free tier.
 
 **Environment variables** (see `.env.local`, gitignored — pull with `vercel env pull`):
 `DATABASE_URL`, `RESEND_API_KEY`, `RESEND_EMAIL_DOMAIN`, `APP_BASE_URL`, `CRON_SECRET`, `VERCEL_OAUTH_CLIENT_ID`, `VERCEL_OAUTH_CLIENT_SECRET`, `SESSION_SECRET`, `ADMIN_EMAIL`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`.
+
+**Incident Briefing Engine env vars** (see `scripts/setup-bedrock-oidc.sh`'s
+output for `AWS_ROLE_ARN`): `AWS_ROLE_ARN`, `AWS_REGION` (pin explicitly to
+`us-east-1` — Vercel can auto-inject a value that drifts under multi-region
+routing), `BEDROCK_MODEL_ID` (optional, defaults to
+`us.anthropic.claude-sonnet-5`), `ANALYSIS_DEBOUNCE_MINUTES` (optional,
+defaults to `30`; the live Redis key `settings:analysis-debounce-minutes`
+overrides it without a redeploy).
 
 **Database migrations** live in `scripts/db/*.sql`, applied via:
 ```bash
@@ -580,6 +639,7 @@ covered by `vercel.json` and needs no separate provisioning step.
 - OCI real per-incident feed (`incident-summary.rss`) wired in — region/service breakdown and the incident table now populate the same way AWS/GCP/Azure do, replacing the earlier `status.json`-only summary
 - Alerts & Admin: sign-up, double opt-in confirmation, manage/unsubscribe, admin subscriber list with CSV export and manual actions, ad hoc test-email tool, Sign in with Vercel admin auth, AWS EventBridge 5-minute change detection, resolution notifications (fires when a previously-active incident disappears from a provider's feed, not just when new ones appear), Upstash Redis status-snapshot cache (replacing an earlier Postgres table that kept Neon compute from autosuspending) — full architecture in [Alerts & Admin](#alerts--admin)
 - SEO: page `<h1>`, sitemap `lastmod`, `noindex` header on `/admin` and `/manage`, crawlable About text in the footer
+- Incident Briefing Engine, Phase 1: per-incident content-hash trigger (new/content_changed/resolved) layered on `check-status.ts`'s existing diff, fire-and-forget `/api/analysis/run` calling AWS Bedrock (Claude Sonnet 5) via Vercel OIDC federation, `incident_analysis` Postgres table — see [Alerts & Admin](#alerts--admin). Headless (no dashboard UI or PDFs yet)
 
 ### Pending (see docs/ENHANCEMENTS.md)
 

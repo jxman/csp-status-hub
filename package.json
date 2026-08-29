@@ -17,9 +17,12 @@
     "*.{ts,tsx}": "eslint --fix"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1121.0",
     "@neondatabase/serverless": "^1.1.0",
     "@upstash/redis": "^1.38.0",
     "@vercel/analytics": "^2.0.1",
+    "@vercel/functions": "^3.9.5",
+    "@vercel/oidc-aws-credentials-provider": "^3.3.5",
     "@vercel/speed-insights": "^2.0.0",
     "botid": "^1.5.11",
     "fast-xml-parser": "^5.5.7",
