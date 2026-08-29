@@ -9,7 +9,7 @@ import {
   sendResolutionNotificationEmail,
   type EmailIncident,
 } from '../_lib/email.js';
-import type { StatusLevel } from '../../src/types/status.js';
+import type { Provider, StatusLevel } from '../../src/types/status.js';
 
 type TestEmailType = 'confirmation' | 'update_confirmation' | 'welcome' | 'outage' | 'resolution';
 
@@ -21,7 +21,7 @@ const PROVIDER_NAMES: Record<string, string> = {
 };
 
 const SAMPLE_INCIDENTS: EmailIncident[] = [
-  { title: 'Increased error rates for API requests', regions: ['US East (N. Virginia)'] },
+  { id: 'sample-incident-1', title: 'Increased error rates for API requests', regions: ['US East (N. Virginia)'] },
 ];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -79,6 +79,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await sendOutageNotificationEmail(
           normalizedTo,
           recipientName,
+          providerId as Provider,
           providerName,
           'outage' as StatusLevel,
           SAMPLE_INCIDENTS,
@@ -91,6 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await sendResolutionNotificationEmail(
           normalizedTo,
           recipientName,
+          providerId as Provider,
           providerName,
           'operational' as StatusLevel,
           SAMPLE_INCIDENTS,

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Provider } from '../types/status';
 import { useIncidentBrief } from '../hooks/useIncidentBrief';
 import { formatBriefText } from '../utils/formatBriefText';
@@ -8,6 +8,7 @@ import { SynephoLogo } from './SynephoLogo';
 interface Props {
   provider: Provider;
   incidentId: string;
+  autoExpand?: boolean;
 }
 
 const TRIGGER_LABELS: Record<string, string> = {
@@ -26,8 +27,8 @@ const ChevronIcon = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function IncidentBriefPanel({ provider, incidentId }: Props) {
-  const [expanded, setExpanded] = useState(false);
+export function IncidentBriefPanel({ provider, incidentId, autoExpand }: Props) {
+  const [expanded, setExpanded] = useState(autoExpand ?? false);
   const [activeTab, setActiveTab] = useState<'technical' | 'executive'>('technical');
   const [versionIndex, setVersionIndex] = useState(0);
   const { state, versions, error, load, retry } = useIncidentBrief(provider, incidentId);
@@ -36,6 +37,14 @@ export function IncidentBriefPanel({ provider, incidentId }: Props) {
     setExpanded((e) => !e);
     load();
   };
+
+  useEffect(() => {
+    if (autoExpand) {
+      setExpanded(true);
+      load();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoExpand]);
 
   const version = versions[versionIndex];
 

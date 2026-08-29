@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { RunHistoryPanel } from './admin/RunHistoryPanel';
+import { AnalysisSettingsPanel } from './admin/AnalysisSettingsPanel';
+
+type AdminTab = 'subscribers' | 'runs' | 'settings';
 
 interface Subscriber {
   id: string;
@@ -105,6 +109,7 @@ function subscriberPill(status: string): { cls: string; label: string } {
 }
 
 export function AdminPage() {
+  const [activeTab, setActiveTab] = useState<AdminTab>('subscribers');
   const [state, setState] = useState<PageState>({ kind: 'loading' });
   const [status, setStatus] = useState('');
   const [provider, setProvider] = useState('');
@@ -350,6 +355,37 @@ export function AdminPage() {
         )}
 
         {state.kind === 'ready' && (
+          <>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+              <button
+                className="btn-ghost"
+                style={activeTab === 'subscribers' ? { background: 'var(--ink)', color: 'var(--bg)' } : undefined}
+                onClick={() => setActiveTab('subscribers')}
+              >
+                Subscribers
+              </button>
+              <button
+                className="btn-ghost"
+                style={activeTab === 'runs' ? { background: 'var(--ink)', color: 'var(--bg)' } : undefined}
+                onClick={() => setActiveTab('runs')}
+              >
+                AI Run History
+              </button>
+              <button
+                className="btn-ghost"
+                style={activeTab === 'settings' ? { background: 'var(--ink)', color: 'var(--bg)' } : undefined}
+                onClick={() => setActiveTab('settings')}
+              >
+                AI Settings
+              </button>
+            </div>
+
+            {activeTab === 'runs' && <RunHistoryPanel />}
+            {activeTab === 'settings' && <AnalysisSettingsPanel />}
+          </>
+        )}
+
+        {state.kind === 'ready' && activeTab === 'subscribers' && (
           <>
             <div style={{
               display: 'flex', alignItems: 'center', background: 'var(--card)', border: '1px solid var(--border)',

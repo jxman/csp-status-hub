@@ -5,13 +5,14 @@ import { IncidentBriefPanel } from './IncidentBriefPanel';
 interface Props {
   incident: Incident;
   provider: Provider;
+  autoExpand?: boolean;
 }
 
 const providerShort: Record<Provider, string> = {
   aws: 'AWS', azure: 'Azure', gcp: 'GCP', oci: 'OCI',
 };
 
-export function IncidentCard({ incident, provider }: Props) {
+export function IncidentCard({ incident, provider, autoExpand }: Props) {
   const isResolved = incident.status === 'resolved';
   const sevClass = incident.severity === 'high' ? 'high' : 'med';
   const sevLabel = incident.severity === 'high' ? 'High' : incident.severity === 'medium' ? 'Med' : 'Low';
@@ -20,7 +21,7 @@ export function IncidentCard({ incident, provider }: Props) {
   const extraRegions = incident.affectedRegions.length - regionChips.length;
 
   return (
-    <div className={`incident${isResolved ? ' resolved' : ''}`}>
+    <div id={`incident-${provider}-${incident.id}`} className={`incident${isResolved ? ' resolved' : ''}`}>
       <div>
         <div className="inc-title">{incident.title}</div>
         <div className="inc-meta">
@@ -66,7 +67,7 @@ export function IncidentCard({ incident, provider }: Props) {
         )}
       </div>
 
-      <IncidentBriefPanel provider={provider} incidentId={incident.id} />
+      <IncidentBriefPanel provider={provider} incidentId={incident.id} autoExpand={autoExpand} />
     </div>
   );
 }

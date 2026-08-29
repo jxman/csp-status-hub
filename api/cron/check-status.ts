@@ -4,6 +4,7 @@ import { waitUntil } from '@vercel/functions';
 import { sql } from '../_lib/db.js';
 import { redis, snapshotKey, type ProviderSnapshot } from '../_lib/redis.js';
 import { sendOutageNotificationEmail, sendResolutionNotificationEmail } from '../_lib/email.js';
+import { getDisabledProviders } from '../_lib/analysisSettings.js';
 import { fetchAws } from '../../src/fetchers/awsFetcher.js';
 import { fetchGcp } from '../../src/fetchers/gcpFetcher.js';
 import { fetchOci } from '../../src/fetchers/ociFetcher.js';
@@ -55,6 +56,7 @@ function triggerAnalysis(provider: Provider, incidentId: string, triggerEvent: A
 type NotificationEvent = 'new_incident' | 'incident_resolved';
 
 interface IncidentSummary {
+  id: string;
   title: string;
   regions: string[];
 }
@@ -82,6 +84,7 @@ async function notifySubscribers(
       const success = await sendEmail(
         sub.email,
         sub.name,
+        provider as Provider,
         status.displayName,
         status.overallStatus,
         incidents,
@@ -121,6 +124,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     notified?: number;
     resolvedNotified?: number;
   }> = {};
+
+  // Read once per tick, not once per incident — this is purely a
+  // Bedrock-cost/analysis control and must never affect notifySubscribers()
+  // below (see README.md's Alerts & Admin section).
+  const disabledProviders = await getDisabledProviders();
 
   for (const [provider, fetcher] of Object.entries(FETCHERS)) {
     try {
@@ -163,10 +171,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         status.activeIncidents.filter((i) => activeIds.includes(i.id)).map((i) => [i.id, i.affectedRegions])
       );
       const newIncidents = newIncidentIds.map((id) => ({
+        id,
         title: activeIncidentTitles[id] ?? id,
         regions: activeIncidentRegions[id] ?? [],
       }));
       const resolvedIncidents = resolvedIncidentIds.map((id) => ({
+        id,
         title: previousTitles[id] ?? id,
         regions: previousRegions[id] ?? [],
       }));
@@ -211,17 +221,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // slow or failed Bedrock call can never delay this provider's
       // notifications or the next provider's iteration of this loop.
       if (!isFirstCheck) {
-        for (const id of newIncidentIds) {
-          const incident = activeIncidentSnapshots[id];
-          if (incident) triggerAnalysis(provider as Provider, id, 'new', incident);
-        }
-        for (const id of contentChangedIncidentIds) {
-          const incident = activeIncidentSnapshots[id];
-          if (incident) triggerAnalysis(provider as Provider, id, 'content_changed', incident);
-        }
-        for (const id of resolvedIncidentIds) {
-          const incident = previousIncidentSnapshots[id];
-          if (incident) triggerAnalysis(provider as Provider, id, 'resolved', { ...incident, status: 'resolved' });
+        if (disabledProviders.has(provider as Provider)) {
+          const skipped = [...newIncidentIds, ...contentChangedIncidentIds, ...resolvedIncidentIds];
+          if (skipped.length > 0) {
+            console.log(`[check-status] analysis disabled for ${provider} - skipping trigger for ${skipped.join(', ')}`);
+          }
+        } else {
+          for (const id of newIncidentIds) {
+            const incident = activeIncidentSnapshots[id];
+            if (incident) triggerAnalysis(provider as Provider, id, 'new', incident);
+          }
+          for (const id of contentChangedIncidentIds) {
+            const incident = activeIncidentSnapshots[id];
+            if (incident) triggerAnalysis(provider as Provider, id, 'content_changed', incident);
+          }
+          for (const id of resolvedIncidentIds) {
+            const incident = previousIncidentSnapshots[id];
+            if (incident) triggerAnalysis(provider as Provider, id, 'resolved', { ...incident, status: 'resolved' });
+          }
         }
       }
     } catch (err) {

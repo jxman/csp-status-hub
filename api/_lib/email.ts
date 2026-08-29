@@ -1,5 +1,5 @@
 import { Resend } from 'resend';
-import type { StatusLevel } from '../../src/types/status.js';
+import type { Provider, StatusLevel } from '../../src/types/status.js';
 
 const resend = new Resend(process.env.RESEND_API_KEY!);
 const FROM = `Cloud Status Hub Alerts <alerts@${process.env.RESEND_EMAIL_DOMAIN}>`;
@@ -53,8 +53,21 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export interface EmailIncident {
+  id: string;
   title: string;
   regions: string[];
+}
+
+// Brief generation is async/fire-and-forget and hasn't run yet at the
+// moment this email is sent (see README.md's Alerts & Admin section) — this
+// links to a stable dashboard deep-link that resolves whatever's available
+// whenever the email is actually opened, rather than a PDF/brief snapshot
+// taken at send time (which would almost always be empty for a brand-new
+// incident). Returns null when APP_BASE_URL isn't configured, so the caller
+// can omit the line entirely rather than emit a bare "/?...".
+function briefUrl(base: string, providerKey: Provider, incidentId: string): string | null {
+  if (!base) return null;
+  return `${base}/?${new URLSearchParams({ provider: providerKey, incidentId }).toString()}`;
 }
 
 // No regions parsed (or the fetcher explicitly labeled it "global"/unscoped) reads
@@ -70,15 +83,20 @@ function formatRegions(regions: string[]): string {
 // Renders as a single bolded line for one incident, or a bullet list for several —
 // callers always pass at least one title (falling back to the raw incident id in
 // the rare case a title couldn't be resolved). Each line is followed by the
-// affected region(s) so subscribers don't have to click through to find out scope.
-function renderIncidentTitles(incidents: EmailIncident[]): string {
+// affected region(s) so subscribers don't have to click through to find out scope,
+// plus a per-incident link to its AI brief on the dashboard when one is available.
+function renderIncidentTitles(incidents: EmailIncident[], providerKey: Provider, base: string): string {
+  const briefLine = (i: EmailIncident): string => {
+    const url = briefUrl(base, providerKey, i.id);
+    return url ? `<br/><a href="${escapeHtml(url)}" style="font-size:13px;">View AI analysis →</a>` : '';
+  };
   if (incidents.length === 1) {
-    return `<p><strong>${escapeHtml(incidents[0].title)}</strong><br/><span style="color:#666;font-size:13px;">Region(s): ${escapeHtml(formatRegions(incidents[0].regions))}</span></p>`;
+    return `<p><strong>${escapeHtml(incidents[0].title)}</strong><br/><span style="color:#666;font-size:13px;">Region(s): ${escapeHtml(formatRegions(incidents[0].regions))}</span>${briefLine(incidents[0])}</p>`;
   }
   return `<ul>${incidents
     .map(
       (i) =>
-        `<li><strong>${escapeHtml(i.title)}</strong><br/><span style="color:#666;font-size:13px;">Region(s): ${escapeHtml(formatRegions(i.regions))}</span></li>`
+        `<li><strong>${escapeHtml(i.title)}</strong><br/><span style="color:#666;font-size:13px;">Region(s): ${escapeHtml(formatRegions(i.regions))}</span>${briefLine(i)}</li>`
     )
     .join('')}</ul>`;
 }
@@ -102,6 +120,7 @@ function formatEmailTimestamp(date: Date = new Date()): string {
 export async function sendOutageNotificationEmail(
   to: string,
   name: string,
+  providerKey: Provider,
   providerDisplayName: string,
   status: StatusLevel,
   incidents: EmailIncident[],
@@ -124,7 +143,7 @@ export async function sendOutageNotificationEmail(
       <p>Hi ${escapeHtml(name)},</p>
       <p><strong>${escapeHtml(providerDisplayName)}</strong> just started reporting <strong>${escapeHtml(statusLabel)}</strong>:</p>
       <p style="margin:0 0 16px;font-size:12px;color:#888;">Sent ${formatEmailTimestamp()}</p>
-      ${renderIncidentTitles(incidents)}
+      ${renderIncidentTitles(incidents, providerKey, dashboardUrl)}
       <p><a href="${dashboardUrl}">View on Cloud Status Hub</a> — from there you can click through to the official status page.</p>
       <p style="margin-top:24px;font-size:12px;color:#666;">
         <a href="${manageUrl}">Manage your subscription</a> ·
@@ -143,6 +162,7 @@ export async function sendOutageNotificationEmail(
 export async function sendResolutionNotificationEmail(
   to: string,
   name: string,
+  providerKey: Provider,
   providerDisplayName: string,
   currentStatus: StatusLevel,
   incidents: EmailIncident[],
@@ -172,7 +192,7 @@ export async function sendResolutionNotificationEmail(
       <p>Hi ${escapeHtml(name)},</p>
       <p>${intro}</p>
       <p style="margin:0 0 16px;font-size:12px;color:#888;">Sent ${formatEmailTimestamp()}</p>
-      ${renderIncidentTitles(incidents)}
+      ${renderIncidentTitles(incidents, providerKey, dashboardUrl)}
       <p><a href="${dashboardUrl}">View on Cloud Status Hub</a> — from there you can click through to the official status page.</p>
       <p style="margin-top:24px;font-size:12px;color:#666;">
         <a href="${manageUrl}">Manage your subscription</a> ·

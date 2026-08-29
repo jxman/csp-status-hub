@@ -262,7 +262,7 @@ CU-hr/day, a ~69x drop — projecting to roughly 1.6 CU-hr for the full month.
   self-heals if the target endpoint or rule description drift — see
   **Known constraints** below).
 
-### Incident Briefing Engine (Phases 1-3 live; Phase 4 admin controls pending)
+### Incident Briefing Engine (Phases 1-4, complete)
 
 AI-generated technical + executive briefs per incident, built on AWS Bedrock,
 surfaced on the dashboard and downloadable as branded PDFs. Full design in
@@ -327,9 +327,34 @@ the artifact-linked design doc.
   fixed footer disclaimer repeats on every page. The dashboard only shows a
   "Download PDF" link once a URL exists — pre-Phase-3 rows and any
   PDF-generation failure both render nothing rather than a broken link.
-- **Not yet built:** admin controls for the debounce interval and a manual
-  retry action for failed rows — see the design doc for the full phased
-  rollout.
+- **Email link (Phase 4):** outage/resolution emails link each incident to
+  `${APP_BASE_URL}/?provider=...&incidentId=...` — a stable dashboard
+  deep-link rather than a PDF/brief snapshot at send time, since brief
+  generation is async and hasn't run yet when the email goes out (the
+  fire-and-forget analysis trigger fires *after* `notifySubscribers()`
+  completes in the same tick). `useIncidentDeepLink` (`src/hooks/`) parses
+  the params once on load, strips them from the URL, and scrolls to and
+  auto-expands the matching incident's AI Insight panel once real data has
+  loaded; silently no-ops if the incident's since rolled off the feed.
+- **Admin controls (Phase 4):** a single `api/admin/analysis-admin.ts`
+  endpoint (merged from what would otherwise be three routes — this
+  project's Vercel Hobby plan caps at 12 Serverless Functions per
+  deployment, and three separate routes would have exceeded it) backs three
+  admin-only surfaces: run history (last 200 `incident_analysis` rows,
+  client-side filtered), a manual retry action for `status='failed'` rows
+  (reruns the shared pipeline with `bypassDebounce: true`, always inserting
+  a new row rather than mutating the failed one), and live settings — the
+  debounce interval and a per-provider kill switch
+  (`settings:analysis-disabled-providers` in Redis, read once per cron
+  tick, fails open on a Redis error so a hiccup can't silently stop
+  analysis for every provider). The kill switch only gates the analysis
+  trigger — outage/resolution emails keep sending normally for a
+  "disabled" provider, since it's a Bedrock-cost control, not a monitoring
+  pause. The Bedrock/PDF pipeline itself lives in
+  `api/_lib/analysisPipeline.ts`, shared between `/api/analysis/run` (the
+  CRON_SECRET-gated fire-and-forget path) and the admin retry action (the
+  `requireAdmin`-gated path) so neither duplicates the ~80 lines of
+  Bedrock/Postgres/PDF logic.
 
 ### Admin
 
@@ -371,7 +396,7 @@ the artifact-linked design doc.
 | Cron (primary) — AWS EventBridge | Live |
 | Cron (fallback) — Vercel native daily cron | Live |
 | Rate limiting — Vercel Firewall | Live |
-| Incident Briefing Engine — AWS Bedrock + Vercel Blob | Phases 1-3 live; Phase 4 admin controls pending |
+| Incident Briefing Engine — AWS Bedrock + Vercel Blob | Phases 1-4, complete |
 
 Everything above runs on a free tier.
 
@@ -666,6 +691,7 @@ covered by `vercel.json` and needs no separate provisioning step.
 - Incident Briefing Engine, Phase 1: per-incident content-hash trigger (new/content_changed/resolved) layered on `check-status.ts`'s existing diff, fire-and-forget `/api/analysis/run` calling AWS Bedrock via Vercel OIDC federation, `incident_analysis` Postgres table — see [Alerts & Admin](#alerts--admin)
 - Incident Briefing Engine, Phase 2: public `/api/analysis/history` read endpoint, lazy-fetched "AI Insight" panel on each incident card with a Technical/Executive toggle and version stepper
 - Incident Briefing Engine, Phase 3: `@react-pdf/renderer`-generated, Synepho-branded PDF export per brief version, uploaded to Vercel Blob with a 1-year immutable cache, "Download PDF" links on the dashboard
+- Incident Briefing Engine, Phase 4 (final phase): outage/resolution emails link to a dashboard deep-link that auto-expands the right incident's AI Insight panel; admin run history, manual retry for failed rows, and live settings (debounce interval, per-provider kill switch) — see [Alerts & Admin](#alerts--admin)
 
 ### Pending (see docs/ENHANCEMENTS.md)
 

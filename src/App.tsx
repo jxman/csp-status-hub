@@ -3,6 +3,7 @@ import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { useStatusPolling, PROVIDER_ORDER } from './hooks/useStatusPolling';
 import { useTheme } from './hooks/useTheme';
+import { useIncidentDeepLink } from './hooks/useIncidentDeepLink';
 import { StatusHeader } from './components/StatusHeader';
 import { ProviderGrid, type ProviderSlot } from './components/ProviderGrid';
 import { ProviderCardSkeleton } from './components/ProviderCardSkeleton';
@@ -150,6 +151,7 @@ export default function App() {
   const [showAlertsModal, setShowAlertsModal] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [urlBanner, dismissUrlBanner] = useUrlBanner();
+  const { deepLinkTarget, consume: consumeDeepLink } = useIncidentDeepLink();
 
   const slots: ProviderSlot[] = PROVIDER_ORDER.map((id) => ({ provider: id, status: providers[id] }));
   const loadedProviders: ProviderStatus[] = slots
@@ -157,6 +159,11 @@ export default function App() {
     .filter((p): p is ProviderStatus => p != null);
   const hasAnyData = loadedProviders.length > 0;
   const pendingCount = PROVIDER_ORDER.length - loadedProviders.length;
+
+  useEffect(() => {
+    if (hasAnyData) consumeDeepLink(loadedProviders);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasAnyData]);
 
   const hasDegradedProvider = loadedProviders.some(
     (p) => p.overallStatus === 'degraded' || p.overallStatus === 'outage'
@@ -243,7 +250,7 @@ export default function App() {
           )}
           <StatsBanner providers={loadedProviders} />
           <ProviderGrid slots={slots} />
-          <IncidentList providers={loadedProviders} />
+          <IncidentList providers={loadedProviders} deepLinkTarget={deepLinkTarget} />
           <footer style={{
             padding: '16px 32px 24px', fontSize: 11,
             color: 'var(--ink-4)', borderTop: '1px solid var(--border)',
