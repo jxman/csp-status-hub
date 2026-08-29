@@ -1,5 +1,6 @@
 import type { Incident, Provider } from '../types/status';
 import { formatRelative } from '../utils/formatters';
+import { IncidentBriefPanel } from './IncidentBriefPanel';
 
 interface Props {
   incident: Incident;
@@ -64,6 +65,8 @@ export function IncidentCard({ incident, provider }: Props) {
           </a>
         )}
       </div>
+
+      <IncidentBriefPanel provider={provider} incidentId={incident.id} />
     </div>
   );
 }

@@ -405,6 +405,25 @@ body {
 .incident .inc-foot a { color: var(--blue); text-decoration: none; }
 .incident .inc-foot a:hover { text-decoration: underline; }
 
+.incident .ai-insight { grid-column: 1 / -1; border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; }
+.ai-insight-head {
+  display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;
+  font-size: 12px; font-weight: 600; color: var(--ink-2);
+}
+.ai-insight-body { margin-top: 8px; }
+.brief-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.brief-tab {
+  font-size: 12px; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--chip-bg); color: var(--ink-2); cursor: pointer;
+}
+.brief-tab.active { background: var(--blue); border-color: var(--blue); color: white; }
+.brief-text { white-space: pre-wrap; color: var(--ink-2); font-size: 13px; line-height: 1.55; }
+.brief-version-stepper {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px;
+  font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--ink-3);
+}
+.brief-empty, .brief-loading, .brief-error { font-size: 12px; color: var(--ink-3); font-style: italic; }
+
 /* ===== Mobile sticky action bar ===== */
 
 /* ===== Responsive ===== */
