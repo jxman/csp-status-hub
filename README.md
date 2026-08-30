@@ -308,14 +308,17 @@ the artifact-linked design doc.
   `(provider, incident_id)`. A failed run (Bedrock error, malformed
   tool-use response) still writes a `status='failed'` row with the error
   message rather than losing the trigger silently.
-- **Reading it back (Phase 2):** `GET /api/analysis/history` is a public,
-  unauthenticated, CDN-cached endpoint (no Redis layer — it only fires
-  on-demand when a user expands a panel, not on every 60s poll) returning
-  the last 10 `status='complete'` versions for a `(provider, incidentId)`,
-  newest first. The dashboard's "AI Insight" panel
+- **Reading it back (Phase 2, revised 2026-08-29):** `GET /api/analysis/latest`
+  is a public, unauthenticated, CDN-cached endpoint (no Redis layer — it
+  only fires on-demand when a user expands a panel, not on every 60s poll)
+  returning just the single most recent `status='complete'` row for a
+  `(provider, incidentId)`. The dashboard's "AI Insight" panel
   (`IncidentBriefPanel.tsx`) lazy-fetches this on first expand — zero
   requests fire until a user actually opens it — with a Technical/Executive
-  toggle and a version stepper for incidents with more than one update.
+  toggle. Older versions for the same incident still exist in Postgres
+  (used by admin run history / retry), but the dashboard only ever shows
+  the latest one — no version stepper, since a stale prior version reads
+  as contradicting the incident's current live status.
 - **PDF export (Phase 3):** generated once per analysis version, right
   after the text brief succeeds, as a best-effort step that can never
   affect the already-published text (`api/_lib/pdf/render.ts`). Built with
@@ -689,7 +692,7 @@ covered by `vercel.json` and needs no separate provisioning step.
 - Alerts & Admin: sign-up, double opt-in confirmation, manage/unsubscribe, admin subscriber list with CSV export and manual actions, ad hoc test-email tool, Sign in with Vercel admin auth, AWS EventBridge 5-minute change detection, resolution notifications (fires when a previously-active incident disappears from a provider's feed, not just when new ones appear), Upstash Redis status-snapshot cache (replacing an earlier Postgres table that kept Neon compute from autosuspending) — full architecture in [Alerts & Admin](#alerts--admin)
 - SEO: page `<h1>`, sitemap `lastmod`, `noindex` header on `/admin` and `/manage`, crawlable About text in the footer
 - Incident Briefing Engine, Phase 1: per-incident content-hash trigger (new/content_changed/resolved) layered on `check-status.ts`'s existing diff, fire-and-forget `/api/analysis/run` calling AWS Bedrock via Vercel OIDC federation, `incident_analysis` Postgres table — see [Alerts & Admin](#alerts--admin)
-- Incident Briefing Engine, Phase 2: public `/api/analysis/history` read endpoint, lazy-fetched "AI Insight" panel on each incident card with a Technical/Executive toggle and version stepper
+- Incident Briefing Engine, Phase 2: public `/api/analysis/latest` read endpoint (originally `/api/analysis/history` with a version stepper; simplified 2026-08-29 to always show just the current version — see **Reading it back** below), lazy-fetched "AI Insight" panel on each incident card with a Technical/Executive toggle
 - Incident Briefing Engine, Phase 3: `@react-pdf/renderer`-generated, Synepho-branded PDF export per brief version, uploaded to Vercel Blob with a 1-year immutable cache, "Download PDF" links on the dashboard
 - Incident Briefing Engine, Phase 4 (final phase): outage/resolution emails link to a dashboard deep-link that auto-expands the right incident's AI Insight panel; admin run history, manual retry for failed rows, and live settings (debounce interval, per-provider kill switch) — see [Alerts & Admin](#alerts--admin)
 

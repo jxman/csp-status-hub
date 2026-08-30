@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import type { Provider } from '../types/status';
 import { useIncidentBrief } from '../hooks/useIncidentBrief';
 import { formatBriefText } from '../utils/formatBriefText';
-import { formatRelative } from '../utils/formatters';
 import { SynephoLogo } from './SynephoLogo';
 
 interface Props {
@@ -10,12 +9,6 @@ interface Props {
   incidentId: string;
   autoExpand?: boolean;
 }
-
-const TRIGGER_LABELS: Record<string, string> = {
-  new: 'New',
-  content_changed: 'Updated',
-  resolved: 'Resolved',
-};
 
 const ChevronIcon = ({ open }: { open: boolean }) => (
   <svg
@@ -44,8 +37,7 @@ const SparkleIcon = () => (
 export function IncidentBriefPanel({ provider, incidentId, autoExpand }: Props) {
   const [expanded, setExpanded] = useState(autoExpand ?? false);
   const [activeTab, setActiveTab] = useState<'technical' | 'executive'>('technical');
-  const [versionIndex, setVersionIndex] = useState(0);
-  const { state, versions, error, load, retry } = useIncidentBrief(provider, incidentId);
+  const { state, brief, error, load, retry } = useIncidentBrief(provider, incidentId);
 
   const toggle = () => {
     setExpanded((e) => !e);
@@ -59,8 +51,6 @@ export function IncidentBriefPanel({ provider, incidentId, autoExpand }: Props) 
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoExpand]);
-
-  const version = versions[versionIndex];
 
   return (
     <div className="ai-insight">
@@ -92,11 +82,11 @@ export function IncidentBriefPanel({ provider, incidentId, autoExpand }: Props) 
             </div>
           )}
 
-          {state === 'loaded' && versions.length === 0 && (
+          {state === 'loaded' && !brief && (
             <div className="brief-empty">No AI analysis yet for this incident.</div>
           )}
 
-          {state === 'loaded' && version && (
+          {state === 'loaded' && brief && (
             <>
               <div className="brief-tabs">
                 <button
@@ -114,41 +104,19 @@ export function IncidentBriefPanel({ provider, incidentId, autoExpand }: Props) 
               </div>
 
               <div className="brief-text">
-                {formatBriefText(activeTab === 'technical' ? version.technicalBrief : version.executiveBrief)}
+                {formatBriefText(activeTab === 'technical' ? brief.technicalBrief : brief.executiveBrief)}
               </div>
 
-              {(activeTab === 'technical' ? version.pdfTechnicalUrl : version.pdfExecutiveUrl) && (
+              {(activeTab === 'technical' ? brief.pdfTechnicalUrl : brief.pdfExecutiveUrl) && (
                 <a
                   className="brief-pdf-link"
-                  href={(activeTab === 'technical' ? version.pdfTechnicalUrl : version.pdfExecutiveUrl) ?? undefined}
+                  href={(activeTab === 'technical' ? brief.pdfTechnicalUrl : brief.pdfExecutiveUrl) ?? undefined}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
                   <DownloadIcon />
                   Download PDF
                 </a>
-              )}
-
-              {versions.length > 1 && (
-                <div className="brief-version-stepper">
-                  <button
-                    className="btn-ghost"
-                    disabled={versionIndex >= versions.length - 1}
-                    onClick={() => setVersionIndex((i) => i + 1)}
-                  >
-                    ‹
-                  </button>
-                  <span>
-                    Update {versionIndex + 1} of {versions.length} · {TRIGGER_LABELS[version.triggerEvent] ?? version.triggerEvent} · {formatRelative(version.createdAt)}
-                  </span>
-                  <button
-                    className="btn-ghost"
-                    disabled={versionIndex <= 0}
-                    onClick={() => setVersionIndex((i) => i - 1)}
-                  >
-                    ›
-                  </button>
-                </div>
               )}
             </>
           )}

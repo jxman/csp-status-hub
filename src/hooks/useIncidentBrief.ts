@@ -1,12 +1,12 @@
 import { useCallback, useRef, useState } from 'react';
 import type { Provider } from '../types/status';
-import { fetchIncidentBriefHistory, type BriefVersion } from '../fetchers/analysisFetcher';
+import { fetchLatestIncidentBrief, type LatestBrief } from '../fetchers/analysisFetcher';
 
 type BriefState = 'idle' | 'loading' | 'loaded' | 'error';
 
 interface UseIncidentBrief {
   state: BriefState;
-  versions: BriefVersion[];
+  brief: LatestBrief | null;
   error: string | null;
   load: () => void;
   retry: () => void;
@@ -14,16 +14,16 @@ interface UseIncidentBrief {
 
 export function useIncidentBrief(provider: Provider, incidentId: string): UseIncidentBrief {
   const [state, setState] = useState<BriefState>('idle');
-  const [versions, setVersions] = useState<BriefVersion[]>([]);
+  const [brief, setBrief] = useState<LatestBrief | null>(null);
   const [error, setError] = useState<string | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
 
   const fetchNow = useCallback(() => {
     setState('loading');
-    fetchIncidentBriefHistory(provider, incidentId)
+    fetchLatestIncidentBrief(provider, incidentId)
       .then((result) => {
-        setVersions(result);
+        setBrief(result);
         setState('loaded');
       })
       .catch((err) => {
@@ -42,5 +42,5 @@ export function useIncidentBrief(provider: Provider, incidentId: string): UseInc
     fetchNow();
   }, [fetchNow]);
 
-  return { state, versions, error, load, retry };
+  return { state, brief, error, load, retry };
 }

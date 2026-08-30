@@ -1,6 +1,6 @@
 import type { Provider } from '../types/status';
 
-export interface BriefVersion {
+export interface LatestBrief {
   id: string;
   triggerEvent: 'new' | 'content_changed' | 'resolved';
   technicalBrief: string;
@@ -11,17 +11,17 @@ export interface BriefVersion {
   createdAt: string;
 }
 
-interface HistoryResponse {
+interface LatestResponse {
   provider: Provider;
   incidentId: string;
-  versions: BriefVersion[];
+  brief: LatestBrief | null;
 }
 
-export async function fetchIncidentBriefHistory(provider: Provider, incidentId: string): Promise<BriefVersion[]> {
-  const url = `/api/analysis/history?provider=${provider}&incidentId=${encodeURIComponent(incidentId)}`;
+export async function fetchLatestIncidentBrief(provider: Provider, incidentId: string): Promise<LatestBrief | null> {
+  const url = `/api/analysis/latest?provider=${provider}&incidentId=${encodeURIComponent(incidentId)}`;
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`Brief history request returned ${response.status} ${response.statusText}`);
+    throw new Error(`Brief request returned ${response.status} ${response.statusText}`);
   }
 
   // Vite dev server returns index.html (200 OK) for unknown /api/* routes.
@@ -34,9 +34,9 @@ export async function fetchIncidentBriefHistory(provider: Provider, incidentId: 
         'AI Insight requires a Vercel serverless function. Run `vercel dev` instead of `npm run dev` to enable it locally.'
       );
     }
-    throw new Error('Brief history endpoint returned an unexpected HTML response.');
+    throw new Error('Brief endpoint returned an unexpected HTML response.');
   }
 
-  const data: HistoryResponse = JSON.parse(text);
-  return data.versions;
+  const data: LatestResponse = JSON.parse(text);
+  return data.brief;
 }
