@@ -68,7 +68,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
     res.status(200).json({ provider, incidentId, brief });
   } catch (err) {
-    console.error(`[analysis/latest] query failed for ${provider}/${incidentId}`, err);
+    console.error('[analysis/latest] query failed', { provider, incidentId }, err);
     res.setHeader('Cache-Control', 's-maxage=20, stale-while-revalidate=10');
     res.status(200).json({ provider, incidentId, brief: null });
   }
