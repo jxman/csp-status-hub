@@ -59,12 +59,10 @@ export function AboutModal({ onClose }: Props) {
         </div>
 
         <p style={{ fontSize: 15, color: 'var(--ink-2)', lineHeight: 1.65, margin: '0 0 22px' }}>
-          Real-time operational status across all four major cloud providers in one place —
-          region and service level breakdowns, active incidents, and auto-refreshing updates,
-          instead of four browser tabs. Active incidents include an <strong>AI Insight</strong>{' '}
-          panel — a Bedrock-generated technical brief for engineers and an executive brief for
-          leadership, both available as a downloadable PDF, so a new incident comes with a
-          starting-point analysis instead of just a status change.
+          Real-time status for AWS, Azure, GCP &amp; Oracle Cloud in one place, instead of four
+          browser tabs. Every active incident gets an <strong>AI Insight</strong> panel —
+          Bedrock-generated technical and executive briefs, downloadable as PDF — so it arrives
+          with a starting-point analysis, not just a status change.
         </p>
 
         <div style={{ borderTop: '1px solid var(--border)', margin: '0 0 20px' }} />
