@@ -405,21 +405,40 @@ body {
 .incident .inc-foot a { color: var(--blue); text-decoration: none; }
 .incident .inc-foot a:hover { text-decoration: underline; }
 
-.incident .ai-insight { grid-column: 1 / -1; border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; }
+.incident .ai-insight {
+  grid-column: 1 / -1;
+  margin-top: 12px;
+  border: 1px solid color-mix(in oklab, var(--blue) 22%, var(--border));
+  border-left: 3px solid var(--blue);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--blue) 6%, var(--card));
+  padding: 12px 14px;
+}
 .ai-insight-head {
-  display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;
-  font-size: 12px; font-weight: 600; color: var(--ink-2);
+  display: flex; align-items: center; gap: 7px; cursor: pointer; user-select: none;
+  font-size: 13px; font-weight: 700; color: var(--ink);
 }
-.ai-insight-body { margin-top: 8px; }
-.brief-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.ai-insight-head .sparkle { color: var(--blue); flex-shrink: 0; }
+.ai-insight-powered {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 400; color: var(--ink-4);
+}
+.ai-insight-body { margin-top: 10px; }
+.brief-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
 .brief-tab {
-  font-size: 12px; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border);
-  background: var(--chip-bg); color: var(--ink-2); cursor: pointer;
+  font-size: 12px; padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border-strong);
+  background: var(--card); color: var(--ink-2); cursor: pointer; font-family: inherit;
 }
-.brief-tab.active { background: var(--blue); border-color: var(--blue); color: white; }
-.brief-text { white-space: pre-wrap; color: var(--ink-2); font-size: 13px; line-height: 1.55; }
-.brief-pdf-link { display: inline-block; margin-top: 8px; font-size: 12px; color: var(--blue); text-decoration: none; }
-.brief-pdf-link:hover { text-decoration: underline; }
+.brief-tab.active { background: var(--blue); border-color: var(--blue); color: white; font-weight: 600; }
+.brief-text { white-space: pre-wrap; color: var(--ink-2); font-size: 13px; line-height: 1.6; }
+.brief-text strong { color: var(--ink); font-weight: 700; }
+.brief-pdf-link {
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 12px;
+  font-size: 12px; font-weight: 600; color: var(--blue); text-decoration: none;
+  padding: 5px 11px; border-radius: 6px; border: 1px solid color-mix(in oklab, var(--blue) 35%, var(--border));
+  background: color-mix(in oklab, var(--blue) 8%, var(--card));
+}
+.brief-pdf-link:hover { background: color-mix(in oklab, var(--blue) 15%, var(--card)); }
 .brief-version-stepper {
   display: flex; align-items: center; gap: 8px; margin-top: 10px;
   font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--ink-3);
@@ -458,6 +477,8 @@ body {
 
   .footer-full { display: none; }
   .footer-short { display: inline; }
+
+  .ai-insight-powered { display: none; }
 
   .incidents-section { padding: 8px 16px 80px; }
   .incident { grid-template-columns: 1fr; padding: 14px 16px; }
