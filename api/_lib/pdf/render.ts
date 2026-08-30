@@ -41,7 +41,14 @@ async function renderAndUploadOne(
   logoBuffer: Buffer
 ): Promise<string | null> {
   try {
-    const briefText = kind === 'technical' ? input.technicalBrief : input.executiveBrief;
+    // The executive prompt (api/_lib/analysisPrompt.ts) already appends
+    // DISCLAIMER_TEXT as the brief's own final line — strip a trailing copy
+    // here so it doesn't also repeat immediately below in the PDF's own
+    // recurring footer, which shows the disclaimer on every page regardless.
+    const rawBriefText = kind === 'technical' ? input.technicalBrief : input.executiveBrief;
+    const briefText = rawBriefText.trim().endsWith(DISCLAIMER_TEXT)
+      ? rawBriefText.trim().slice(0, -DISCLAIMER_TEXT.length).trim()
+      : rawBriefText;
     const buffer = await renderToBuffer(
       BriefDocument({
         kind,
@@ -54,6 +61,7 @@ async function renderAndUploadOne(
         briefText,
         logoBuffer,
         disclaimerText: DISCLAIMER_TEXT,
+        siteUrl: process.env.APP_BASE_URL || 'https://cloudstatus.synepho.com',
       })
     );
 

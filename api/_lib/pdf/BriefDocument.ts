@@ -26,7 +26,7 @@ const INK = '#171b20';
 const INK_SOFT = '#5b6570';
 
 const styles = StyleSheet.create({
-  page: { padding: 40, paddingBottom: 70, fontSize: 10, fontFamily: 'Helvetica', color: INK },
+  page: { padding: 40, paddingBottom: 84, fontSize: 10, fontFamily: 'Helvetica', color: INK },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   logo: { width: 100, height: 21 },
   headerLabel: { fontSize: 9, color: INK_SOFT, textAlign: 'right' },
@@ -36,7 +36,14 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', marginBottom: 4 },
   metaLabel: { width: 110, fontFamily: 'Helvetica-Bold', color: INK_SOFT },
   metaValue: { flex: 1 },
-  bodyLine: { marginBottom: 6, lineHeight: 1.5 },
+  // One block per real paragraph/section (split on blank lines in the
+  // source) — NOT one block per line. Each block's own lines (e.g. bullet
+  // items with no blank line between them) are joined as literal "\n"
+  // inside a single <Text>, so line-height applies once per wrapped line
+  // the normal way instead of compounding a margin + full line-height on
+  // every individual bullet, which is what made everything look
+  // double-spaced.
+  bodyBlock: { marginBottom: 9, lineHeight: 1.35 },
   bold: { fontFamily: 'Helvetica-Bold' },
   footer: {
     position: 'absolute',
@@ -46,9 +53,10 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#d9dcd7',
     paddingTop: 8,
-    fontSize: 8,
-    color: INK_SOFT,
   },
+  disclaimer: { fontSize: 8, color: INK_SOFT, lineHeight: 1.35 },
+  poweredBy: { fontSize: 8, color: INK_SOFT, marginTop: 5 },
+  poweredByBrand: { color: BRAND_BLUE, fontFamily: 'Helvetica-Bold' },
 });
 
 const KIND_LABEL: Record<'technical' | 'executive', string> = {
@@ -56,22 +64,32 @@ const KIND_LABEL: Record<'technical' | 'executive', string> = {
   executive: 'Executive Brief',
 };
 
-// Adapts src/utils/formatBriefText.tsx's **bold**-span parsing for react-pdf,
-// which has no white-space: pre-wrap equivalent — paragraphs/lines must be
-// split into their own block-level <Text> elements first.
+// Adapts src/utils/formatBriefText.tsx's **bold**-span parsing for react-pdf.
 function renderBriefBody(text: string) {
-  return text
-    .split('\n')
-    .map((line, i) => {
-      if (line.trim().length === 0) return null;
-      const segments = line.split(/\*\*(.+?)\*\*/g);
-      return h(
-        Text,
-        { key: i, style: styles.bodyLine },
-        ...segments.map((segment, j) => (j % 2 === 1 ? h(Text, { key: j, style: styles.bold }, segment) : segment))
-      );
-    })
+  const blocks = text
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
     .filter(Boolean);
+
+  return blocks.map((block, blockIndex) => {
+    const lines = block.split('\n');
+    const children: Array<string | ReturnType<typeof h>> = [];
+
+    lines.forEach((line, lineIndex) => {
+      const segments = line.split(/\*\*(.+?)\*\*/g);
+      segments.forEach((segment, segmentIndex) => {
+        if (segment === '') return;
+        children.push(
+          segmentIndex % 2 === 1
+            ? h(Text, { key: `${lineIndex}-${segmentIndex}`, style: styles.bold }, segment)
+            : segment
+        );
+      });
+      if (lineIndex < lines.length - 1) children.push('\n');
+    });
+
+    return h(Text, { key: blockIndex, style: styles.bodyBlock }, ...children);
+  });
 }
 
 export interface BriefDocumentProps {
@@ -85,6 +103,7 @@ export interface BriefDocumentProps {
   briefText: string;
   logoBuffer: Buffer;
   disclaimerText: string;
+  siteUrl: string;
 }
 
 function metaRow(label: string, value: string) {
@@ -102,7 +121,10 @@ export function BriefDocument({
   briefText,
   logoBuffer,
   disclaimerText,
+  siteUrl,
 }: BriefDocumentProps) {
+  const siteHost = siteUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+
   return h(
     Document,
     null,
@@ -127,7 +149,19 @@ export function BriefDocument({
         metaRow('Generated', createdAt)
       ),
       ...renderBriefBody(briefText),
-      h(Text, { style: styles.footer, fixed: true }, disclaimerText)
+      h(
+        View,
+        { style: styles.footer, fixed: true },
+        h(Text, { style: styles.disclaimer }, disclaimerText),
+        h(
+          Text,
+          { style: styles.poweredBy },
+          'Powered by ',
+          h(Text, { style: styles.poweredByBrand }, 'Synepho'),
+          ' — for live status and updates, visit ',
+          h(Text, { style: styles.poweredByBrand }, siteHost)
+        )
+      )
     )
   );
 }
