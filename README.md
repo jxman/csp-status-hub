@@ -268,6 +268,77 @@ AI-generated technical + executive briefs per incident, built on AWS Bedrock,
 surfaced on the dashboard and downloadable as branded PDFs. Full design in
 the artifact-linked design doc.
 
+#### Architecture — Bedrock, Claude, and the AI Insight workflow
+
+```
+check-status.ts (EventBridge, every 5 min)
+        │  diffs the new provider snapshot against Redis, same tick that
+        │  drives outage/resolution emails (see Change detection above)
+        │
+        ├─ per changed incident: new / content_changed / resolved?
+        │       (content-hash trigger, independent of the notify-worthy
+        │        diff — catches a vendor editing incident text in place)
+        │
+        └─ waitUntil(fetch('/api/analysis/run')) ── fire-and-forget,
+           AFTER notifySubscribers() has already been called, so a slow
+           or failed Bedrock call can never delay/block an outage email
+                │
+                ▼
+   /api/analysis/run  (CRON_SECRET-gated; admin retry re-enters the same
+        │              pipeline via bypassDebounce, see Admin controls below)
+        │  debounce check: MAX(created_at) per (provider, incidentId) vs.
+        │  settings:analysis-debounce-minutes (Redis, live-editable) or
+        │  ANALYSIS_DEBOUNCE_MINUTES (env default, 30 min)
+        ▼
+   api/_lib/analysisPipeline.ts → runIncidentAnalysis()
+        │
+        │  1. buildSystemPrompt() + buildUserMessage(provider, incident)
+        │     (api/_lib/analysisPrompt.ts) — includes a hand-curated
+        │     per-service-category resiliency reference table so the
+        │     model cites reviewed guidance instead of inventing specifics
+        │     from a thin vendor paragraph, and a hard rule keeping
+        │     DR/failover language conditional
+        │
+        ▼
+   AWS Bedrock — ConverseCommand
+        │  Auth: Vercel OIDC → sts:AssumeRoleWithWebIdentity (no static
+        │  AWS keys) via @vercel/oidc-aws-credentials-provider, role from
+        │  scripts/setup-bedrock-oidc.sh (api/_lib/bedrock.ts)
+        │  Model: BEDROCK_MODEL_ID — a cross-region inference profile ID,
+        │  not a bare on-demand model ID (Claude models on Bedrock only
+        │  support INFERENCE_PROFILE invocation). Currently
+        │  us.anthropic.claude-sonnet-4-5-20250929-v1:0 — the code
+        │  default (bedrock.ts) is us.anthropic.claude-sonnet-5, but that
+        │  model returns AccessDeniedException on this AWS account
+        │  pending a Sales-approved allowlist request, so the env var
+        │  override pins the working Sonnet 4.5 profile instead
+        │  Forced tool-use: toolConfig requires the emit_incident_brief
+        │  tool (buildToolConfig()) so the model must return schema-shaped
+        │  { technical: string, executive: string } — no free-text
+        │  parsing, one round trip for both brief variants
+        ▼
+   extractBriefs() validates the tool-use block, then:
+        │
+        ├─ INSERT into incident_analysis (Postgres/Neon) — technical_brief,
+        │  executive_brief, model id, input/output token counts,
+        │  status='complete' (or 'failed' with the error, on a missing
+        │  tool-use response or a thrown Bedrock error — the trigger is
+        │  never lost silently)
+        │
+        └─ best-effort, AFTER the row above already committed:
+           renderAndUploadBriefPdfs() → @react-pdf/renderer → Vercel Blob
+           (public, 1-year immutable cache) → UPDATE ...SET pdf_*_url
+           (a PDF failure never affects the already-published text brief)
+
+   Reading it back:
+        GET /api/analysis/latest  (public) → single latest complete row
+             → IncidentBriefPanel.tsx's "AI Insight" panel + Download PDF
+        GET /api/admin/analysis-admin?resource=runs  (admin) → full history
+             across every trigger, incl. failed rows → RunHistoryPanel.tsx
+             (manual retry re-enters runIncidentAnalysis with
+             bypassDebounce: true)
+```
+
 - **Trigger, layered on top of the notify-worthy diff above:**
   `check-status.ts` also hashes each active incident's
   `status + latestUpdate + affectedServices + affectedRegions` and stores the
