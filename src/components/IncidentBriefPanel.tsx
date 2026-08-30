@@ -75,7 +75,7 @@ export function IncidentBriefPanel({ provider, incidentId, autoExpand }: Props) 
         <span>AI Insight</span>
         <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 7 }}>
           <span className="ai-insight-powered">
-            Powered by <SynephoLogo height={10} />
+            Powered by <SynephoLogo height={12} />
           </span>
           <ChevronIcon open={expanded} />
         </span>
