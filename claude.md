@@ -12,6 +12,17 @@
 > `docs/ALERTS-DESIGN.md`, consolidated into the README once the feature went
 > live). This document still accurately describes the dashboard itself (data
 > sources, fetchers, unified schema).
+>
+> **Scope update (2026-08):** an AI-generated per-incident briefing feature
+> ("Incident Briefing Engine" / the dashboard's "AI Insight" panel) was also
+> never part of this doc's original scope and has since shipped in full
+> (Bedrock-generated technical + executive briefs, branded PDF export,
+> outage-email deep links, admin run history/retry/settings). See
+> [`README.md`](./README.md)'s **Alerts & Admin → Incident Briefing Engine**
+> section for its architecture and as-built notes; that section also covers
+> two later revisions — the dashboard was changed to show only the single
+> latest brief per incident (no version stepper), and its PDF export had a
+> body-text spacing bug fixed and gained a "Powered by Synepho" footer line.
 
 ---
 

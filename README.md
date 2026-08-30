@@ -327,9 +327,22 @@ the artifact-linked design doc.
   `incident-analysis/{provider}/{slugified-incident-id}/{row-id}-{technical|executive}.pdf`
   with a 1-year immutable `Cache-Control` — the row's own UUID guarantees
   the path is unique, so nothing already published is ever overwritten. A
-  fixed footer disclaimer repeats on every page. The dashboard only shows a
-  "Download PDF" link once a URL exists — pre-Phase-3 rows and any
-  PDF-generation failure both render nothing rather than a broken link.
+  fixed footer repeats on every page: the disclaimer, plus (added
+  2026-08-29) a "Powered by Synepho — for live status and updates, visit
+  cloudstatus.synepho.com" line so a page reads correctly even if printed
+  or forwarded on its own. The dashboard only shows a "Download PDF" link
+  once a URL exists — pre-Phase-3 rows and any PDF-generation failure both
+  render nothing rather than a broken link.
+  - **Spacing fix (2026-08-29):** `renderBriefBody()` originally rendered
+    every line of the brief as its own block-level `<Text>`, so
+    `line-height` and `margin-bottom` both applied per line instead of
+    per paragraph — every multi-line section (e.g. adjacent bullets) read
+    as double-spaced. Now splits on real blank-line paragraph breaks only,
+    joining each paragraph's own lines with a literal `\n` inside one
+    `<Text>`. Also fixed the executive PDF repeating its closing
+    disclaimer twice (the prompt already appends it as the brief's own
+    final line, on top of the PDF's separate recurring footer) by
+    stripping a trailing exact-match copy before rendering.
 - **Email link (Phase 4):** outage/resolution emails link each incident to
   `${APP_BASE_URL}/?provider=...&incidentId=...` — a stable dashboard
   deep-link rather than a PDF/brief snapshot at send time, since brief
@@ -695,6 +708,9 @@ covered by `vercel.json` and needs no separate provisioning step.
 - Incident Briefing Engine, Phase 2: public `/api/analysis/latest` read endpoint (originally `/api/analysis/history` with a version stepper; simplified 2026-08-29 to always show just the current version — see **Reading it back** below), lazy-fetched "AI Insight" panel on each incident card with a Technical/Executive toggle
 - Incident Briefing Engine, Phase 3: `@react-pdf/renderer`-generated, Synepho-branded PDF export per brief version, uploaded to Vercel Blob with a 1-year immutable cache, "Download PDF" links on the dashboard
 - Incident Briefing Engine, Phase 4 (final phase): outage/resolution emails link to a dashboard deep-link that auto-expands the right incident's AI Insight panel; admin run history, manual retry for failed rows, and live settings (debounce interval, per-provider kill switch) — see [Alerts & Admin](#alerts--admin)
+- Incident Briefing Engine PDF polish (2026-08-29): fixed double-spaced body text (paragraph-block rendering instead of per-line blocks), removed a duplicate trailing disclaimer in the executive PDF, added a "Powered by Synepho" + site-URL line to the footer — see **PDF export (Phase 3)** in [Alerts & Admin](#alerts--admin)
+- AI Insight panel simplified (2026-08-29): dashboard now shows only the single latest brief per incident instead of a multi-version stepper (`/api/analysis/latest` replaces `/api/analysis/history`) — see **Reading it back (Phase 2)** in [Alerts & Admin](#alerts--admin)
+- About modal refreshed (2026-08-29): copy tightened to lead with the AI Insight feature; version bumped to 1.2.0 to reflect the Incident Briefing Engine work landed since the last bump
 
 ### Pending (see docs/ENHANCEMENTS.md)
 
