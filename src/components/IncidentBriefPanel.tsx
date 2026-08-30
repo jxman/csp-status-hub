@@ -103,13 +103,13 @@ export function IncidentBriefPanel({ provider, incidentId, autoExpand }: Props) 
                   className={`brief-tab${activeTab === 'technical' ? ' active' : ''}`}
                   onClick={() => setActiveTab('technical')}
                 >
-                  Technical
+                  Technical Brief
                 </button>
                 <button
                   className={`brief-tab${activeTab === 'executive' ? ' active' : ''}`}
                   onClick={() => setActiveTab('executive')}
                 >
-                  Executive
+                  Executive Brief
                 </button>
               </div>
 
