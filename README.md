@@ -72,6 +72,9 @@ tooling sit behind it as a separate backend — see
 | Database            | Neon Postgres (Vercel Marketplace)                 |
 | Cache               | Upstash Redis (Vercel Marketplace)                 |
 | Email               | Resend                                             |
+| AI / LLM            | AWS Bedrock — Claude Sonnet 4.5 (`us.anthropic.claude-sonnet-4-5-20250929-v1:0`, cross-region inference profile), via Vercel-native OIDC → AWS federation — see [Incident Briefing Engine](#incident-briefing-engine-phases-1-4-complete) |
+| PDF Generation       | `@react-pdf/renderer`, uploaded to Vercel Blob (public, 1-year immutable cache) |
+| Admin Auth           | Sign in with Vercel (OAuth, PKCE)                  |
 | Deployment          | Vercel (Vite SPA + `/api` routes)                  |
 | Analytics           | Vercel Web Analytics + Speed Insights              |
 
@@ -264,9 +267,9 @@ CU-hr/day, a ~69x drop — projecting to roughly 1.6 CU-hr for the full month.
 
 ### Incident Briefing Engine (Phases 1-4, complete)
 
-AI-generated technical + executive briefs per incident, built on AWS Bedrock,
-surfaced on the dashboard and downloadable as branded PDFs. Full design in
-the artifact-linked design doc.
+AI-generated technical + executive briefs per incident, built on AWS Bedrock
+(Claude Sonnet 4.5), surfaced on the dashboard and downloadable as branded
+PDFs. Full design in the artifact-linked design doc.
 
 #### Architecture — Bedrock, Claude, and the AI Insight workflow
 
@@ -467,7 +470,7 @@ check-status.ts (EventBridge, every 5 min)
 - **Vercel BotID** — invisible bot check on the sign-up form
 - **Sign in with Vercel** — admin auth, restricted to a single hardcoded `ADMIN_EMAIL`
 - **AWS EventBridge** (Rule + Connection + API Destination) — triggers `/api/cron/check-status` every 5 minutes; provisioned via `scripts/setup-eventbridge-cron.sh`
-- **AWS Bedrock** (Claude, via Vercel OIDC federation) — powers the Incident Briefing Engine's `/api/analysis/run`; IAM role provisioned via `scripts/setup-bedrock-oidc.sh`
+- **AWS Bedrock** — Claude Sonnet 4.5 (`us.anthropic.claude-sonnet-4-5-20250929-v1:0`, a cross-region inference profile — Claude models have no bare on-demand ID on Bedrock), via Vercel OIDC federation, no static AWS keys — powers the Incident Briefing Engine's `/api/analysis/run`; IAM role provisioned via `scripts/setup-bedrock-oidc.sh`. `BEDROCK_MODEL_ID` env var overrides the code default of `us.anthropic.claude-sonnet-5`, which returns `AccessDeniedException` on this AWS account pending a Sales-approved allowlist request
 - **Vercel Blob** — stores the branded PDF briefs from Phase 3, public access, 1-year immutable cache
 - **Vercel Firewall** — rate limiting on the sign-up endpoint (5 req/60s/IP)
 - **AWS Route 53** (`synepho.com` zone) — pre-existing DNS, also hosts Resend's domain-verification records
