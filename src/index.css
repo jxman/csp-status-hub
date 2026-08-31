@@ -230,8 +230,7 @@ body {
 
 
 .a-summary {
-  display: grid; grid-template-columns: 1fr auto;
-  align-items: center; gap: 24px;
+  display: flex; align-items: center; gap: 24px;
   padding: 18px 32px;
   border-bottom: 1px solid var(--border);
   background: color-mix(in oklab, var(--blue) 5%, var(--card));
@@ -247,6 +246,13 @@ body {
   margin-right: 6px; letter-spacing: -0.01em;
 }
 .a-summary .stat .num.red { color: var(--red-text); }
+
+.a-summary.all-clear {
+  background: color-mix(in oklab, var(--green) 8%, var(--card));
+  color: var(--green-text);
+}
+.a-summary.all-clear b { display: block; color: var(--ink); font-size: 14px; font-weight: 600; }
+.a-summary.all-clear .all-clear-sub { display: block; color: var(--ink-3); font-size: 12px; margin-top: 1px; }
 
 /* ===== Provider grid ===== */
 .a-grid {
@@ -453,7 +459,7 @@ body {
   .brand-live { display: none; }
   .brand-logo-link img { height: 20px; }
 
-  .a-summary { grid-template-columns: 1fr; padding: 10px 12px; gap: 10px; background: color-mix(in oklab, var(--blue) 5%, var(--card)); }
+  .a-summary { padding: 10px 12px; gap: 10px; background: color-mix(in oklab, var(--blue) 5%, var(--card)); }
   .a-summary .stat {
     display: grid; grid-template-columns: 1fr 1fr 1fr 1fr;
     gap: 5px; width: 100%;

@@ -81,11 +81,36 @@ function computeImpactedServices(providers: ProviderStatus[]): { count: number; 
   return { count: uniqueKeys.size, isApproximate };
 }
 
+const CheckCircleIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <polyline points="8 12.5 10.5 15 16 9" />
+  </svg>
+);
+
 function StatsBanner({ providers }: { providers: ProviderStatus[] }) {
   const live = providers.filter((p) => !p.fetchError);
   const degradedProviders = live.filter(
     (p) => p.overallStatus === 'degraded' || p.overallStatus === 'outage'
   ).length;
+  const hasIssues = degradedProviders > 0;
+
+  // Nothing wrong — a row of four zeroed-out stat tiles reads as clutter, not
+  // reassurance. Every provider card below already shows its own green
+  // "OPERATIONAL" pill, so this banner's only job here is the one-line
+  // headline, not four different flavors of zero.
+  if (!hasIssues) {
+    return (
+      <div className="a-summary all-clear">
+        <CheckCircleIcon />
+        <div>
+          <b>All systems operational</b>
+          <span className="all-clear-sub">No active incidents across AWS, Azure, GCP &amp; OCI</span>
+        </div>
+      </div>
+    );
+  }
+
   const impactedRegionsList = live.flatMap((p) => p.regions.filter((r) => r.overallStatus !== 'operational'));
   const affectedRegions = impactedRegionsList.length;
   // A "global" region isn't literally one region — it's an edge/global-scoped
@@ -97,10 +122,9 @@ function StatsBanner({ providers }: { providers: ProviderStatus[] }) {
     (acc, p) => acc + p.activeIncidents.filter((i) => i.status !== 'resolved').length, 0
   );
   const { count: impactedServices, isApproximate } = computeImpactedServices(providers);
-  const hasIssues = degradedProviders > 0;
 
   return (
-    <div className={`a-summary${hasIssues ? '' : ' all-clear'}`}>
+    <div className="a-summary">
       <div className="stat">
         <span>
           <span className={`num${degradedProviders > 0 ? ' red' : ''}`}>{degradedProviders}</span>
