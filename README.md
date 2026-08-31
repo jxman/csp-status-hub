@@ -269,7 +269,10 @@ CU-hr/day, a ~69x drop — projecting to roughly 1.6 CU-hr for the full month.
 
 AI-generated technical + executive briefs per incident, built on AWS Bedrock
 (Claude Sonnet 4.5), surfaced on the dashboard and downloadable as branded
-PDFs. Full design in the artifact-linked design doc.
+PDFs. Full design in the artifact-linked design doc. For a deeper walkthrough
+of the prompt itself, how to iterate on it, and a scoped plan for exposing
+some of it through an admin UI, see
+[`docs/PROMPT-REFINEMENT-GUIDE.md`](./docs/PROMPT-REFINEMENT-GUIDE.md).
 
 #### Architecture — Bedrock, Claude, and the AI Insight workflow
 
@@ -626,7 +629,8 @@ csp-status-hub/
 ├── docs/
 │   ├── ENHANCEMENTS.md            Backlog of dashboard optimizations and improvements
 │   ├── AWS-MIGRATION-ASSESSMENT.md  Assessment for a potential move off Vercel to AWS
-│   └── CUSTOM-DOMAIN-PLAN.md      Plan to move the app to a synepho.com subdomain
+│   ├── CUSTOM-DOMAIN-PLAN.md      Plan to move the app to a synepho.com subdomain
+│   └── PROMPT-REFINEMENT-GUIDE.md  How the AI Insight prompt/pipeline works, how to refine it, and a plan for an admin UI to customize it live
 ```
 
 ---
