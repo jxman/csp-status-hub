@@ -434,9 +434,12 @@ check-status.ts (EventBridge, every 5 min)
   project's Vercel Hobby plan caps at 12 Serverless Functions per
   deployment, and three separate routes would have exceeded it) backs three
   admin-only surfaces: run history (last 200 `incident_analysis` rows,
-  client-side filtered), a manual retry action for `status='failed'` rows
-  (reruns the shared pipeline with `bypassDebounce: true`, always inserting
-  a new row rather than mutating the failed one), and live settings — the
+  client-side filtered), a manual re-run action available on every row
+  regardless of status — not just `status='failed'` ones, so a `complete`
+  row can be forced to regenerate too, e.g. to pick up a prompt change for
+  an incident that's still active (reruns the shared pipeline with
+  `bypassDebounce: true`, always inserting a new row rather than mutating
+  the one it was triggered from), and live settings — the
   debounce interval and a per-provider kill switch
   (`settings:analysis-disabled-providers` in Redis, read once per cron
   tick, fails open on a Redis error so a hiccup can't silently stop

@@ -87,7 +87,7 @@ export function RunHistoryPanel() {
     };
   }, []);
 
-  async function retry(id: string) {
+  async function rerun(id: string) {
     setOpenMenuId(null);
     setMenuPos(null);
     setActionError('');
@@ -99,10 +99,10 @@ export function RunHistoryPanel() {
         body: JSON.stringify({ action: 'retry', id }),
       });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error ?? 'Retry failed');
+      if (!res.ok) throw new Error(body.error ?? 'Re-run failed');
       load();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Retry failed');
+      setActionError(err instanceof Error ? err.message : 'Re-run failed');
     } finally {
       setRetryingId(null);
     }
@@ -175,24 +175,22 @@ export function RunHistoryPanel() {
                     )}
                   </td>
                   <td style={{ ...cellStyle, position: 'relative' }} data-row-menu-root>
-                    {r.status === 'failed' && (
-                      <button
-                        className="icon-btn"
-                        disabled={retryingId === r.id}
-                        onClick={(e) => {
-                          if (openMenuId === r.id) {
-                            setOpenMenuId(null);
-                            setMenuPos(null);
-                            return;
-                          }
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          setMenuPos({ top: rect.bottom + 6, right: window.innerWidth - rect.right });
-                          setOpenMenuId(r.id);
-                        }}
-                      >
-                        ⋯
-                      </button>
-                    )}
+                    <button
+                      className="icon-btn"
+                      disabled={retryingId === r.id}
+                      onClick={(e) => {
+                        if (openMenuId === r.id) {
+                          setOpenMenuId(null);
+                          setMenuPos(null);
+                          return;
+                        }
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setMenuPos({ top: rect.bottom + 6, right: window.innerWidth - rect.right });
+                        setOpenMenuId(r.id);
+                      }}
+                    >
+                      ⋯
+                    </button>
                     {openMenuId === r.id && menuPos && createPortal(
                       <div
                         data-row-menu-root
@@ -201,7 +199,7 @@ export function RunHistoryPanel() {
                           borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.14)', zIndex: 1000, overflow: 'hidden', minWidth: 130,
                         }}
                       >
-                        <button style={menuItemStyle} onClick={() => retry(r.id)}>Retry</button>
+                        <button style={menuItemStyle} onClick={() => rerun(r.id)}>Re-run</button>
                       </div>,
                       document.body
                     )}

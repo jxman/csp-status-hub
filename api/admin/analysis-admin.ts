@@ -73,10 +73,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(404).json({ error: 'Not found' });
         return;
       }
-      if (rows[0].status !== 'failed') {
-        res.status(400).json({ error: 'Only failed rows can be retried' });
-        return;
-      }
+      // Re-running a 'complete' row (not just a 'failed' one) is intentional —
+      // e.g. to pick up a prompt change for an incident that's still active.
+      // Always inserts a new row (bypassDebounce) rather than mutating this
+      // one, same as a failed-row retry; the dashboard already only ever
+      // shows the latest row per (provider, incidentId).
       const result = await runIncidentAnalysis({
         provider: rows[0].provider as Provider,
         incidentId: rows[0].incident_id as string,
