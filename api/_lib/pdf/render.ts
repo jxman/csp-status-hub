@@ -41,10 +41,10 @@ async function renderAndUploadOne(
   logoBuffer: Buffer
 ): Promise<string | null> {
   try {
-    // The executive prompt (api/_lib/analysisPrompt.ts) already appends
-    // DISCLAIMER_TEXT as the brief's own final line — strip a trailing copy
-    // here so it doesn't also repeat immediately below in the PDF's own
-    // recurring footer, which shows the disclaimer on every page regardless.
+    // The prompt (api/_lib/analysisPrompt.ts) already appends DISCLAIMER_TEXT
+    // as each brief's own final line — strip a trailing copy here so it
+    // doesn't also repeat immediately below in the PDF's own recurring
+    // footer, which shows the disclaimer on every page regardless.
     const rawBriefText = kind === 'technical' ? input.technicalBrief : input.executiveBrief;
     const briefText = rawBriefText.trim().endsWith(DISCLAIMER_TEXT)
       ? rawBriefText.trim().slice(0, -DISCLAIMER_TEXT.length).trim()

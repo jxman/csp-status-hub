@@ -47,7 +47,7 @@ export const RESILIENCY_REFERENCE_TABLE: Record<string, { category: string; ques
 };
 
 export const DISCLAIMER_TEXT =
-  "This analysis is generated from the provider's public status update only. It has no visibility into your specific account, architecture, or configuration. Treat it as a starting checklist for your own review, not a substitute for it.";
+  "This brief is AI-generated guidance based on the provider's public status update only — it has no visibility into your account, architecture, or configuration, and your environment may differ and require other steps. Do not assume automatic failover is configured; evaluate and execute any failover action based on your own architecture.";
 
 export function buildSystemPrompt(): string {
   const referenceTableText = Object.values(RESILIENCY_REFERENCE_TABLE)
@@ -68,7 +68,7 @@ export function buildSystemPrompt(): string {
     '',
     referenceTableText,
     '',
-    `Append this disclaimer verbatim as the final line of the "executive" brief: "${DISCLAIMER_TEXT}"`,
+    `Append this disclaimer verbatim as the final line of BOTH the "technical" and "executive" briefs: "${DISCLAIMER_TEXT}"`,
     '',
     'Call the emit_incident_brief tool exactly once with both briefs. Do not respond with plain text.',
   ].join('\n');
@@ -105,7 +105,7 @@ export function buildToolConfig() {
             json: {
               type: 'object',
               properties: {
-                technical: { type: 'string', description: 'The technical brief for cloud engineering staff.' },
+                technical: { type: 'string', description: 'The technical brief for cloud engineering staff, ending with the disclaimer sentence.' },
                 executive: { type: 'string', description: 'The executive brief for leadership, ending with the disclaimer sentence.' },
               },
               required: ['technical', 'executive'],

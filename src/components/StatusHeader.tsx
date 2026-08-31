@@ -66,10 +66,8 @@ export function StatusHeader({
     <header className="dash-head">
       <div className="brand">
         <a
-          href="https://synepho.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="Synepho"
+          href="https://cloudstatus.synepho.com"
+          aria-label="Cloud Status Hub home"
           className="brand-logo-link"
         >
           <SynephoLogo height={28} />
