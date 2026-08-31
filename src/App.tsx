@@ -127,6 +127,10 @@ function StatsBanner({ providers }: { providers: ProviderStatus[] }) {
     <div className="a-summary">
       <div className="stat">
         <span>
+          <span className="num red">{activeIncidents}</span>
+          <br /><b>active incident{activeIncidents !== 1 ? 's' : ''}</b>
+        </span>
+        <span>
           <span className={`num${degradedProviders > 0 ? ' red' : ''}`}>{degradedProviders}</span>
           <br /><b>provider{degradedProviders !== 1 ? 's' : ''} degraded</b>
         </span>
@@ -141,10 +145,6 @@ function StatsBanner({ providers }: { providers: ProviderStatus[] }) {
             {impactedServices}{isApproximate ? '+' : ''}
           </span>
           <br /><b>service{impactedServices !== 1 ? 's' : ''} impacted</b>
-        </span>
-        <span>
-          <span className="num">{activeIncidents}</span>
-          <br /><b>active incident{activeIncidents !== 1 ? 's' : ''}</b>
         </span>
       </div>
     </div>
