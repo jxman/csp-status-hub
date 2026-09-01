@@ -63,11 +63,19 @@ function worstStatus(statuses: StatusLevel[]): StatusLevel {
 // GCP update text sometimes packs multiple "**Header**\n..." sections (Summary,
 // Description, per-product breakdowns, Customer Symptoms, Workaround) into one string,
 // unlike the single plain-narrative blurb the other three providers use for latestUpdate.
-// Pull just the Summary section for parity — full detail is still one click away via
-// detailUrl. Falls back to stripping the markdown markers for incidents without one.
+// Summary is boilerplate restating the incident title and is near-identical across every
+// update GCP posts for a given incident (verified 2026-09-01: 3 successive updates, same
+// Summary text, while Description carried the actual mitigation/recovery narrative) — using
+// Summary alone as latestUpdate meant the dashboard kept showing the original blurb through
+// real progress updates, and api/cron/check-status.ts's hashIncidentContent() (which hashes
+// latestUpdate to decide whether to re-trigger the AI Insight brief) never saw a change
+// either, so the brief went stale in lockstep. Pull Summary + Description together instead;
+// still short of the full text (Customer Symptoms/Workaround bullet lists stay one click away
+// via detailUrl). Falls back to stripping the markdown markers for incidents without either.
 function extractGcpSummary(text: string): string {
-  const summaryMatch = text.match(/\*\*Summary\*\*\n([\s\S]*?)(?=\n\*\*|$)/);
-  if (summaryMatch) return summaryMatch[1].trim();
+  const section = (label: string) => text.match(new RegExp(`\\*\\*${label}\\*\\*\\n([\\s\\S]*?)(?=\\n\\*\\*|$)`))?.[1]?.trim();
+  const parts = [section('Summary'), section('Description')].filter((s): s is string => !!s);
+  if (parts.length > 0) return parts.join('\n\n');
   return text.replace(/\*\*/g, '').replace(/\n+/g, ' ').trim();
 }
 
