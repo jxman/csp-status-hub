@@ -4,6 +4,7 @@ import { SpeedInsights } from '@vercel/speed-insights/react';
 import { useStatusPolling, PROVIDER_ORDER } from './hooks/useStatusPolling';
 import { useTheme } from './hooks/useTheme';
 import { useIncidentDeepLink } from './hooks/useIncidentDeepLink';
+import { useVersionCheck } from './hooks/useVersionCheck';
 import { StatusHeader } from './components/StatusHeader';
 import { ProviderGrid, type ProviderSlot } from './components/ProviderGrid';
 import { ProviderCardSkeleton } from './components/ProviderCardSkeleton';
@@ -176,6 +177,7 @@ export default function App() {
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [urlBanner, dismissUrlBanner] = useUrlBanner();
   const { deepLinkTarget, consume: consumeDeepLink } = useIncidentDeepLink();
+  const updateAvailable = useVersionCheck();
 
   const slots: ProviderSlot[] = PROVIDER_ORDER.map((id) => ({ provider: id, status: providers[id] }));
   const loadedProviders: ProviderStatus[] = slots
@@ -214,6 +216,24 @@ export default function App() {
             aria-label="Dismiss"
           >
             ×
+          </button>
+        </div>
+      )}
+
+      {updateAvailable && (
+        <div style={{
+          padding: '10px 32px',
+          background: 'color-mix(in oklab, var(--blue) 8%, var(--card))',
+          borderBottom: '1px solid color-mix(in oklab, var(--blue) 22%, var(--border))',
+          color: 'var(--ink-2)', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+        }}>
+          <span>A new version of this dashboard is available.</span>
+          <button
+            className="btn-ghost"
+            onClick={() => window.location.reload()}
+            style={{ borderColor: 'color-mix(in oklab, var(--blue) 35%, var(--border))', color: 'var(--blue)' }}
+          >
+            Reload
           </button>
         </div>
       )}
