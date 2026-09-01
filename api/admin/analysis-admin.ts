@@ -7,9 +7,10 @@
 // "Incident Briefing Engine admin" concern, so the merge doesn't blur
 // unrelated responsibilities together).
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { del } from '@vercel/blob';
 import { requireAdmin } from '../_lib/auth.js';
 import { sql } from '../_lib/db.js';
-import { redis } from '../_lib/redis.js';
+import { redis, snapshotKey, type ProviderSnapshot } from '../_lib/redis.js';
 import { runIncidentAnalysis } from '../_lib/analysisPipeline.js';
 import {
   ALL_PROVIDERS,
@@ -23,20 +24,52 @@ import {
 } from '../_lib/analysisSettings.js';
 import type { Incident, Provider } from '../../src/types/status.js';
 
+// "Active" here means "currently on the live dashboard" — driven by the same
+// per-provider Redis snapshot check-status.ts writes every 5 min (activeIncidentIds),
+// not anything stored on the incident_analysis row itself. Used both to show an
+// Active/Non-active badge in the Run History table and to scope the bulk cleanup
+// action below. Fails closed (confirmed: false) rather than treating a missing or
+// stale snapshot as "nothing is active" — a Redis hiccup must never make the bulk
+// delete below think every row is eligible for cleanup.
+const SNAPSHOT_STALE_MS = 24 * 60 * 60 * 1000;
+
+async function getActiveIncidentKeys(): Promise<{ keys: string[]; confirmed: boolean; reason?: string }> {
+  const snapshots = await Promise.all(ALL_PROVIDERS.map((p) => redis.get<ProviderSnapshot>(snapshotKey(p))));
+  const missing = ALL_PROVIDERS.filter((_, i) => !snapshots[i]);
+  if (missing.length > 0) {
+    return { keys: [], confirmed: false, reason: `No status snapshot yet for: ${missing.join(', ')}` };
+  }
+  const now = Date.now();
+  const stale = ALL_PROVIDERS.filter((_, i) => now - new Date(snapshots[i]!.lastCheckedAt).getTime() > SNAPSHOT_STALE_MS);
+  if (stale.length > 0) {
+    return { keys: [], confirmed: false, reason: `Status snapshot is more than 24h old for: ${stale.join(', ')}` };
+  }
+  const keys = ALL_PROVIDERS.flatMap((p, i) => snapshots[i]!.activeIncidentIds.map((id) => `${p}:${id}`));
+  return { keys, confirmed: true };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const admin = requireAdmin(req, res);
   if (!admin) return;
 
   if (req.method === 'GET') {
     if (req.query.resource === 'runs') {
-      const runs = await sql`
-        SELECT id, provider, incident_id, incident_snapshot->>'title' AS incident_title,
-               trigger_event, status, error, model, created_at, pdf_technical_url, pdf_executive_url
-        FROM incident_analysis
-        ORDER BY created_at DESC
-        LIMIT 200
-      `;
-      res.status(200).json({ runs });
+      const [runs, active] = await Promise.all([
+        sql`
+          SELECT id, provider, incident_id, incident_snapshot->>'title' AS incident_title,
+                 trigger_event, status, error, model, created_at, pdf_technical_url, pdf_executive_url
+          FROM incident_analysis
+          ORDER BY created_at DESC
+          LIMIT 200
+        `,
+        getActiveIncidentKeys(),
+      ]);
+      res.status(200).json({
+        runs,
+        activeKeys: active.keys,
+        activeConfirmed: active.confirmed,
+        activeReason: active.reason ?? null,
+      });
       return;
     }
 
@@ -86,6 +119,60 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         bypassDebounce: true,
       });
       res.status(200).json(result);
+      return;
+    }
+
+    if (action === 'delete_run') {
+      const { id } = req.body as { id?: unknown };
+      if (typeof id !== 'string') {
+        res.status(400).json({ error: 'Missing id' });
+        return;
+      }
+      const [row] = await sql`
+        DELETE FROM incident_analysis WHERE id = ${id}
+        RETURNING pdf_technical_url, pdf_executive_url
+      `;
+      if (!row) {
+        res.status(404).json({ error: 'Not found' });
+        return;
+      }
+      const blobUrls = [row.pdf_technical_url, row.pdf_executive_url].filter((u): u is string => !!u);
+      if (blobUrls.length > 0) {
+        try {
+          await del(blobUrls);
+        } catch (err) {
+          console.error(`[analysis-admin] blob delete failed for run ${id}`, err);
+        }
+      }
+      res.status(200).json({ deletedRows: 1, deletedBlobs: blobUrls.length });
+      return;
+    }
+
+    if (action === 'cleanup_inactive') {
+      const active = await getActiveIncidentKeys();
+      if (!active.confirmed) {
+        res.status(409).json({ error: `Can't confirm which incidents are currently active — ${active.reason}. Refusing to delete anything until the next status check.` });
+        return;
+      }
+      // Empty active.keys is a legitimate "nothing is active anywhere" state (already
+      // fail-closed above for the "we don't actually know" case) — ANY() over an empty
+      // array correctly matches nothing, so NOT(...) correctly matches every row.
+      const rows = await sql`
+        DELETE FROM incident_analysis
+        WHERE NOT (provider || ':' || incident_id = ANY(${active.keys}::text[]))
+        RETURNING pdf_technical_url, pdf_executive_url
+      `;
+      const blobUrls = rows.flatMap((r) => [r.pdf_technical_url, r.pdf_executive_url].filter((u): u is string => !!u));
+      let deletedBlobs = 0;
+      if (blobUrls.length > 0) {
+        try {
+          await del(blobUrls);
+          deletedBlobs = blobUrls.length;
+        } catch (err) {
+          console.error('[analysis-admin] bulk blob delete failed', err);
+        }
+      }
+      res.status(200).json({ deletedRows: rows.length, deletedBlobs });
       return;
     }
 

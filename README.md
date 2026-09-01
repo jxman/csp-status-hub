@@ -451,6 +451,21 @@ check-status.ts (EventBridge, every 5 min)
   CRON_SECRET-gated fire-and-forget path) and the admin retry action (the
   `requireAdmin`-gated path) so neither duplicates the ~80 lines of
   Bedrock/Postgres/PDF logic.
+- **Active/non-active state + cleanup (2026-09-01):** the dashboard only
+  ever shows *active* incidents, but `incident_analysis` rows (and their
+  PDFs) accumulate forever once an incident rolls off the live feed —
+  with no history UI planned yet, that's pure clutter. Run History now
+  shows an Active/Non-active badge per row and an "Active incidents
+  only"/"Non-active only" filter, both driven by
+  `getActiveIncidentKeys()` — the same per-provider `activeIncidentIds`
+  Redis snapshot `check-status.ts` writes every 5 minutes, not anything
+  stored on the row itself. A "Clean up non-active" button (plus a
+  per-row Delete in the `⋯` menu) permanently deletes matching rows and
+  their Vercel Blob PDFs via the new `cleanup_inactive`/`delete_run`
+  actions. The bulk action fails closed: if any provider's Redis
+  snapshot is missing or more than 24h stale, it refuses rather than
+  risk treating "we don't know what's active" as "nothing is active" —
+  which would otherwise turn a Redis hiccup into a total wipe.
 
 ### Admin
 
@@ -799,6 +814,7 @@ covered by `vercel.json` and needs no separate provisioning step.
 - Admin AI Run History: re-run enabled for any row, not just failed ones (2026-08-31): the row action menu (`RunHistoryPanel.tsx`) and `api/admin/analysis-admin.ts`'s `retry` action both dropped the `status='failed'` restriction, so a `complete` row can be forced to regenerate — e.g. to pick up a prompt change for an incident that's still active — without waiting for a natural `content_changed`/`resolved` trigger
 - GCP `latestUpdate` fix — Description included, not just Summary (2026-09-01): GCP's Summary section is near-static boilerplate that repeats verbatim across every update for an incident, while the actual evolving narrative lives in Description; `extractGcpSummary()` was extracting Summary only, so both the incident card and the AI Insight content-change trigger (which hashes `latestUpdate`) went stale on real GCP incidents — see `CLAUDE.md`'s Known Constraints & Caveats table for the full writeup
 - Stale-bundle detection + reload prompt (2026-09-01): a long-open tab can keep running the JS bundle it loaded with even while its 60s poll cycle keeps fetching fresh data, so a deploy's fix never reaches it until reloaded. `vite.config.ts` now emits `dist/version.json` from the same build timestamp baked into the bundle; the new `useVersionCheck()` hook (`src/hooks/useVersionCheck.ts`) polls it every 5 minutes and on tab-focus, and `App.tsx` shows a "new version available" banner with a Reload button on mismatch
+- Admin AI Run History: Active/non-active badge, filter, and cleanup (2026-09-01): the dashboard only ever shows active incidents, so `incident_analysis` rows and PDFs for rolled-off incidents just accumulated with no way to see or clear them. Run History now shows an Active/Non-active badge per row (from the same Redis `activeIncidentIds` snapshot `check-status.ts` already writes), a matching filter, a per-row Delete action, and a "Clean up non-active" bulk action that deletes matching rows and their Blob PDFs — see **Active/non-active state + cleanup** in [Alerts & Admin](#alerts--admin)
 
 ### Pending (see docs/ENHANCEMENTS.md)
 

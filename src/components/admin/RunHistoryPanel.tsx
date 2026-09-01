@@ -15,11 +15,16 @@ interface AnalysisRun {
   pdf_executive_url: string | null;
 }
 
+type ConfirmState =
+  | { kind: 'single'; id: string; label: string }
+  | { kind: 'bulk' };
+
 const cellStyle: React.CSSProperties = { padding: '10px 12px', fontSize: 13, borderTop: '1px solid var(--border)' };
 const menuItemStyle: React.CSSProperties = {
   display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', border: 'none',
   background: 'var(--card)', color: 'var(--ink)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
 };
+const menuItemDangerStyle: React.CSSProperties = { ...menuItemStyle, color: 'var(--red-text)' };
 const selectStyle: React.CSSProperties = {
   padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border-strong)',
   background: 'var(--bg)', color: 'var(--ink)', fontSize: 13,
@@ -51,17 +56,28 @@ const TRIGGER_LABELS: Record<string, string> = { new: 'New', content_changed: 'U
 
 export function RunHistoryPanel() {
   const [runs, setRuns] = useState<AnalysisRun[] | null>(null);
+  const [activeKeys, setActiveKeys] = useState<Set<string> | null>(null);
+  const [activeConfirmed, setActiveConfirmed] = useState(false);
+  const [activeReason, setActiveReason] = useState<string | null>(null);
   const [providerFilter, setProviderFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [activeFilter, setActiveFilter] = useState('');
   const [actionError, setActionError] = useState('');
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
-  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
 
   const load = useCallback(() => {
     fetch('/api/admin/analysis-admin?resource=runs')
       .then((res) => res.json())
-      .then((data) => setRuns(data.runs ?? []))
+      .then((data) => {
+        setRuns(data.runs ?? []);
+        setActiveKeys(new Set<string>(data.activeKeys ?? []));
+        setActiveConfirmed(!!data.activeConfirmed);
+        setActiveReason(data.activeReason ?? null);
+      })
       .catch(() => setActionError('Failed to load run history'));
   }, []);
 
@@ -87,11 +103,15 @@ export function RunHistoryPanel() {
     };
   }, []);
 
+  function isActive(r: AnalysisRun): boolean {
+    return activeKeys?.has(`${r.provider}:${r.incident_id}`) ?? false;
+  }
+
   async function rerun(id: string) {
     setOpenMenuId(null);
     setMenuPos(null);
     setActionError('');
-    setRetryingId(id);
+    setBusyId(id);
     try {
       const res = await fetch('/api/admin/analysis-admin', {
         method: 'PATCH',
@@ -104,7 +124,47 @@ export function RunHistoryPanel() {
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Re-run failed');
     } finally {
-      setRetryingId(null);
+      setBusyId(null);
+    }
+  }
+
+  async function deleteRun(id: string) {
+    setConfirmState(null);
+    setActionError('');
+    setBusyId(id);
+    try {
+      const res = await fetch('/api/admin/analysis-admin', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete_run', id }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? 'Delete failed');
+      load();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function cleanupInactive() {
+    setConfirmState(null);
+    setActionError('');
+    setBulkBusy(true);
+    try {
+      const res = await fetch('/api/admin/analysis-admin', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cleanup_inactive' }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? 'Cleanup failed');
+      load();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Cleanup failed');
+    } finally {
+      setBulkBusy(false);
     }
   }
 
@@ -113,8 +173,14 @@ export function RunHistoryPanel() {
   const filtered = runs.filter((r) => {
     if (providerFilter && r.provider !== providerFilter) return false;
     if (statusFilter && r.status !== statusFilter) return false;
+    if (activeFilter === 'active' && !isActive(r)) return false;
+    if (activeFilter === 'inactive' && isActive(r)) return false;
     return true;
   });
+
+  // Cleanup acts on the whole table server-side, not just these 200 loaded rows —
+  // this count is a floor ("at least this many"), stated as such in the confirm dialog.
+  const nonActiveLoadedCount = activeConfirmed ? runs.filter((r) => !isActive(r)).length : 0;
 
   return (
     <>
@@ -132,11 +198,31 @@ export function RunHistoryPanel() {
             <option value="complete">Complete</option>
             <option value="failed">Failed</option>
           </select>
+          <select value={activeFilter} onChange={(e) => setActiveFilter(e.target.value)} style={selectStyle}>
+            <option value="">Active + non-active</option>
+            <option value="active">Active incidents only</option>
+            <option value="inactive">Non-active only</option>
+          </select>
           <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>{filtered.length} results</span>
         </div>
-        <button className="btn-ghost" onClick={load}>Refresh</button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button
+            className="btn-ghost"
+            disabled={!activeConfirmed || bulkBusy || nonActiveLoadedCount === 0}
+            title={!activeConfirmed ? (activeReason ?? "Can't confirm active-incident state yet") : undefined}
+            onClick={() => setConfirmState({ kind: 'bulk' })}
+          >
+            {bulkBusy ? 'Cleaning up…' : 'Clean up non-active'}
+          </button>
+          <button className="btn-ghost" onClick={load}>Refresh</button>
+        </div>
       </div>
 
+      {!activeConfirmed && activeReason && (
+        <div style={{ fontSize: 13, color: 'var(--ink-3)', marginBottom: 10 }}>
+          Active/non-active state unavailable: {activeReason}
+        </div>
+      )}
       {actionError && <div style={{ fontSize: 13, color: 'var(--red-text)', marginBottom: 10 }}>{actionError}</div>}
 
       <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
@@ -145,6 +231,7 @@ export function RunHistoryPanel() {
             <tr style={{ background: 'var(--chip-bg)' }}>
               <th style={{ ...cellStyle, borderTop: 'none', textAlign: 'left' }}>Provider</th>
               <th style={{ ...cellStyle, borderTop: 'none', textAlign: 'left' }}>Incident</th>
+              <th style={{ ...cellStyle, borderTop: 'none', textAlign: 'left' }}>Active</th>
               <th style={{ ...cellStyle, borderTop: 'none', textAlign: 'left' }}>Trigger</th>
               <th style={{ ...cellStyle, borderTop: 'none', textAlign: 'left' }}>Status</th>
               <th style={{ ...cellStyle, borderTop: 'none', textAlign: 'left' }}>Model</th>
@@ -156,10 +243,16 @@ export function RunHistoryPanel() {
           <tbody>
             {filtered.map((r) => {
               const pill = statusPill(r.status);
+              const active = isActive(r);
               return (
-                <tr key={r.id} style={{ opacity: retryingId === r.id ? 0.5 : 1 }}>
+                <tr key={r.id} style={{ opacity: busyId === r.id ? 0.5 : 1 }}>
                   <td style={cellStyle}>{r.provider.toUpperCase()}</td>
                   <td style={cellStyle} title={r.error ?? undefined}>{r.incident_title ?? r.incident_id}</td>
+                  <td style={cellStyle}>
+                    {activeConfirmed
+                      ? <span className={active ? 'pill ok' : 'pill muted'}><span className="dot" />{active ? 'Active' : 'Non-active'}</span>
+                      : <span style={{ color: 'var(--ink-4)' }}>—</span>}
+                  </td>
                   <td style={cellStyle}>{TRIGGER_LABELS[r.trigger_event] ?? r.trigger_event}</td>
                   <td style={cellStyle}>
                     <span className={pill.cls}><span className="dot" />{pill.label}</span>
@@ -177,7 +270,7 @@ export function RunHistoryPanel() {
                   <td style={{ ...cellStyle, position: 'relative' }} data-row-menu-root>
                     <button
                       className="icon-btn"
-                      disabled={retryingId === r.id}
+                      disabled={busyId === r.id}
                       onClick={(e) => {
                         if (openMenuId === r.id) {
                           setOpenMenuId(null);
@@ -200,6 +293,16 @@ export function RunHistoryPanel() {
                         }}
                       >
                         <button style={menuItemStyle} onClick={() => rerun(r.id)}>Re-run</button>
+                        <button
+                          style={menuItemDangerStyle}
+                          onClick={() => {
+                            setOpenMenuId(null);
+                            setMenuPos(null);
+                            setConfirmState({ kind: 'single', id: r.id, label: r.incident_title ?? r.incident_id });
+                          }}
+                        >
+                          Delete
+                        </button>
                       </div>,
                       document.body
                     )}
@@ -209,7 +312,7 @@ export function RunHistoryPanel() {
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ ...cellStyle, textAlign: 'center', color: 'var(--ink-3)' }}>
+                <td colSpan={9} style={{ ...cellStyle, textAlign: 'center', color: 'var(--ink-3)' }}>
                   No analysis runs match these filters.
                 </td>
               </tr>
@@ -217,6 +320,46 @@ export function RunHistoryPanel() {
           </tbody>
         </table>
       </div>
+
+      {confirmState && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+          }}
+          onClick={() => setConfirmState(null)}
+        >
+          <div
+            style={{
+              background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14,
+              padding: '26px 28px', width: 420, maxWidth: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 8, color: 'var(--ink)' }}>
+              {confirmState.kind === 'single' ? 'Delete this run?' : 'Clean up all non-active runs?'}
+            </div>
+            <div style={{ fontSize: 14, color: 'var(--ink-2)', lineHeight: 1.5, marginBottom: 20 }}>
+              {confirmState.kind === 'single'
+                ? <>This permanently deletes the analysis run for <b>{confirmState.label}</b> and its PDFs. This can't be undone.</>
+                : <>This permanently deletes every stored analysis run — and its PDFs — for an incident that's no longer active on the dashboard (at least {nonActiveLoadedCount} shown here; older non-active runs beyond this 200-row view are included too). Active incidents' runs are never touched. This can't be undone.</>}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button className="btn-ghost" onClick={() => setConfirmState(null)}>Cancel</button>
+              <button
+                style={{
+                  padding: '9px 16px', borderRadius: 8, border: 'none', background: 'var(--red)',
+                  color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                }}
+                onClick={() => confirmState.kind === 'single' ? deleteRun(confirmState.id) : cleanupInactive()}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
