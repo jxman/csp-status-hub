@@ -600,7 +600,8 @@ csp-status-hub/
 │   │   └── ociFetcher.ts          status.json + incident-summary.rss → normalized schema
 │   ├── hooks/
 │   │   ├── useStatusPolling.ts    60s polling, cooldown, offline detection, 60s cache; tracks each provider independently so one slow/failed fetch doesn't block the others
-│   │   └── useTheme.ts            Light/dark/system appearance mode, localStorage persistence
+│   │   ├── useTheme.ts            Light/dark/system appearance mode, localStorage persistence
+│   │   └── useVersionCheck.ts     Polls dist/version.json vs. the running bundle's build date; flags a stale long-open tab after a new deploy
 │   ├── types/
 │   │   └── status.ts              Unified schema (StatusLevel, ProviderStatus, etc.)
 │   └── utils/
@@ -624,7 +625,7 @@ csp-status-hub/
 │   └── favicon.svg                Cloud icon with green status dot
 │
 ├── vercel.json                    Rewrites, function config, cron schedules
-├── vite.config.ts                 Injects __APP_VERSION__/__BUILD_DATE__ from package.json + build time
+├── vite.config.ts                 Injects __APP_VERSION__/__BUILD_DATE__ from package.json + build time; also emits dist/version.json (same build date) for useVersionCheck.ts
 ├── tailwind.config.ts
 ├── tsconfig.json
 ├── claude.md                      Original architecture handoff and data source research
@@ -724,6 +725,7 @@ covered by `vercel.json` and needs no separate provisioning step.
 | Alerts change-detection cadence | 5 minutes (AWS EventBridge → `/api/cron/check-status`)      |
 | Offline behavior            | Auto-refresh pauses; banner shown; cached data displayed        |
 | Stale data indicator        | Yellow banner if last fetch failed but cached data is available |
+| Stale bundle (app itself) indicator | Client polls `dist/version.json` every 5 min (+ immediate on tab-focus) against the running bundle's build timestamp; banner + Reload button on mismatch — see `useVersionCheck.ts` |
 
 ---
 
@@ -792,6 +794,11 @@ covered by `vercel.json` and needs no separate provisioning step.
 - Incident Briefing Engine PDF polish (2026-08-29): fixed double-spaced body text (paragraph-block rendering instead of per-line blocks), removed a duplicate trailing disclaimer in the executive PDF, added a "Powered by Synepho" + site-URL line to the footer — see **PDF export (Phase 3)** in [Alerts & Admin](#alerts--admin)
 - AI Insight panel simplified (2026-08-29): dashboard now shows only the single latest brief per incident instead of a multi-version stepper (`/api/analysis/latest` replaces `/api/analysis/history`) — see **Reading it back (Phase 2)** in [Alerts & Admin](#alerts--admin)
 - About modal refreshed (2026-08-29): copy tightened to lead with the AI Insight feature; version bumped to 1.2.0 to reflect the Incident Briefing Engine work landed since the last bump
+- Header logo now returns to the dashboard itself (2026-08-31): links to `cloudstatus.synepho.com` in the same tab instead of opening the personal site `synepho.com` in a new one — the footer's "Built by John Xanthopoulos" credit still links out to `synepho.com`
+- AI Insight disclaimer reworded and now appended to both briefs (2026-08-31): no longer leads with DR/failover framing — states plainly that the brief is AI-generated guidance, the reader's environment may differ and need other steps, and not to assume automatic failover is configured. Previously appended only to the executive brief's closing line; now appended to both the technical and executive briefs (`api/_lib/analysisPrompt.ts`)
+- Admin AI Run History: re-run enabled for any row, not just failed ones (2026-08-31): the row action menu (`RunHistoryPanel.tsx`) and `api/admin/analysis-admin.ts`'s `retry` action both dropped the `status='failed'` restriction, so a `complete` row can be forced to regenerate — e.g. to pick up a prompt change for an incident that's still active — without waiting for a natural `content_changed`/`resolved` trigger
+- GCP `latestUpdate` fix — Description included, not just Summary (2026-09-01): GCP's Summary section is near-static boilerplate that repeats verbatim across every update for an incident, while the actual evolving narrative lives in Description; `extractGcpSummary()` was extracting Summary only, so both the incident card and the AI Insight content-change trigger (which hashes `latestUpdate`) went stale on real GCP incidents — see `CLAUDE.md`'s Known Constraints & Caveats table for the full writeup
+- Stale-bundle detection + reload prompt (2026-09-01): a long-open tab can keep running the JS bundle it loaded with even while its 60s poll cycle keeps fetching fresh data, so a deploy's fix never reaches it until reloaded. `vite.config.ts` now emits `dist/version.json` from the same build timestamp baked into the bundle; the new `useVersionCheck()` hook (`src/hooks/useVersionCheck.ts`) polls it every 5 minutes and on tab-focus, and `App.tsx` shows a "new version available" banner with a Reload button on mismatch
 
 ### Pending (see docs/ENHANCEMENTS.md)
 
