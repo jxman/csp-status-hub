@@ -57,8 +57,9 @@ export async function fetchBriefPointer(provider: Provider, incidentId: string):
 
 // Step 2 of 2 — the immutable brief content for one specific analysis row
 // id. Cached at the edge (and in-browser) for a year once finalized (see
-// api/analysis/brief/[id].ts), since a given id's content never changes.
+// the ?id= branch in api/analysis/latest.ts), since a given id's content
+// never changes.
 export async function fetchBriefContent(id: string): Promise<LatestBrief> {
-  const url = `/api/analysis/brief/${encodeURIComponent(id)}`;
+  const url = `/api/analysis/latest?id=${encodeURIComponent(id)}`;
   return fetchJson<LatestBrief>(url);
 }

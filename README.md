@@ -337,10 +337,12 @@ check-status.ts (EventBridge, every 5 min)
            (a PDF failure never affects the already-published text brief)
 
    Reading it back:
-        GET /api/analysis/latest  (public) → pointer only ({id, createdAt})
-             for the latest complete row — cheap, short CDN cache
-        GET /api/analysis/brief/[id]  (public) → immutable content for one
-             row id, cached forever once finalized
+        GET /api/analysis/latest?provider=&incidentId=  (public) → pointer
+             only ({id, createdAt}) for the latest complete row — cheap,
+             short CDN cache
+        GET /api/analysis/latest?id=<uuid>  (public) → immutable content
+             for one row id, cached forever once finalized — same file,
+             not a separate route (see Pointer/content split below)
              → IncidentBriefPanel.tsx's "AI Insight" panel + Download PDF
         GET /api/admin/analysis-admin?resource=runs  (admin) → full history
              across every trigger, incl. failed rows → RunHistoryPanel.tsx
@@ -409,18 +411,38 @@ check-status.ts (EventBridge, every 5 min)
   table once did (see **Backend architecture** above). Since
   `incident_analysis` rows never mutate after `status='complete'`
   (`analysisPipeline.ts` INSERTs the row, then only best-effort backfills
-  the two PDF URLs via a `COALESCE` UPDATE), the endpoint was split in
-  two: `/api/analysis/latest` now returns only a `{id, createdAt}`
+  the two PDF URLs via a `COALESCE` UPDATE), the read was split into two
+  cases inside the *same* `api/analysis/latest.ts` file (see
+  **Function-count fix** just below for why it's one file, not two
+  routes): `?provider=&incidentId=` returns only a `{id, createdAt}`
   pointer, cacheable for 5 minutes since a new pointer can't appear faster
-  than the debounce interval; the brief text and PDF links moved to the
-  new, content-addressed `GET /api/analysis/brief/[id]`, cached
-  `s-maxage=31536000, immutable` once a row is "finalized" (both PDF URLs
-  present, or 5 minutes old, to bound a row whose PDF step never lands).
-  `useIncidentBrief.ts` fetches the pointer, then the content behind its
-  id — once any visitor has ever loaded a given brief id, every later view
-  (any visitor, any reload, for the rest of that incident's life) is
-  served from Vercel's edge cache and the browser's own HTTP cache with no
-  Postgres query at all.
+  than the debounce interval; `?id=<uuid>` returns the brief text and PDF
+  links for that one immutable row, cached `s-maxage=31536000, immutable`
+  once "finalized" (both PDF URLs present, or 5 minutes old, to bound a
+  row whose PDF step never lands). `useIncidentBrief.ts` fetches the
+  pointer, then the content behind its id — once any visitor has ever
+  loaded a given brief id, every later view (any visitor, any reload, for
+  the rest of that incident's life) is served from Vercel's edge cache and
+  the browser's own HTTP cache with no Postgres query at all.
+- **Function-count fix (2026-09-02, same day):** the pointer/content split
+  above first shipped as two files — `api/analysis/latest.ts` and a new
+  `api/analysis/brief/[id].ts` — which pushed this Hobby-plan deployment
+  from 12 Serverless Functions (already at the cap) to 13 and broke the
+  next deploy (`No more than 12 Serverless Functions can be added to a
+  Deployment on the Hobby plan`). Folded back into one file (`?id=` on
+  `/api/analysis/latest` instead of a separate route — see above), and two
+  more pairs consolidated the same way for headroom against the same cap:
+  `api/subscribe/index.ts` (bare `POST /api/subscribe`) merged into
+  `api/subscribe/[action].ts` as its `action === undefined` case, and
+  `api/admin/subscribers/index.ts` (bare `GET` list/CSV) merged into
+  `api/admin/subscribers/[id].ts` as its `id === null` case. Both reuse
+  the same bracket-file trick `analysis-admin.ts` already established
+  (see its own header comment) — a `vercel.json` rewrite maps the bare
+  path to the bracket file with no dynamic segment populated, which the
+  handler reads as "no id/action given, so list/create instead." No
+  client-visible URL or behavior changed — `/api/subscribe` and
+  `/api/admin/subscribers` still work exactly as before. Net: 10 functions
+  deployed, down from what would have been 13.
 - **PDF export (Phase 3):** generated once per analysis version, right
   after the text brief succeeds, as a best-effort step that can never
   affect the already-published text (`api/_lib/pdf/render.ts`). Built with
@@ -762,7 +784,7 @@ covered by `vercel.json` and needs no separate provisioning step.
 | Manual refresh cooldown     | 60 seconds (starts after fetch completes)                       |
 | Client cache (localStorage) | 60s TTL — hydrated on page load, matches poll interval          |
 | Azure CDN cache             | `s-maxage=300, stale-while-revalidate=60` on Vercel Function    |
-| AI Insight brief cache      | Pointer (`/api/analysis/latest`) `s-maxage=300`; content (`/api/analysis/brief/[id]`) `s-maxage=31536000, immutable` once finalized — see **Pointer/content split** in [Alerts & Admin](#alerts--admin) |
+| AI Insight brief cache      | Pointer (`/api/analysis/latest?provider=&incidentId=`) `s-maxage=300`; content (`/api/analysis/latest?id=`) `s-maxage=31536000, immutable` once finalized — see **Pointer/content split** in [Alerts & Admin](#alerts--admin) |
 | Alerts change-detection cadence | 5 minutes (AWS EventBridge → `/api/cron/check-status`)      |
 | Offline behavior            | Auto-refresh pauses; banner shown; cached data displayed        |
 | Stale data indicator        | Yellow banner if last fetch failed but cached data is available |
@@ -841,7 +863,8 @@ covered by `vercel.json` and needs no separate provisioning step.
 - GCP `latestUpdate` fix — Description included, not just Summary (2026-09-01): GCP's Summary section is near-static boilerplate that repeats verbatim across every update for an incident, while the actual evolving narrative lives in Description; `extractGcpSummary()` was extracting Summary only, so both the incident card and the AI Insight content-change trigger (which hashes `latestUpdate`) went stale on real GCP incidents — see `CLAUDE.md`'s Known Constraints & Caveats table for the full writeup
 - Stale-bundle detection + reload prompt (2026-09-01): a long-open tab can keep running the JS bundle it loaded with even while its 60s poll cycle keeps fetching fresh data, so a deploy's fix never reaches it until reloaded. `vite.config.ts` now emits `dist/version.json` from the same build timestamp baked into the bundle; the new `useVersionCheck()` hook (`src/hooks/useVersionCheck.ts`) polls it every 5 minutes and on tab-focus, and `App.tsx` shows a "new version available" banner with a Reload button on mismatch
 - Admin AI Run History: Active/non-active badge, filter, and cleanup (2026-09-01): the dashboard only ever shows active incidents, so `incident_analysis` rows and PDFs for rolled-off incidents just accumulated with no way to see or clear them. Run History now shows an Active/Non-active badge per row (from the same Redis `activeIncidentIds` snapshot `check-status.ts` already writes), a matching filter, a per-row Delete action, and a "Clean up non-active" bulk action that deletes matching rows and their Blob PDFs — see **Active/non-active state + cleanup** in [Alerts & Admin](#alerts--admin)
-- AI Insight brief endpoint split into pointer + immutable content (2026-09-02): `/api/analysis/latest` previously returned the full brief text and PDF URLs with only a 60s edge cache, so sustained visitor traffic on a popular incident could re-query Neon roughly once a minute — fast enough to defeat autosuspend, the same failure shape the earlier Redis migration fixed for the status-snapshot cache. `incident_analysis` rows never mutate once `status='complete'`, so `/api/analysis/latest` now returns just a `{id, createdAt}` pointer (5-minute cache), and the new content-addressed `GET /api/analysis/brief/[id]` (`useIncidentBrief.ts`) serves the actual brief text/PDF links with a 1-year immutable cache once the row is finalized — see **Pointer/content split** in [Alerts & Admin](#alerts--admin)
+- AI Insight brief endpoint split into pointer + immutable content (2026-09-02): `/api/analysis/latest` previously returned the full brief text and PDF URLs with only a 60s edge cache, so sustained visitor traffic on a popular incident could re-query Neon roughly once a minute — fast enough to defeat autosuspend, the same failure shape the earlier Redis migration fixed for the status-snapshot cache. `incident_analysis` rows never mutate once `status='complete'`, so `/api/analysis/latest?provider=&incidentId=` now returns just a `{id, createdAt}` pointer (5-minute cache), and `/api/analysis/latest?id=<uuid>` (`useIncidentBrief.ts`) serves the actual brief text/PDF links with a 1-year immutable cache once the row is finalized — see **Pointer/content split** in [Alerts & Admin](#alerts--admin)
+- Consolidated three endpoint pairs into one function each to stay under the Hobby plan's 12-function cap (2026-09-02): the pointer/content split above first shipped as a separate `api/analysis/brief/[id].ts` file, which tipped this deployment from 12 functions (already at the cap) to 13 and broke the deploy. Merged back into `api/analysis/latest.ts` via a `?id=` query param, and two more pairs (`api/subscribe/index.ts` into `[action].ts`, `api/admin/subscribers/index.ts` into `[id].ts`) consolidated the same way for headroom — no client-visible URL changes — see **Function-count fix** in [Alerts & Admin](#alerts--admin)
 
 ### Pending (see docs/ENHANCEMENTS.md)
 
