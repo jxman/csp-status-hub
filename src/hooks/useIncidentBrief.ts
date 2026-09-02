@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type { Provider } from '../types/status';
-import { fetchLatestIncidentBrief, type LatestBrief } from '../fetchers/analysisFetcher';
+import { fetchBriefPointer, fetchBriefContent, type LatestBrief } from '../fetchers/analysisFetcher';
 
 type BriefState = 'idle' | 'loading' | 'loaded' | 'error';
 
@@ -21,7 +21,15 @@ export function useIncidentBrief(provider: Provider, incidentId: string): UseInc
 
   const fetchNow = useCallback(() => {
     setState('loading');
-    fetchLatestIncidentBrief(provider, incidentId)
+    (async () => {
+      const pointer = await fetchBriefPointer(provider, incidentId);
+      if (!pointer) return null;
+      // The pointer fetch above is the only part that has to hit Postgres on
+      // every cache miss; this second fetch resolves from Vercel's edge (and
+      // the browser's own HTTP cache) once any visitor has ever loaded this
+      // exact brief id — see analysisFetcher.ts.
+      return fetchBriefContent(pointer.id);
+    })()
       .then((result) => {
         setBrief(result);
         setState('loaded');

@@ -337,7 +337,10 @@ check-status.ts (EventBridge, every 5 min)
            (a PDF failure never affects the already-published text brief)
 
    Reading it back:
-        GET /api/analysis/latest  (public) → single latest complete row
+        GET /api/analysis/latest  (public) → pointer only ({id, createdAt})
+             for the latest complete row — cheap, short CDN cache
+        GET /api/analysis/brief/[id]  (public) → immutable content for one
+             row id, cached forever once finalized
              → IncidentBriefPanel.tsx's "AI Insight" panel + Download PDF
         GET /api/admin/analysis-admin?resource=runs  (admin) → full history
              across every trigger, incl. failed rows → RunHistoryPanel.tsx
@@ -396,6 +399,28 @@ check-status.ts (EventBridge, every 5 min)
   (used by admin run history / retry), but the dashboard only ever shows
   the latest one — no version stepper, since a stale prior version reads
   as contradicting the incident's current live status.
+- **Pointer/content split (2026-09-02):** `/api/analysis/latest` used to
+  return the full brief (both texts + PDF URLs) with a 60s
+  `s-maxage`/30s `stale-while-revalidate` — short enough that sustained
+  traffic (repeat page loads, several visitors opening the same incident,
+  a stuck-open tab being reloaded) could re-invoke the function, and
+  therefore re-query Neon, roughly once a minute — fast enough to defeat
+  Neon's autosuspend the same way the pre-Redis `provider_status_snapshot`
+  table once did (see **Backend architecture** above). Since
+  `incident_analysis` rows never mutate after `status='complete'`
+  (`analysisPipeline.ts` INSERTs the row, then only best-effort backfills
+  the two PDF URLs via a `COALESCE` UPDATE), the endpoint was split in
+  two: `/api/analysis/latest` now returns only a `{id, createdAt}`
+  pointer, cacheable for 5 minutes since a new pointer can't appear faster
+  than the debounce interval; the brief text and PDF links moved to the
+  new, content-addressed `GET /api/analysis/brief/[id]`, cached
+  `s-maxage=31536000, immutable` once a row is "finalized" (both PDF URLs
+  present, or 5 minutes old, to bound a row whose PDF step never lands).
+  `useIncidentBrief.ts` fetches the pointer, then the content behind its
+  id — once any visitor has ever loaded a given brief id, every later view
+  (any visitor, any reload, for the rest of that incident's life) is
+  served from Vercel's edge cache and the browser's own HTTP cache with no
+  Postgres query at all.
 - **PDF export (Phase 3):** generated once per analysis version, right
   after the text brief succeeds, as a best-effort step that can never
   affect the already-published text (`api/_lib/pdf/render.ts`). Built with
@@ -737,6 +762,7 @@ covered by `vercel.json` and needs no separate provisioning step.
 | Manual refresh cooldown     | 60 seconds (starts after fetch completes)                       |
 | Client cache (localStorage) | 60s TTL — hydrated on page load, matches poll interval          |
 | Azure CDN cache             | `s-maxage=300, stale-while-revalidate=60` on Vercel Function    |
+| AI Insight brief cache      | Pointer (`/api/analysis/latest`) `s-maxage=300`; content (`/api/analysis/brief/[id]`) `s-maxage=31536000, immutable` once finalized — see **Pointer/content split** in [Alerts & Admin](#alerts--admin) |
 | Alerts change-detection cadence | 5 minutes (AWS EventBridge → `/api/cron/check-status`)      |
 | Offline behavior            | Auto-refresh pauses; banner shown; cached data displayed        |
 | Stale data indicator        | Yellow banner if last fetch failed but cached data is available |
@@ -815,6 +841,7 @@ covered by `vercel.json` and needs no separate provisioning step.
 - GCP `latestUpdate` fix — Description included, not just Summary (2026-09-01): GCP's Summary section is near-static boilerplate that repeats verbatim across every update for an incident, while the actual evolving narrative lives in Description; `extractGcpSummary()` was extracting Summary only, so both the incident card and the AI Insight content-change trigger (which hashes `latestUpdate`) went stale on real GCP incidents — see `CLAUDE.md`'s Known Constraints & Caveats table for the full writeup
 - Stale-bundle detection + reload prompt (2026-09-01): a long-open tab can keep running the JS bundle it loaded with even while its 60s poll cycle keeps fetching fresh data, so a deploy's fix never reaches it until reloaded. `vite.config.ts` now emits `dist/version.json` from the same build timestamp baked into the bundle; the new `useVersionCheck()` hook (`src/hooks/useVersionCheck.ts`) polls it every 5 minutes and on tab-focus, and `App.tsx` shows a "new version available" banner with a Reload button on mismatch
 - Admin AI Run History: Active/non-active badge, filter, and cleanup (2026-09-01): the dashboard only ever shows active incidents, so `incident_analysis` rows and PDFs for rolled-off incidents just accumulated with no way to see or clear them. Run History now shows an Active/Non-active badge per row (from the same Redis `activeIncidentIds` snapshot `check-status.ts` already writes), a matching filter, a per-row Delete action, and a "Clean up non-active" bulk action that deletes matching rows and their Blob PDFs — see **Active/non-active state + cleanup** in [Alerts & Admin](#alerts--admin)
+- AI Insight brief endpoint split into pointer + immutable content (2026-09-02): `/api/analysis/latest` previously returned the full brief text and PDF URLs with only a 60s edge cache, so sustained visitor traffic on a popular incident could re-query Neon roughly once a minute — fast enough to defeat autosuspend, the same failure shape the earlier Redis migration fixed for the status-snapshot cache. `incident_analysis` rows never mutate once `status='complete'`, so `/api/analysis/latest` now returns just a `{id, createdAt}` pointer (5-minute cache), and the new content-addressed `GET /api/analysis/brief/[id]` (`useIncidentBrief.ts`) serves the actual brief text/PDF links with a 1-year immutable cache once the row is finalized — see **Pointer/content split** in [Alerts & Admin](#alerts--admin)
 
 ### Pending (see docs/ENHANCEMENTS.md)
 

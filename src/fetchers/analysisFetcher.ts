@@ -11,18 +11,19 @@ export interface LatestBrief {
   createdAt: string;
 }
 
-interface LatestResponse {
-  provider: Provider;
-  incidentId: string;
-  brief: LatestBrief | null;
+export interface BriefPointer {
+  id: string;
+  createdAt: string;
 }
 
-export async function fetchLatestIncidentBrief(provider: Provider, incidentId: string): Promise<LatestBrief | null> {
-  const url = `/api/analysis/latest?provider=${provider}&incidentId=${encodeURIComponent(incidentId)}`;
+interface LatestPointerResponse {
+  provider: Provider;
+  incidentId: string;
+  pointer: BriefPointer | null;
+}
+
+async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Brief request returned ${response.status} ${response.statusText}`);
-  }
 
   // Vite dev server returns index.html (200 OK) for unknown /api/* routes.
   // Detect this before calling JSON.parse to avoid a cryptic parse error.
@@ -34,9 +35,30 @@ export async function fetchLatestIncidentBrief(provider: Provider, incidentId: s
         'AI Insight requires a Vercel serverless function. Run `vercel dev` instead of `npm run dev` to enable it locally.'
       );
     }
-    throw new Error('Brief endpoint returned an unexpected HTML response.');
+    throw new Error('Analysis endpoint returned an unexpected HTML response.');
   }
 
-  const data: LatestResponse = JSON.parse(text);
-  return data.brief;
+  if (!response.ok) {
+    throw new Error(`Request to ${url} returned ${response.status} ${response.statusText}`);
+  }
+
+  return JSON.parse(text) as T;
+}
+
+// Step 1 of 2 — the mutable, cheap-to-query pointer for an incident's most
+// recent complete analysis row. Cached at the edge for minutes (see
+// api/analysis/latest.ts), since it can only advance at most once per
+// analysis-debounce interval.
+export async function fetchBriefPointer(provider: Provider, incidentId: string): Promise<BriefPointer | null> {
+  const url = `/api/analysis/latest?provider=${provider}&incidentId=${encodeURIComponent(incidentId)}`;
+  const data = await fetchJson<LatestPointerResponse>(url);
+  return data.pointer;
+}
+
+// Step 2 of 2 — the immutable brief content for one specific analysis row
+// id. Cached at the edge (and in-browser) for a year once finalized (see
+// api/analysis/brief/[id].ts), since a given id's content never changes.
+export async function fetchBriefContent(id: string): Promise<LatestBrief> {
+  const url = `/api/analysis/brief/${encodeURIComponent(id)}`;
+  return fetchJson<LatestBrief>(url);
 }
