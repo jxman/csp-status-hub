@@ -5,6 +5,7 @@ import { useStatusPolling, PROVIDER_ORDER } from './hooks/useStatusPolling';
 import { useTheme } from './hooks/useTheme';
 import { useIncidentDeepLink } from './hooks/useIncidentDeepLink';
 import { useVersionCheck } from './hooks/useVersionCheck';
+import { initAnalytics } from './utils/analytics';
 import { StatusHeader } from './components/StatusHeader';
 import { ProviderGrid, type ProviderSlot } from './components/ProviderGrid';
 import { ProviderCardSkeleton } from './components/ProviderCardSkeleton';
@@ -178,6 +179,10 @@ export default function App() {
   const [urlBanner, dismissUrlBanner] = useUrlBanner();
   const { deepLinkTarget, consume: consumeDeepLink } = useIncidentDeepLink();
   const updateAvailable = useVersionCheck();
+
+  useEffect(() => {
+    initAnalytics();
+  }, []);
 
   const slots: ProviderSlot[] = PROVIDER_ORDER.map((id) => ({ provider: id, status: providers[id] }));
   const loadedProviders: ProviderStatus[] = slots

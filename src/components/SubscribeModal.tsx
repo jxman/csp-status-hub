@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { trackEvent } from '../utils/analytics';
 
 interface Props {
   onClose: () => void;
@@ -77,6 +78,7 @@ export function SubscribeModal({ onClose }: Props) {
         throw new Error(body.error ?? 'Something went wrong. Please try again.');
       }
       setStatus('done');
+      trackEvent('subscribe_success', { providers: providers.join(',') });
     } catch (err) {
       setStatus('error');
       setErrorMessage(err instanceof Error ? err.message : 'Something went wrong. Please try again.');

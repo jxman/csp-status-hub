@@ -1,5 +1,6 @@
 import type { Incident, Provider } from '../types/status';
 import { formatRelative } from '../utils/formatters';
+import { trackEvent } from '../utils/analytics';
 import { IncidentBriefPanel } from './IncidentBriefPanel';
 
 interface Props {
@@ -61,7 +62,12 @@ export function IncidentCard({ incident, provider, autoExpand }: Props) {
           <span>Updated {formatRelative(incident.updatedAt)}</span>
         )}
         {incident.detailUrl && (
-          <a href={incident.detailUrl} target="_blank" rel="noopener noreferrer">
+          <a
+            href={incident.detailUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => trackEvent('outbound_status_click', { provider, incident_id: incident.id })}
+          >
             View timeline →
           </a>
         )}

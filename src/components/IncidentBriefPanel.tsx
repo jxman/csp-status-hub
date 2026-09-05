@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Provider } from '../types/status';
 import { useIncidentBrief } from '../hooks/useIncidentBrief';
 import { formatBriefText } from '../utils/formatBriefText';
+import { trackEvent } from '../utils/analytics';
 import { SynephoLogo } from './SynephoLogo';
 
 interface Props {
@@ -40,7 +41,10 @@ export function IncidentBriefPanel({ provider, incidentId, autoExpand }: Props) 
   const { state, brief, error, load, retry } = useIncidentBrief(provider, incidentId);
 
   const toggle = () => {
-    setExpanded((e) => !e);
+    setExpanded((e) => {
+      if (!e) trackEvent('ai_insight_expand', { provider, incident_id: incidentId });
+      return !e;
+    });
     load();
   };
 
@@ -113,6 +117,7 @@ export function IncidentBriefPanel({ provider, incidentId, autoExpand }: Props) 
                   href={(activeTab === 'technical' ? brief.pdfTechnicalUrl : brief.pdfExecutiveUrl) ?? undefined}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={() => trackEvent('ai_insight_pdf_download', { provider, incident_id: incidentId, tab: activeTab })}
                 >
                   <DownloadIcon />
                   Download PDF
