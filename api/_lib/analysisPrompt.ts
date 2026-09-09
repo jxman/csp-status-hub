@@ -2,6 +2,7 @@
 // README.md's Alerts & Admin section). Kept as plain data/logic, no HTTP or
 // SDK imports here, so it stays testable in isolation from api/analysis/run.ts.
 import type { Incident, Provider } from '../../src/types/status.js';
+import { AI_BRIEF_DISCLAIMER_TEXT } from '../../src/utils/aiBriefDisclaimer.js';
 
 // Hand-curated, not model-generated: the design doc's mitigation against an
 // LLM inventing plausible-sounding specifics from a thin vendor status
@@ -46,9 +47,6 @@ export const RESILIENCY_REFERENCE_TABLE: Record<string, { category: string; ques
   },
 };
 
-export const DISCLAIMER_TEXT =
-  "This brief is AI-generated guidance based on the provider's public status update only — it has no visibility into your account, architecture, or configuration, and your environment may differ and require other steps. Do not assume automatic failover is configured; evaluate and execute any failover action based on your own architecture.";
-
 export function buildSystemPrompt(): string {
   const referenceTableText = Object.values(RESILIENCY_REFERENCE_TABLE)
     .map((entry) => `${entry.category}:\n${entry.questions.map((q) => `  - ${q}`).join('\n')}`)
@@ -68,7 +66,7 @@ export function buildSystemPrompt(): string {
     '',
     referenceTableText,
     '',
-    `Append this disclaimer verbatim as the final line of BOTH the "technical" and "executive" briefs: "${DISCLAIMER_TEXT}"`,
+    `Append this disclaimer verbatim as the final line of BOTH the "technical" and "executive" briefs: "${AI_BRIEF_DISCLAIMER_TEXT}"`,
     '',
     'Call the emit_incident_brief tool exactly once with both briefs. Do not respond with plain text.',
   ].join('\n');

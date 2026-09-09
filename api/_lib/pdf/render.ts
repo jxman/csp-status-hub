@@ -4,7 +4,7 @@
 // a failure here must never affect the already-successful brief.
 import * as ReactPDF from '@react-pdf/renderer';
 import { put } from '@vercel/blob';
-import { DISCLAIMER_TEXT } from '../analysisPrompt.js';
+import { AI_BRIEF_DISCLAIMER_TEXT as DISCLAIMER_TEXT } from '../../../src/utils/aiBriefDisclaimer.js';
 import { BriefDocument } from './BriefDocument.js';
 import { slugifyForBlobPath } from './slug.js';
 import type { Incident, Provider } from '../../../src/types/status.js';

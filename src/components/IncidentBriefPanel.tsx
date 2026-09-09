@@ -2,8 +2,22 @@ import { useEffect, useState } from 'react';
 import type { Provider } from '../types/status';
 import { useIncidentBrief } from '../hooks/useIncidentBrief';
 import { formatBriefText } from '../utils/formatBriefText';
+import { AI_BRIEF_DISCLAIMER_TEXT } from '../utils/aiBriefDisclaimer';
 import { trackEvent } from '../utils/analytics';
 import { SynephoLogo } from './SynephoLogo';
+
+// The prompt (api/_lib/analysisPrompt.ts) appends AI_BRIEF_DISCLAIMER_TEXT as
+// each brief's own final line — strip a trailing copy here so it can be
+// rendered separately, visually set apart from the generated brief content
+// (mirrors the same split already done for the PDF export in
+// api/_lib/pdf/render.ts).
+function splitDisclaimer(text: string): { body: string; hasDisclaimer: boolean } {
+  const trimmed = text.trim();
+  if (trimmed.endsWith(AI_BRIEF_DISCLAIMER_TEXT)) {
+    return { body: trimmed.slice(0, -AI_BRIEF_DISCLAIMER_TEXT.length).trim(), hasDisclaimer: true };
+  }
+  return { body: text, hasDisclaimer: false };
+}
 
 interface Props {
   provider: Provider;
@@ -107,9 +121,17 @@ export function IncidentBriefPanel({ provider, incidentId, autoExpand }: Props) 
                 </button>
               </div>
 
-              <div className="brief-text">
-                {formatBriefText(activeTab === 'technical' ? brief.technicalBrief : brief.executiveBrief)}
-              </div>
+              {(() => {
+                const { body, hasDisclaimer } = splitDisclaimer(
+                  activeTab === 'technical' ? brief.technicalBrief : brief.executiveBrief
+                );
+                return (
+                  <>
+                    <div className="brief-text">{formatBriefText(body)}</div>
+                    {hasDisclaimer && <p className="brief-disclaimer">{AI_BRIEF_DISCLAIMER_TEXT}</p>}
+                  </>
+                );
+              })()}
 
               {(activeTab === 'technical' ? brief.pdfTechnicalUrl : brief.pdfExecutiveUrl) && (
                 <a
