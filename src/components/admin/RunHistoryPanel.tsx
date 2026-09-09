@@ -13,6 +13,8 @@ interface AnalysisRun {
   created_at: string;
   pdf_technical_url: string | null;
   pdf_executive_url: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
 }
 
 type ConfirmState =
@@ -53,6 +55,16 @@ function statusPill(status: string): { cls: string; label: string } {
 }
 
 const TRIGGER_LABELS: Record<string, string> = { new: 'New', content_changed: 'Updated', resolved: 'Resolved' };
+
+// Bedrock's actual reported usage for this run (response.usage.inputTokens /
+// outputTokens, written by api/_lib/analysisPipeline.ts) — null for any row
+// from before that column existed, or if usage was missing on the response.
+function formatTokens(r: AnalysisRun): string {
+  if (r.input_tokens == null && r.output_tokens == null) return '—';
+  const inT = r.input_tokens != null ? r.input_tokens.toLocaleString() : '—';
+  const outT = r.output_tokens != null ? r.output_tokens.toLocaleString() : '—';
+  return `${inT} in / ${outT} out`;
+}
 
 export function RunHistoryPanel() {
   const [runs, setRuns] = useState<AnalysisRun[] | null>(null);
@@ -235,6 +247,7 @@ export function RunHistoryPanel() {
               <th style={{ ...cellStyle, borderTop: 'none', textAlign: 'left' }}>Trigger</th>
               <th style={{ ...cellStyle, borderTop: 'none', textAlign: 'left' }}>Status</th>
               <th style={{ ...cellStyle, borderTop: 'none', textAlign: 'left' }}>Model</th>
+              <th style={{ ...cellStyle, borderTop: 'none', textAlign: 'left' }}>Tokens</th>
               <th style={{ ...cellStyle, borderTop: 'none', textAlign: 'left' }}>Created</th>
               <th style={{ ...cellStyle, borderTop: 'none', textAlign: 'left' }}>PDF</th>
               <th style={{ ...cellStyle, borderTop: 'none', width: 40 }} />
@@ -258,6 +271,7 @@ export function RunHistoryPanel() {
                     <span className={pill.cls}><span className="dot" />{pill.label}</span>
                   </td>
                   <td style={cellStyle}>{r.model}</td>
+                  <td style={cellStyle}>{formatTokens(r)}</td>
                   <td style={cellStyle}>{new Date(r.created_at).toLocaleString()}</td>
                   <td style={cellStyle}>
                     {r.pdf_technical_url && isSafeHttpsUrl(r.pdf_technical_url) && (
@@ -312,7 +326,7 @@ export function RunHistoryPanel() {
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={9} style={{ ...cellStyle, textAlign: 'center', color: 'var(--ink-3)' }}>
+                <td colSpan={10} style={{ ...cellStyle, textAlign: 'center', color: 'var(--ink-3)' }}>
                   No analysis runs match these filters.
                 </td>
               </tr>

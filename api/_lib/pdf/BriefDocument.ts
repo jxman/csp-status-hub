@@ -54,7 +54,7 @@ const styles = StyleSheet.create({
     borderTopColor: '#d9dcd7',
     paddingTop: 8,
   },
-  disclaimer: { fontSize: 8, color: INK_SOFT, lineHeight: 1.35 },
+  disclaimer: { fontSize: 8, fontFamily: 'Helvetica-Oblique', color: INK_SOFT, lineHeight: 1.35 },
   poweredBy: { fontSize: 8, color: INK_SOFT, marginTop: 5 },
   poweredByBrand: { color: BRAND_BLUE, fontFamily: 'Helvetica-Bold' },
 });
