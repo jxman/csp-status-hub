@@ -438,6 +438,12 @@ body {
 .brief-tab.active { background: var(--blue); border-color: var(--blue); color: white; font-weight: 600; }
 .brief-text { white-space: pre-wrap; color: var(--ink-2); font-size: 13px; line-height: 1.6; }
 .brief-text strong { color: var(--ink); font-weight: 700; }
+.brief-heading { white-space: normal; color: var(--ink); font-weight: 700; margin: 12px 0 4px; }
+.brief-heading:first-child { margin-top: 0; }
+.brief-heading-1 { font-size: 15px; }
+.brief-heading-2 { font-size: 14px; }
+.brief-heading-3 { font-size: 13px; }
+.brief-rule { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
 .brief-pdf-link {
   display: inline-flex; align-items: center; gap: 5px; margin-top: 12px;
   font-size: 12px; font-weight: 600; color: var(--blue); text-decoration: none;

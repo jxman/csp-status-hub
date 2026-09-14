@@ -45,6 +45,10 @@ const styles = StyleSheet.create({
   // double-spaced.
   bodyBlock: { marginBottom: 9, lineHeight: 1.35 },
   bold: { fontFamily: 'Helvetica-Bold' },
+  heading1: { fontSize: 13, fontFamily: 'Helvetica-Bold', marginTop: 10, marginBottom: 6 },
+  heading2: { fontSize: 12, fontFamily: 'Helvetica-Bold', marginTop: 9, marginBottom: 5 },
+  heading3: { fontSize: 11, fontFamily: 'Helvetica-Bold', marginTop: 8, marginBottom: 4 },
+  sectionRule: { borderBottomWidth: 1, borderBottomColor: '#d9dcd7', marginTop: 6, marginBottom: 10 },
   footer: {
     position: 'absolute',
     bottom: 24,
@@ -64,18 +68,46 @@ const KIND_LABEL: Record<'technical' | 'executive', string> = {
   executive: 'Executive Brief',
 };
 
-// Adapts src/utils/formatBriefText.tsx's **bold**-span parsing for react-pdf.
+const HEADING_RE = /^(#{1,6})\s+(.+)$/;
+const RULE_RE = /^(-{3,}|_{3,}|\*{3,})\s*$/;
+const HEADING_STYLES = { 1: styles.heading1, 2: styles.heading2, 3: styles.heading3 } as const;
+
+// Adapts src/utils/formatBriefText.tsx's markdown-subset parsing (**bold**,
+// #/##/### headings, --- rules) for react-pdf. Blank-line-separated blocks
+// that are a single heading or rule line render as their own standalone
+// element (matching how the model reliably surrounds them with blank
+// lines); any stray heading/rule text mixed into a multi-line paragraph
+// block is dropped rather than leaking through as literal "### "/"---".
 function renderBriefBody(text: string) {
   const blocks = text
     .split(/\n{2,}/)
     .map((block) => block.trim())
     .filter(Boolean);
 
-  return blocks.map((block, blockIndex) => {
+  const nodes: Array<ReturnType<typeof h>> = [];
+
+  blocks.forEach((block, blockIndex) => {
     const lines = block.split('\n');
+
+    if (lines.length === 1) {
+      const headingMatch = lines[0].match(HEADING_RE);
+      if (headingMatch) {
+        const level = Math.min(headingMatch[1].length, 3) as 1 | 2 | 3;
+        nodes.push(h(Text, { key: blockIndex, style: HEADING_STYLES[level] }, headingMatch[2]));
+        return;
+      }
+      if (RULE_RE.test(lines[0].trim())) {
+        nodes.push(h(View, { key: blockIndex, style: styles.sectionRule }));
+        return;
+      }
+    }
+
     const children: Array<string | ReturnType<typeof h>> = [];
+    let linesEmitted = 0;
 
     lines.forEach((line, lineIndex) => {
+      if (HEADING_RE.test(line) || RULE_RE.test(line.trim())) return;
+      if (linesEmitted > 0) children.push('\n');
       const segments = line.split(/\*\*(.+?)\*\*/g);
       segments.forEach((segment, segmentIndex) => {
         if (segment === '') return;
@@ -85,11 +117,15 @@ function renderBriefBody(text: string) {
             : segment
         );
       });
-      if (lineIndex < lines.length - 1) children.push('\n');
+      linesEmitted++;
     });
 
-    return h(Text, { key: blockIndex, style: styles.bodyBlock }, ...children);
+    if (children.length > 0) {
+      nodes.push(h(Text, { key: blockIndex, style: styles.bodyBlock }, ...children));
+    }
   });
+
+  return nodes;
 }
 
 export interface BriefDocumentProps {
