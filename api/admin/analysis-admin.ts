@@ -57,6 +57,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const [runs, active] = await Promise.all([
         sql`
           SELECT id, provider, incident_id, incident_snapshot->>'title' AS incident_title,
+                 incident_snapshot->'affectedRegions' AS affected_regions,
                  trigger_event, status, error, model, created_at, pdf_technical_url, pdf_executive_url,
                  input_tokens, output_tokens
           FROM incident_analysis

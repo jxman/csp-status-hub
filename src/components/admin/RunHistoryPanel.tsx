@@ -6,6 +6,7 @@ interface AnalysisRun {
   provider: string;
   incident_id: string;
   incident_title: string | null;
+  affected_regions: string[] | null;
   trigger_event: string;
   status: string;
   error: string | null;
@@ -260,7 +261,14 @@ export function RunHistoryPanel() {
               return (
                 <tr key={r.id} style={{ opacity: busyId === r.id ? 0.5 : 1 }}>
                   <td style={cellStyle}>{r.provider.toUpperCase()}</td>
-                  <td style={cellStyle} title={r.error ?? undefined}>{r.incident_title ?? r.incident_id}</td>
+                  <td style={cellStyle} title={r.error ?? undefined}>
+                    <div>{r.incident_title ?? r.incident_id}</div>
+                    {r.affected_regions && r.affected_regions.length > 0 && (
+                      <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>
+                        {r.affected_regions.join(', ')}
+                      </div>
+                    )}
+                  </td>
                   <td style={cellStyle}>
                     {activeConfirmed
                       ? <span className={active ? 'pill ok' : 'pill muted'}><span className="dot" />{active ? 'Active' : 'Non-active'}</span>
