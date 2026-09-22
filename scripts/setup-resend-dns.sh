@@ -1,10 +1,15 @@
 #!/bin/bash
 # Adds the DNS records Resend requires to verify alerts.synepho.com for sending
-# email from csp-status-hub. Idempotent (UPSERT) — safe to re-run.
+# email from csp-status-hub, plus a DMARC record (not required by Resend to
+# verify the domain, but required by Google/Yahoo/Microsoft's bulk-sender
+# rules — Resend's dashboard flags it as "needs attention" without one; added
+# 2026-09-22, p=none since this is a monitor-only starting policy).
+# Idempotent (UPSERT) — safe to re-run.
 #
-# Source of truth for these values: `curl -H "Authorization: Bearer $RESEND_API_KEY"
-# https://api.resend.com/domains/<domain-id>` (see README.md's Alerts & Admin section).
-# Re-run that lookup if Resend ever rotates the DKIM key.
+# Source of truth for the MX/SPF/DKIM values: `curl -H "Authorization: Bearer
+# $RESEND_API_KEY" https://api.resend.com/domains/<domain-id>` (see README.md's
+# Alerts & Admin section). Re-run that lookup if Resend ever rotates the DKIM key.
+# The DMARC record isn't Resend-issued — it's this project's own policy.
 set -e
 
 HOSTED_ZONE_ID="Z1YCOPGKIGNAB3"   # synepho.com
@@ -46,6 +51,17 @@ CHANGE_BATCH=$(cat <<EOF
         "TTL": 300,
         "ResourceRecords": [
           { "Value": "\"${DKIM_VALUE}\"" }
+        ]
+      }
+    },
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "_dmarc.${DOMAIN}",
+        "Type": "TXT",
+        "TTL": 300,
+        "ResourceRecords": [
+          { "Value": "\"v=DMARC1; p=none; adkim=r; aspf=r\"" }
         ]
       }
     }
