@@ -597,6 +597,16 @@ Redis needs no migration step — it's just a key-value cache, provisioned once 
   detected change in the same request — curling it manually to "just check"
   can trigger live notifications if something genuinely changed since the
   last tick.
+- **AWS doesn't always change an incident's `<title>` on its final update.**
+  Found 2026-09-22: an EC2 `us-east-1` incident's title stayed "Service
+  impact: Increased Error Rates" across its entire lifecycle (investigating
+  → confirmed → resolved) — the resolution was stated only in the
+  `<description>` body ("The issue has been resolved and the service is
+  operating normally."). `awsFetcher.ts`'s `isResolved()` previously checked
+  only the title, so this incident stayed stuck as "active" in the Redis
+  snapshot forever, and its `new_incident` email went out but its
+  `incident_resolved` email never did. `isResolved()` now checks the
+  description text too.
 
 ---
 

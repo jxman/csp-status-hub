@@ -88,9 +88,18 @@ function inferStatus(title: string): StatusLevel {
   return 'degraded';
 }
 
-function isResolved(title: string): boolean {
-  const lower = title.toLowerCase();
-  return lower.includes('operating normally') || lower.includes('[resolved]');
+// AWS doesn't always change an incident's <title> for its final update — e.g.
+// "Service impact: Increased Error Rates" can stay the title for the entire
+// lifecycle (investigating -> confirmed -> resolved), with the resolution
+// only stated in the <description> body ("The issue has been resolved and
+// the service is operating normally."). Found 2026-09-22: this left a
+// resolved EC2 incident stuck as "active" indefinitely because isResolved()
+// only checked the title, which meant check-status.ts never saw it drop out
+// of activeIds and never fired the resolution notification email. Checking
+// the description too catches both patterns (title-only and body-only).
+function isResolved(title: string, description?: string): boolean {
+  const lower = `${title} ${description ?? ''}`.toLowerCase();
+  return lower.includes('operating normally') || lower.includes('[resolved]') || lower.includes('issue has been resolved');
 }
 
 function worstStatus(statuses: StatusLevel[]): StatusLevel {
@@ -164,9 +173,9 @@ export async function fetchAws(): Promise<ProviderStatus> {
   // Keep only the most recent update per incident; split into active vs recently resolved
   const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
   const allDeduplicated = deduplicateItems(items);
-  const activeItems = allDeduplicated.filter((item) => !isResolved(item.title));
+  const activeItems = allDeduplicated.filter((item) => !isResolved(item.title, item.description));
   const recentlyResolvedItems = allDeduplicated.filter(
-    (item) => isResolved(item.title) && new Date(item.pubDate).getTime() >= Date.now() - TWENTY_FOUR_HOURS_MS
+    (item) => isResolved(item.title, item.description) && new Date(item.pubDate).getTime() >= Date.now() - TWENTY_FOUR_HOURS_MS
   );
 
   const regionMap = new Map<string, { serviceMap: Map<string, { status: StatusLevel; incidentIds: string[] }> }>();
@@ -246,7 +255,7 @@ export async function fetchAws(): Promise<ProviderStatus> {
       if (result.status === 'rejected' || result.value == null) {
         globalStatuses.set(globalIds[i], { status: 'unknown', incidentIds: [] });
       } else {
-        const items = deduplicateItems(parseRssXml(result.value)).filter((it) => !isResolved(it.title));
+        const items = deduplicateItems(parseRssXml(result.value)).filter((it) => !isResolved(it.title, it.description));
         globalStatuses.set(globalIds[i], items.length === 0
           ? { status: 'operational', incidentIds: [] }
           : { status: worstStatus(items.map((it) => inferStatus(it.title))), incidentIds: items.map((it) => it.guid.replace(/_\d+$/, '')) }
@@ -274,7 +283,7 @@ export async function fetchAws(): Promise<ProviderStatus> {
         serviceMap.set(serviceId, { status: 'unknown', incidentIds: [] });
         continue;
       }
-      const items = deduplicateItems(parseRssXml(result.value)).filter((it) => !isResolved(it.title));
+      const items = deduplicateItems(parseRssXml(result.value)).filter((it) => !isResolved(it.title, it.description));
       serviceMap.set(serviceId, items.length === 0
         ? { status: 'operational', incidentIds: [] }
         : { status: worstStatus(items.map((it) => inferStatus(it.title))), incidentIds: items.map((it) => it.guid.replace(/_\d+$/, '')) }
