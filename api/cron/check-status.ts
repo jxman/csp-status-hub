@@ -6,6 +6,7 @@ import { redis, snapshotKey, type ProviderSnapshot } from '../_lib/redis.js';
 import { sendOutageNotificationEmail, sendResolutionNotificationEmail } from '../_lib/email.js';
 import { getDisabledProviders } from '../_lib/analysisSettings.js';
 import { matchRenamedIncidents, type IncidentRename } from '../_lib/incidentRenames.js';
+import { recordResolvedIncidents } from '../_lib/resolvedIncidents.js';
 import { fetchAws } from '../../src/fetchers/awsFetcher.js';
 import { fetchGcp } from '../../src/fetchers/gcpFetcher.js';
 import { fetchOci } from '../../src/fetchers/ociFetcher.js';
@@ -222,6 +223,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         activeIncidentSnapshots,
         lastCheckedAt: new Date().toISOString(),
       });
+
+      // Azure drops resolved incidents from its feed entirely, so keep the
+      // last-seen payload around for the dashboard's "Recently resolved"
+      // section (see resolvedIncidents.ts). Best-effort: a failure here must
+      // not skip the notifications below.
+      if (provider === 'azure' && resolvedIncidentIds.length > 0) {
+        const resolvedSnapshots = resolvedIncidentIds
+          .map((id) => previousIncidentSnapshots[id])
+          .filter((i): i is Incident => Boolean(i));
+        await recordResolvedIncidents('azure', resolvedSnapshots).catch((err) => {
+          console.error('[check-status] failed to record resolved azure incidents', err);
+        });
+      }
 
       results[provider] = { notifyWorthy, from: previousStatus, to: status.overallStatus, newIncidentIds, resolvedIncidentIds };
       if (renames.length > 0) {

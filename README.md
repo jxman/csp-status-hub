@@ -862,6 +862,7 @@ covered by `vercel.json` and needs no separate provisioning step.
 - Azure per-service status derived from incident title keyword matching
 - Active incident list with severity and recency sorting
 - Recently resolved incidents shown with green styling (24h window)
+  - Azure's feed drops an incident the moment it clears, so `check-status.ts` saves the last-seen payload to Redis (`resolved:azure`, see `api/_lib/resolvedIncidents.ts`) when an Azure incident vanishes, and `/api/status/azure` merges those back in for 24h. The resolved time shown is when the cron noticed (≤5 min late), since Azure publishes no end time
 - Auto-refresh + manual refresh with cooldown
 - Offline detection + localStorage caching (60s TTL)
 - Light/dark/system appearance modes, moved under a Settings menu
