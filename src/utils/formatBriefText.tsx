@@ -8,7 +8,7 @@ const TABLE_SEPARATOR_RE = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
 // on the inside so a stray "5 * 3" isn't read as emphasis).
 const INLINE_RE = /(\*\*.+?\*\*|`[^`]+`|\*[^*\s](?:[^*]*[^*\s])?\*)/g;
 
-function formatInline(line: string, key: string | number): ReactNode[] {
+export function formatInline(line: string, key: string | number): ReactNode[] {
   return line.split(INLINE_RE).map((part, i) => {
     if (i % 2 === 0) return part;
     const k = `${key}-${i}`;

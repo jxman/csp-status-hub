@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import type { Provider } from '../types/status';
+import type { Incident, Provider } from '../types/status';
 import { useIncidentBrief } from '../hooks/useIncidentBrief';
 import { formatBriefText } from '../utils/formatBriefText';
 import { AI_BRIEF_DISCLAIMER_TEXT } from '../utils/aiBriefDisclaimer';
 import { trackEvent } from '../utils/analytics';
 import { SynephoLogo } from './SynephoLogo';
+import { BriefMeta, TechnicalBriefView, ExecutiveBriefView } from './StructuredBrief';
 
 // The prompt (api/_lib/analysisPrompt.ts) appends AI_BRIEF_DISCLAIMER_TEXT as
 // each brief's own final line — strip a trailing copy here so it can be
@@ -22,6 +23,8 @@ function splitDisclaimer(text: string): { body: string; hasDisclaimer: boolean }
 interface Props {
   provider: Provider;
   incidentId: string;
+  // Used for the structured brief's severity/status row.
+  incident?: Incident;
   autoExpand?: boolean;
 }
 
@@ -49,7 +52,7 @@ const SparkleIcon = () => (
   </svg>
 );
 
-export function IncidentBriefPanel({ provider, incidentId, autoExpand }: Props) {
+export function IncidentBriefPanel({ provider, incidentId, incident, autoExpand }: Props) {
   const [expanded, setExpanded] = useState(autoExpand ?? false);
   const [activeTab, setActiveTab] = useState<'technical' | 'executive'>('technical');
   const { state, brief, error, load, retry } = useIncidentBrief(provider, incidentId);
@@ -121,7 +124,19 @@ export function IncidentBriefPanel({ provider, incidentId, autoExpand }: Props) 
                 </button>
               </div>
 
-              {(() => {
+              {brief.structured ? (
+                <>
+                  <BriefMeta incident={incident} generatedAt={brief.createdAt} />
+                  <div style={{ marginTop: 14 }}>
+                    {activeTab === 'technical' ? (
+                      <TechnicalBriefView brief={brief.structured.technical} />
+                    ) : (
+                      <ExecutiveBriefView brief={brief.structured.executive} />
+                    )}
+                  </div>
+                  <p className="brief-disclaimer" style={{ maxWidth: '78ch', marginTop: 18 }}>{AI_BRIEF_DISCLAIMER_TEXT}</p>
+                </>
+              ) : (() => {
                 const { body, hasDisclaimer } = splitDisclaimer(
                   activeTab === 'technical' ? brief.technicalBrief : brief.executiveBrief
                 );

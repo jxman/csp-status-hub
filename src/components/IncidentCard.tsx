@@ -73,7 +73,7 @@ export function IncidentCard({ incident, provider, autoExpand }: Props) {
         )}
       </div>
 
-      <IncidentBriefPanel provider={provider} incidentId={incident.id} autoExpand={autoExpand} />
+      <IncidentBriefPanel provider={provider} incidentId={incident.id} incident={incident} autoExpand={autoExpand} />
     </div>
   );
 }

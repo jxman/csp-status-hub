@@ -8,6 +8,7 @@ import { AI_BRIEF_DISCLAIMER_TEXT as DISCLAIMER_TEXT } from '../../../src/utils/
 import { BriefDocument } from './BriefDocument.js';
 import { slugifyForBlobPath } from './slug.js';
 import type { Incident, Provider } from '../../../src/types/status.js';
+import type { StructuredBriefs } from '../../../src/utils/structuredBrief.js';
 
 const { renderToBuffer } = ReactPDF;
 
@@ -20,6 +21,8 @@ interface RenderInput {
   createdAt: string;
   technicalBrief: string;
   executiveBrief: string;
+  // When present, the PDF renders from this instead of the markdown text.
+  structured?: StructuredBriefs | null;
 }
 
 interface RenderResult {
@@ -56,9 +59,11 @@ async function renderAndUploadOne(
         incidentTitle: input.incident.title,
         affectedRegions: input.incident.affectedRegions,
         severity: input.incident.severity,
+        status: input.incident.status,
         triggerEvent: input.triggerEvent,
         createdAt: input.createdAt,
         briefText,
+        structured: input.structured?.[kind] ?? null,
         logoBuffer,
         disclaimerText: DISCLAIMER_TEXT,
         siteUrl: process.env.APP_BASE_URL || 'https://cloudstatus.synepho.com',

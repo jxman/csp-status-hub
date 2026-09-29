@@ -26,6 +26,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql } from '../_lib/db.js';
 import type { Provider } from '../../src/types/status.js';
+import type { StructuredBriefs } from '../../src/utils/structuredBrief.js';
 
 const VALID_PROVIDERS: Provider[] = ['aws', 'azure', 'gcp', 'oci'];
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -92,7 +93,7 @@ async function serveContent(req: VercelRequest, res: VercelResponse, id: string)
 
   try {
     const rows = await sql`
-      SELECT id, trigger_event, technical_brief, executive_brief, pdf_technical_url, pdf_executive_url, model, created_at
+      SELECT id, trigger_event, technical_brief, executive_brief, briefs_structured, pdf_technical_url, pdf_executive_url, model, created_at
       FROM incident_analysis
       WHERE id = ${id} AND status = 'complete'
     `;
@@ -117,6 +118,7 @@ async function serveContent(req: VercelRequest, res: VercelResponse, id: string)
       triggerEvent: row.trigger_event as string,
       technicalBrief: row.technical_brief as string,
       executiveBrief: row.executive_brief as string,
+      structured: (row.briefs_structured as StructuredBriefs | null) ?? null,
       pdfTechnicalUrl: row.pdf_technical_url as string | null,
       pdfExecutiveUrl: row.pdf_executive_url as string | null,
       model: row.model as string,

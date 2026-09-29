@@ -2,7 +2,7 @@
 // README.md's Alerts & Admin section). Kept as plain data/logic, no HTTP or
 // SDK imports here, so it stays testable in isolation from api/analysis/run.ts.
 import type { Incident, Provider } from '../../src/types/status.js';
-import { AI_BRIEF_DISCLAIMER_TEXT } from '../../src/utils/aiBriefDisclaimer.js';
+import { BRIEF_URGENCIES, EXEC_STANCES, IMPACT_LIKELIHOODS } from '../../src/utils/structuredBrief.js';
 
 // Hand-curated, not model-generated: the design doc's mitigation against an
 // LLM inventing plausible-sounding specifics from a thin vendor status
@@ -56,17 +56,31 @@ export function buildSystemPrompt(): string {
     'You are writing incident briefs for a cloud status dashboard used by cloud engineering staff and executive leadership.',
     'You will be given one incident from a public cloud provider status feed (title, status, severity, affected services, affected regions, and the provider\'s own latest update text).',
     '',
-    'Produce two briefs from a single read of the incident:',
-    '- "technical": for cloud engineering staff. Cover which service categories to check, specific failover/resiliency questions relevant to the affected regions, and concrete next actions ranked by urgency.',
-    '- "executive": for leadership and non-technical stakeholders. Plain language, no jargon: what is affected, how serious it is, whether customer-facing impact is likely, and what decision (if any) leadership needs to make.',
+    'Produce two briefs from a single read of the incident, by filling in the fields of the emit_incident_brief tool:',
+    '- "technical": for cloud engineering staff. What is known, concrete next actions, which service categories to check, and failover/resiliency questions relevant to the affected regions.',
+    '- "executive": for leadership and non-technical stakeholders. Plain language, no jargon: the bottom line, what is happening, how serious it is, whether customer-facing impact is likely, and which decisions leadership may need to make under which conditions.',
+    '',
+    'Urgency levels (used for next actions, resiliency question groups, and executive decisions):',
+    '- immediate: do this now, while the incident is active.',
+    '- high: do this soon, once immediate checks are done or if impact is confirmed.',
+    '- medium: worthwhile hardening or follow-up during the incident.',
+    '- monitor: keep watching; no action until something changes.',
+    'Assign urgency honestly relative to this incident. Not everything is immediate. A resolved incident should mostly be medium/monitor (post-incident review, verifying recovery).',
+    '',
+    'Executive bottomLine.stance: "act-now" only if leadership must make a decision immediately; "decide-if-confirmed" if a decision depends on engineering confirming impact; "awareness" if no decision is needed yet.',
+    '',
+    'Writing rules for every text field:',
+    '- Plain sentences. The only formatting allowed is **bold** (sparingly, for key service or region names) and `backticks` (for hostnames, endpoints, or identifiers). No headings, lists, tables, links, or emoji inside a field; the dashboard supplies all layout.',
+    '- Do not restate the incident header (provider, severity, region, start time) or add a disclaimer. The dashboard already shows both.',
+    '- One idea per list item. Keep each next action or decision to one or two sentences.',
+    '- Technical brief: 3-6 next actions, 2-4 services to check, 2-4 resiliency question groups with 1-3 questions each.',
+    '- Executive brief: whatsHappening, seriousness, and customerImpact.detail are each 2-4 sentences; 1-4 decisions, each a conditional scenario ("If customer-facing services are affected") with a recommendation.',
     '',
     'Hard rule on disaster-recovery/failover language: you have no visibility into whether the reader\'s workloads actually have cross-region or multi-AZ failover configured. Never write an unconditional instruction to fail over. Always phrase it conditionally, e.g. "if a cross-region or multi-AZ failover path exists for the affected service, this is when to consider using it" — never "fail over to your DR region now."',
     '',
     'Hard rule on grounding: do not invent specific technical claims beyond what the incident text supports. For resiliency/failover guidance in the technical brief, select and adapt from this fixed reference table rather than generating new claims:',
     '',
     referenceTableText,
-    '',
-    `Append this disclaimer verbatim as the final line of BOTH the "technical" and "executive" briefs: "${AI_BRIEF_DISCLAIMER_TEXT}"`,
     '',
     'Call the emit_incident_brief tool exactly once with both briefs. Do not respond with plain text.',
   ].join('\n');
@@ -92,23 +106,106 @@ export function buildUserMessage(provider: Provider, incident: Incident): string
 
 const EMIT_INCIDENT_BRIEF_TOOL_NAME = 'emit_incident_brief';
 
+const URGENCY_SCHEMA = { type: 'string', enum: [...BRIEF_URGENCIES] };
+const TEXT = (description: string) => ({ type: 'string', description });
+
+// Mirrors StructuredBriefs in src/utils/structuredBrief.ts, which also
+// validates the returned input (parseStructuredBriefs) before it's stored.
+const BRIEF_INPUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    technical: {
+      type: 'object',
+      description: 'Technical brief for cloud engineering staff.',
+      properties: {
+        whatWeKnow: TEXT('2-4 sentences: what the provider has confirmed, and what is still unknown (root cause, ETA).'),
+        nextActions: {
+          type: 'array',
+          description: '3-6 concrete next actions.',
+          items: {
+            type: 'object',
+            properties: { urgency: URGENCY_SCHEMA, action: TEXT('One or two sentences.') },
+            required: ['urgency', 'action'],
+          },
+        },
+        servicesToCheck: {
+          type: 'array',
+          description: '2-4 service categories to check.',
+          items: {
+            type: 'object',
+            properties: {
+              name: TEXT('Short category name, e.g. "AI/ML inference".'),
+              detail: TEXT('One or two sentences on what may be affected.'),
+            },
+            required: ['name', 'detail'],
+          },
+        },
+        resiliencyQuestions: {
+          type: 'array',
+          description: '2-4 groups adapted from the reference table.',
+          items: {
+            type: 'object',
+            properties: {
+              category: TEXT('Category name, e.g. "Network and endpoints".'),
+              urgency: URGENCY_SCHEMA,
+              questions: { type: 'array', items: { type: 'string' }, description: '1-3 questions.' },
+            },
+            required: ['category', 'urgency', 'questions'],
+          },
+        },
+      },
+      required: ['whatWeKnow', 'nextActions', 'servicesToCheck', 'resiliencyQuestions'],
+    },
+    executive: {
+      type: 'object',
+      description: 'Executive brief for leadership. Plain language, no jargon.',
+      properties: {
+        bottomLine: {
+          type: 'object',
+          properties: {
+            stance: { type: 'string', enum: [...EXEC_STANCES] },
+            text: TEXT('1-2 sentences: the one thing leadership should take away.'),
+          },
+          required: ['stance', 'text'],
+        },
+        whatsHappening: TEXT('2-4 sentences, explaining what the affected services are in plain terms.'),
+        seriousness: TEXT('2-4 sentences: partial vs total outage, whether a cause or ETA is known.'),
+        customerImpact: {
+          type: 'object',
+          properties: {
+            likelihood: { type: 'string', enum: [...IMPACT_LIKELIHOODS] },
+            detail: TEXT('2-4 sentences: which kinds of customer-facing features would be affected, and under what conditions.'),
+          },
+          required: ['likelihood', 'detail'],
+        },
+        decisions: {
+          type: 'array',
+          description: '1-4 conditional decisions.',
+          items: {
+            type: 'object',
+            properties: {
+              scenario: TEXT('The condition, e.g. "If customer-facing services are affected".'),
+              recommendation: TEXT('One or two sentences.'),
+              urgency: URGENCY_SCHEMA,
+            },
+            required: ['scenario', 'recommendation', 'urgency'],
+          },
+        },
+      },
+      required: ['bottomLine', 'whatsHappening', 'seriousness', 'customerImpact', 'decisions'],
+    },
+  },
+  required: ['technical', 'executive'],
+};
+
 export function buildToolConfig() {
   return {
     tools: [
       {
         toolSpec: {
           name: EMIT_INCIDENT_BRIEF_TOOL_NAME,
-          description: 'Emit the technical and executive incident briefs.',
-          inputSchema: {
-            json: {
-              type: 'object',
-              properties: {
-                technical: { type: 'string', description: 'The technical brief for cloud engineering staff, ending with the disclaimer sentence.' },
-                executive: { type: 'string', description: 'The executive brief for leadership, ending with the disclaimer sentence.' },
-              },
-              required: ['technical', 'executive'],
-            },
-          },
+          description: 'Emit the technical and executive incident briefs as structured fields.',
+          inputSchema: { json: BRIEF_INPUT_SCHEMA },
         },
       },
     ],

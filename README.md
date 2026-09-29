@@ -319,14 +319,17 @@ check-status.ts (EventBridge, every 5 min)
         │  pending a Sales-approved allowlist request, so the env var
         │  override pins the working Sonnet 4.5 profile instead
         │  Forced tool-use: toolConfig requires the emit_incident_brief
-        │  tool (buildToolConfig()) so the model must return schema-shaped
-        │  { technical: string, executive: string } — no free-text
-        │  parsing, one round trip for both brief variants
+        │  tool (buildToolConfig()) so the model must return structured
+        │  { technical: {...}, executive: {...} } fields (urgency-tagged
+        │  actions, bottom line, etc. — src/utils/structuredBrief.ts) —
+        │  no free-text parsing, one round trip for both brief variants
         ▼
-   extractBriefs() validates the tool-use block, then:
+   parseStructuredBriefs() validates the tool-use input, then:
         │
-        ├─ INSERT into incident_analysis (Postgres/Neon) — technical_brief,
-        │  executive_brief, model id, input/output token counts,
+        ├─ INSERT into incident_analysis (Postgres/Neon) — briefs_structured
+        │  (JSON the dashboard + PDF render from), technical_brief/
+        │  executive_brief (plain-text rendering of the same content, for
+        │  legacy readers), model id, input/output token counts,
         │  status='complete' (or 'failed' with the error, on a missing
         │  tool-use response or a thrown Bedrock error — the trigger is
         │  never lost silently)
@@ -372,7 +375,8 @@ check-status.ts (EventBridge, every 5 min)
   returns `AccessDeniedException` on this account pending an AWS
   Sales-approved allowlist request, confirmed by other Claude models
   invoking successfully) with a forced tool-use call (`emit_incident_brief`)
-  to get schema-shaped `{technical, executive}` briefs in one request. A
+  to get structured `{technical, executive}` briefs in one request (see
+  **Structured briefs** below). A
   hand-curated per-service-category resiliency reference table
   (`api/_lib/analysisPrompt.ts`) keeps the model selecting from reviewed
   guidance instead of inventing specifics from a thin vendor paragraph, and
@@ -513,6 +517,34 @@ check-status.ts (EventBridge, every 5 min)
   snapshot is missing or more than 24h stale, it refuses rather than
   risk treating "we don't know what's active" as "nothing is active" —
   which would otherwise turn a Redis hiccup into a total wipe.
+
+#### Structured briefs (2026-09-29)
+
+Briefs were originally two free-form markdown strings, and the model's
+formatting drifted run to run: urgency written as "(Highest Urgency)",
+"[Immediate]", emoji dots, or a table, depending on the run, plus a
+repeated incident header and pipe tables that neither renderer handled.
+The `emit_incident_brief` tool schema now asks for fixed fields instead
+(`src/utils/structuredBrief.ts`):
+
+- **Technical:** `whatWeKnow`, `nextActions[]`, `servicesToCheck[]`,
+  `resiliencyQuestions[]`. Actions and question groups carry an urgency
+  from a fixed scale: `immediate` (red), `high` (orange), `medium` (amber),
+  `monitor` (blue).
+- **Executive:** `bottomLine` (stance `act-now` / `decide-if-confirmed` /
+  `awareness`), `whatsHappening`, `seriousness`, `customerImpact`
+  (likelihood `yes` / `possible` / `unlikely`), and conditional `decisions[]`.
+
+`parseStructuredBriefs()` validates the output. It drops malformed list items,
+sorts lists most-urgent first, and fails the run (`status='failed'`) if a
+required field is missing. The JSON is stored in
+`incident_analysis.briefs_structured` (migration
+`scripts/db/007_incident_analysis_structured.sql`), and
+`StructuredBrief.tsx` and `BriefDocument.ts` render it with the same section order and
+colors. `technical_brief`/`executive_brief` still get a plain-text rendering
+(`technicalToText()`/`executiveToText()`) for anything reading those
+columns. Rows from before this change have no structured JSON and still
+render through the markdown path (`formatBriefText.tsx` / `renderBriefBody()`).
 
 ### Admin
 

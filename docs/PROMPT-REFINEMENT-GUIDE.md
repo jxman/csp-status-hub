@@ -67,14 +67,16 @@ exists and must stay set.
 **Forced tool use.** `toolConfig.toolChoice` pins the model to call
 `emit_incident_brief` — it cannot respond with plain text. This means
 there's no free-text parsing anywhere in this pipeline; the model must
-return `{ technical: string, executive: string }` or the call is treated as
-a failure (see below).
+return the structured `{ technical: {...}, executive: {...} }` fields defined
+in `src/utils/structuredBrief.ts` or the call is treated as a failure (see
+below).
 
-**Validation + persistence.** `extractBriefs()` in `analysisPipeline.ts`
-pulls the tool-use block out of the response and checks both fields are
-strings. Two failure paths, both still write a row so the trigger is never
-silently lost:
-- No valid tool-use block → `INSERT ... status='failed', error='Model did not return the expected emit_incident_brief tool call'`
+**Validation + persistence.** `extractToolInput()` in `analysisPipeline.ts`
+pulls the tool-use block out of the response and `parseStructuredBriefs()`
+validates it. Three failure paths, all still write a row so the trigger is
+never silently lost:
+- No tool-use block → `INSERT ... status='failed', error='Model did not return the expected emit_incident_brief tool call'`
+- Tool-use block missing required structured fields → `INSERT ... status='failed', error='Model returned an emit_incident_brief call missing required structured fields'`
 - Bedrock call throws → `INSERT ... status='failed', error=<exception message>`
 
 On success: `INSERT ... status='complete'` with both briefs, the model ID,
@@ -165,42 +167,29 @@ between a `new` brief and its `content_changed` follow-up).
 
 ### 2d. Tool schema — `buildToolConfig()`
 
-```ts
-{
-  tools: [{
-    toolSpec: {
-      name: 'emit_incident_brief',
-      description: 'Emit the technical and executive incident briefs.',
-      inputSchema: { json: {
-        type: 'object',
-        properties: {
-          technical: { type: 'string', description: '...' },
-          executive: { type: 'string', description: '...' },
-        },
-        required: ['technical', 'executive'],
-      }},
-    },
-  }],
-  toolChoice: { tool: { name: 'emit_incident_brief' } },
-}
-```
+`BRIEF_INPUT_SCHEMA` in `analysisPrompt.ts` defines structured fields for
+both briefs (see README.md's **Structured briefs** section for the field
+list). Urgency, executive stance, and customer-impact likelihood are JSON
+Schema `enum`s, so the model can only pick from the fixed scale the UI
+color-codes. Text fields may contain only `**bold**` and `` `code` `` spans;
+the prompt forbids other markdown because the dashboard
+(`StructuredBrief.tsx`) and PDF (`BriefDocument.ts`) supply all layout.
 
-Both fields are plain strings (markdown-flavored — `**bold**` spans are
-parsed client-side by `formatBriefText.tsx` and server-side by
-`BriefDocument.ts`'s PDF renderer). If you want structured sub-fields
-(e.g. a separate `severity_assessment` field), this schema is where that
-starts — see Section 4's "output shape" note on everything downstream that
-assumes exactly `{technical, executive}`.
+To add a field, change three places together: `BRIEF_INPUT_SCHEMA`, the
+types and `parseStructuredBriefs()` in `src/utils/structuredBrief.ts`, and
+both renderers (plus `technicalToText()`/`executiveToText()` for the
+plain-text columns). Rows already stored keep their old shape, so treat any
+new field as optional when rendering.
 
 ### 2e. Disclaimer — `DISCLAIMER_TEXT`
 
-One shared constant, used in two places: appended to the executive brief's
-own text (per the system prompt instruction above), and shown again in the
-PDF's own recurring footer (`api/_lib/pdf/render.ts` strips a trailing
-exact-match copy from the brief body before rendering, specifically to
-avoid it appearing twice back-to-back on the PDF page — the dashboard
-display has no such stripping, since it has no separate persistent
-disclaimer element of its own).
+One shared constant (`src/utils/aiBriefDisclaimer.ts`). Since the
+structured-brief change, the model is no longer asked to write it. The
+dashboard shows it below every brief, the PDF shows it in its recurring
+footer, and `technicalToText()`/`executiveToText()` append it to the
+plain-text columns. For older free-text rows, which carry their own trailing
+copy, `IncidentBriefPanel.tsx` and `api/_lib/pdf/render.ts` still strip that
+copy so it doesn't appear twice.
 
 ---
 

@@ -15,8 +15,22 @@
 // dashboard theme, so there's no dark-mode variant.
 import { createElement as h } from 'react';
 import * as ReactPDF from '@react-pdf/renderer';
+import {
+  URGENCY_LABEL,
+  STANCE_LABEL,
+  STANCE_URGENCY,
+  LIKELIHOOD_LABEL,
+  LIKELIHOOD_URGENCY,
+  type BriefUrgency,
+  type TechnicalBriefData,
+  type ExecutiveBriefData,
+} from '../../../src/utils/structuredBrief.js';
 
 const { Document, Page, Text, View, Image, StyleSheet } = ReactPDF;
+
+// react-pdf hyphenates long words by default ("In-creased"); break only at
+// spaces instead.
+ReactPDF.Font.registerHyphenationCallback((word) => [word]);
 
 // Same hue family as src/index.css's --blue (oklch, unusable by react-pdf) —
 // the closest literal hex this app already uses for its own brand mark, in
@@ -43,14 +57,17 @@ const styles = StyleSheet.create({
   // the normal way instead of compounding a margin + full line-height on
   // every individual bullet, which is what made everything look
   // double-spaced.
-  bodyBlock: { marginBottom: 9, lineHeight: 1.35 },
+  // Explicit fontSize alongside every lineHeight: without it, react-pdf
+  // scales the unitless lineHeight off its own default font size rather
+  // than the page's inherited 10pt, roughly doubling the line spacing.
+  bodyBlock: { marginBottom: 9, fontSize: 10, lineHeight: 1.35 },
   bold: { fontFamily: 'Helvetica-Bold' },
   italic: { fontFamily: 'Helvetica-Oblique' },
   code: { fontFamily: 'Courier', fontSize: 9 },
   table: { marginBottom: 10, borderWidth: 1, borderColor: '#d9dcd7', borderBottomWidth: 0 },
   tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#d9dcd7' },
   tableHeaderRow: { backgroundColor: '#f2f4f1' },
-  tableCell: { paddingVertical: 3, paddingHorizontal: 5, lineHeight: 1.3 },
+  tableCell: { paddingVertical: 3, paddingHorizontal: 5, fontSize: 10, lineHeight: 1.3 },
   tableCellFirst: { width: 80, borderRightWidth: 1, borderRightColor: '#d9dcd7' },
   tableCellFlex: { flex: 1 },
   heading1: { fontSize: 13, fontFamily: 'Helvetica-Bold', marginTop: 10, marginBottom: 6 },
@@ -69,7 +86,68 @@ const styles = StyleSheet.create({
   disclaimer: { fontSize: 8, fontFamily: 'Helvetica-Oblique', color: INK_SOFT, lineHeight: 1.35 },
   poweredBy: { fontSize: 8, color: INK_SOFT, marginTop: 5 },
   poweredByBrand: { color: BRAND_BLUE, fontFamily: 'Helvetica-Bold' },
+  // ---- structured briefs ----
+  sectionHeading: {
+    fontSize: 8.5,
+    fontFamily: 'Helvetica-Bold',
+    letterSpacing: 0.8,
+    color: INK_SOFT,
+    borderBottomWidth: 1,
+    borderBottomColor: '#d9dcd7',
+    paddingBottom: 3,
+    marginTop: 12,
+    marginBottom: 7,
+  },
+  lead: { fontSize: 10.5, lineHeight: 1.5 },
+  urgencyRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    borderLeftWidth: 3,
+    backgroundColor: '#fafbfa',
+    paddingVertical: 5,
+    paddingLeft: 8,
+    paddingRight: 6,
+    marginBottom: 4,
+  },
+  urgencyTagCell: { width: 66 },
+  urgencyTag: {
+    fontSize: 7.5,
+    fontFamily: 'Helvetica-Bold',
+    color: '#ffffff',
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+    borderRadius: 2,
+    alignSelf: 'flex-start',
+  },
+  urgencyText: { flex: 1, fontSize: 10, lineHeight: 1.4 },
+  serviceItem: { marginBottom: 4, fontSize: 10, lineHeight: 1.4 },
+  questionGroup: { marginBottom: 7 },
+  questionHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 3 },
+  questionHeadText: { fontFamily: 'Helvetica-Bold', marginLeft: 6 },
+  questionItem: { flexDirection: 'row', marginLeft: 4, marginBottom: 2 },
+  questionText: { flex: 1, fontSize: 10, lineHeight: 1.4 },
+  questionBullet: { width: 10 },
+  bottomLine: {
+    borderWidth: 1,
+    borderColor: '#d9dcd7',
+    borderLeftWidth: 3,
+    borderRadius: 3,
+    backgroundColor: '#fafbfa',
+    padding: 8,
+    marginBottom: 4,
+  },
+  bottomLineText: { fontSize: 10.5, lineHeight: 1.5, marginTop: 4 },
 });
+
+// Print-safe equivalents of the dashboard's urgency tokens (src/index.css
+// --red/--orange/--amber/--blue); the PDF is always a white page.
+const URGENCY_COLOR: Record<BriefUrgency, string> = {
+  immediate: '#c2261c',
+  high: '#d4661a',
+  medium: '#b88a0c',
+  monitor: '#2f64c9',
+};
+const SEVERITY_COLOR: Record<string, string> = { high: '#c2261c', medium: '#92600a', low: '#2f64c9' };
 
 const KIND_LABEL: Record<'technical' | 'executive', string> = {
   technical: 'Technical Brief',
@@ -197,22 +275,119 @@ function renderBriefBody(text: string) {
   return nodes;
 }
 
+function urgencyTag(label: string, urgency: BriefUrgency) {
+  return h(Text, { style: [styles.urgencyTag, { backgroundColor: URGENCY_COLOR[urgency] }] }, label.toUpperCase());
+}
+
+function urgencyRow(key: string | number, label: string, urgency: BriefUrgency, ...content: Array<string | PdfNode>) {
+  return h(
+    View,
+    { key, style: [styles.urgencyRow, { borderLeftColor: URGENCY_COLOR[urgency] }], wrap: false },
+    h(View, { style: styles.urgencyTagCell }, urgencyTag(label, urgency)),
+    h(Text, { style: styles.urgencyText }, ...content)
+  );
+}
+
+function sectionHeading(title: string) {
+  return h(Text, { style: styles.sectionHeading, minPresenceAhead: 40 }, title.toUpperCase());
+}
+
+function renderTechnical(t: TechnicalBriefData): PdfNode[] {
+  const nodes: PdfNode[] = [
+    sectionHeading('What we know'),
+    h(Text, { style: styles.lead }, ...renderInline(t.whatWeKnow, 'wwk')),
+    sectionHeading('Next actions'),
+    ...t.nextActions.map((a, i) => urgencyRow(`a${i}`, URGENCY_LABEL[a.urgency], a.urgency, ...renderInline(a.action, `a${i}`))),
+  ];
+  if (t.servicesToCheck.length) {
+    nodes.push(
+      sectionHeading('Services to check'),
+      ...t.servicesToCheck.map((s, i) =>
+        h(Text, { key: `s${i}`, style: styles.serviceItem }, h(Text, { style: styles.bold }, `${s.name}. `), ...renderInline(s.detail, `s${i}`))
+      )
+    );
+  }
+  if (t.resiliencyQuestions.length) {
+    nodes.push(
+      sectionHeading('Resiliency questions'),
+      ...t.resiliencyQuestions.map((g, i) =>
+        h(
+          View,
+          { key: `q${i}`, style: styles.questionGroup, wrap: false },
+          h(View, { style: styles.questionHead }, urgencyTag(URGENCY_LABEL[g.urgency], g.urgency), h(Text, { style: styles.questionHeadText }, g.category)),
+          ...g.questions.map((q, j) =>
+            h(View, { key: j, style: styles.questionItem }, h(Text, { style: styles.questionBullet }, '•'), h(Text, { style: styles.questionText }, ...renderInline(q, `q${i}-${j}`)))
+          )
+        )
+      )
+    );
+  }
+  return nodes;
+}
+
+function renderExecutive(e: ExecutiveBriefData): PdfNode[] {
+  const stanceUrgency = STANCE_URGENCY[e.bottomLine.stance];
+  const nodes: PdfNode[] = [
+    h(
+      View,
+      { style: [styles.bottomLine, { borderLeftColor: URGENCY_COLOR[stanceUrgency] }], wrap: false },
+      h(View, { style: styles.questionHead }, urgencyTag(STANCE_LABEL[e.bottomLine.stance], stanceUrgency), h(Text, { style: styles.questionHeadText }, 'Bottom line')),
+      h(Text, { style: styles.bottomLineText }, ...renderInline(e.bottomLine.text, 'bl'))
+    ),
+    sectionHeading("What's happening"),
+    h(Text, { style: styles.lead }, ...renderInline(e.whatsHappening, 'wh')),
+    sectionHeading('How serious is it'),
+    h(Text, { style: styles.lead }, ...renderInline(e.seriousness, 'ser')),
+    sectionHeading('Customer-facing impact'),
+    urgencyRow(
+      'ci',
+      LIKELIHOOD_LABEL[e.customerImpact.likelihood],
+      LIKELIHOOD_URGENCY[e.customerImpact.likelihood],
+      ...renderInline(e.customerImpact.detail, 'ci')
+    ),
+  ];
+  if (e.decisions.length) {
+    nodes.push(
+      sectionHeading('Decisions to consider'),
+      ...e.decisions.map((d, i) =>
+        urgencyRow(`d${i}`, URGENCY_LABEL[d.urgency], d.urgency, h(Text, { style: styles.bold }, `${d.scenario}. `), ...renderInline(d.recommendation, `d${i}`))
+      )
+    );
+  }
+  return nodes;
+}
+
 export interface BriefDocumentProps {
   kind: 'technical' | 'executive';
   provider: string;
   incidentTitle: string;
   affectedRegions: string[];
   severity: string;
+  status?: string;
   triggerEvent: string;
   createdAt: string;
   briefText: string;
+  // Structured form of this brief; when present the body renders from it
+  // and briefText is ignored.
+  structured?: TechnicalBriefData | ExecutiveBriefData | null;
   logoBuffer: Buffer;
   disclaimerText: string;
   siteUrl: string;
 }
 
-function metaRow(label: string, value: string) {
-  return h(View, { style: styles.metaRow }, h(Text, { style: styles.metaLabel }, label), h(Text, { style: styles.metaValue }, value));
+// "2026-09-29T10:42:00.000Z" -> "2026-09-29 10:42 UTC"; anything unparseable passes through.
+function formatGenerated(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+}
+
+function metaRow(label: string, value: string, valueStyle?: { fontFamily: string; color: string }) {
+  return h(
+    View,
+    { style: styles.metaRow },
+    h(Text, { style: styles.metaLabel }, label),
+    h(Text, { style: valueStyle ? [styles.metaValue, valueStyle] : styles.metaValue }, value)
+  );
 }
 
 export function BriefDocument({
@@ -221,9 +396,11 @@ export function BriefDocument({
   incidentTitle,
   affectedRegions,
   severity,
+  status,
   triggerEvent,
   createdAt,
   briefText,
+  structured,
   logoBuffer,
   disclaimerText,
   siteUrl,
@@ -249,11 +426,18 @@ export function BriefDocument({
         { style: styles.metaTable },
         metaRow('Provider', provider.toUpperCase()),
         metaRow('Affected region(s)', affectedRegions.join(', ') || '—'),
-        metaRow('Severity', severity),
+        structured
+          ? metaRow('Severity', severity.toUpperCase(), { fontFamily: 'Helvetica-Bold', color: SEVERITY_COLOR[severity] ?? INK })
+          : metaRow('Severity', severity),
+        status ? metaRow('Status', status.charAt(0).toUpperCase() + status.slice(1)) : null,
         metaRow('Trigger', triggerEvent),
-        metaRow('Generated', createdAt)
+        metaRow('Generated', formatGenerated(createdAt))
       ),
-      ...renderBriefBody(briefText),
+      ...(structured
+        ? kind === 'technical'
+          ? renderTechnical(structured as TechnicalBriefData)
+          : renderExecutive(structured as ExecutiveBriefData)
+        : renderBriefBody(briefText)),
       h(
         View,
         { style: styles.footer, fixed: true },

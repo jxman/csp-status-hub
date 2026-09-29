@@ -1,10 +1,14 @@
 import type { Provider } from '../types/status';
+import type { StructuredBriefs } from '../utils/structuredBrief';
 
 export interface LatestBrief {
   id: string;
   triggerEvent: 'new' | 'content_changed' | 'resolved';
   technicalBrief: string;
   executiveBrief: string;
+  // Present on briefs generated after the structured-brief change; older
+  // rows only have the markdown text above.
+  structured?: StructuredBriefs | null;
   pdfTechnicalUrl: string | null;
   pdfExecutiveUrl: string | null;
   model: string;

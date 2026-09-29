@@ -9,6 +9,7 @@ import { bedrock, BEDROCK_MODEL_ID } from './bedrock.js';
 import { buildSystemPrompt, buildUserMessage, buildToolConfig, EMIT_INCIDENT_BRIEF_TOOL_NAME } from './analysisPrompt.js';
 import { renderAndUploadBriefPdfs } from './pdf/render.js';
 import { getDebounceMinutes } from './analysisSettings.js';
+import { parseStructuredBriefs, technicalToText, executiveToText, type StructuredBriefs } from '../../src/utils/structuredBrief.js';
 import type { Incident, Provider } from '../../src/types/status.js';
 
 export interface RunIncidentAnalysisInput {
@@ -24,19 +25,15 @@ export interface RunIncidentAnalysisInput {
 
 export type RunIncidentAnalysisResult =
   | { skipped: true; reason: 'debounced'; minutesSinceLastRun: number; debounceMinutes: number }
-  | { status: 'failed'; reason: 'no_tool_use' | 'exception' }
+  | { status: 'failed'; reason: 'no_tool_use' | 'invalid_structure' | 'exception' }
   | { status: 'complete'; rowId: string };
 
 interface ToolUseContent {
   toolUse?: { name: string; input: unknown };
 }
 
-function extractBriefs(content: ToolUseContent[] | undefined): { technical: string; executive: string } | null {
-  const toolUse = content?.find((block) => block.toolUse?.name === EMIT_INCIDENT_BRIEF_TOOL_NAME)?.toolUse;
-  if (!toolUse || typeof toolUse.input !== 'object' || toolUse.input === null) return null;
-  const input = toolUse.input as Record<string, unknown>;
-  if (typeof input.technical !== 'string' || typeof input.executive !== 'string') return null;
-  return { technical: input.technical, executive: input.executive };
+function extractToolInput(content: ToolUseContent[] | undefined): unknown {
+  return content?.find((block) => block.toolUse?.name === EMIT_INCIDENT_BRIEF_TOOL_NAME)?.toolUse?.input;
 }
 
 export async function runIncidentAnalysis(input: RunIncidentAnalysisInput): Promise<RunIncidentAnalysisResult> {
@@ -68,22 +65,34 @@ export async function runIncidentAnalysis(input: RunIncidentAnalysisInput): Prom
     );
 
     const incidentSnapshot = JSON.stringify(incident);
-    const briefs = extractBriefs(response.output?.message?.content as ToolUseContent[] | undefined);
-    if (!briefs) {
+    const toolInput = extractToolInput(response.output?.message?.content as ToolUseContent[] | undefined);
+    const structured: StructuredBriefs | null = toolInput === undefined ? null : parseStructuredBriefs(toolInput);
+    if (!structured) {
+      const reason = toolInput === undefined ? 'no_tool_use' : 'invalid_structure';
+      const error =
+        reason === 'no_tool_use'
+          ? 'Model did not return the expected emit_incident_brief tool call'
+          : 'Model returned an emit_incident_brief call missing required structured fields';
       await sql`
         INSERT INTO incident_analysis
           (provider, incident_id, trigger_event, incident_snapshot, model, status, error)
         VALUES
-          (${provider}, ${incidentId}, ${triggerEvent}, ${incidentSnapshot}::jsonb, ${BEDROCK_MODEL_ID}, 'failed', ${'Model did not return the expected emit_incident_brief tool call'})
+          (${provider}, ${incidentId}, ${triggerEvent}, ${incidentSnapshot}::jsonb, ${BEDROCK_MODEL_ID}, 'failed', ${error})
       `;
-      return { status: 'failed', reason: 'no_tool_use' };
+      return { status: 'failed', reason };
     }
+
+    // The text columns keep a plain-markdown rendering of the structured
+    // brief for anything still reading them (admin run history, a tab on a
+    // pre-structured bundle); briefs_structured is what the dashboard and
+    // PDF render from.
+    const briefs = { technical: technicalToText(structured.technical), executive: executiveToText(structured.executive) };
 
     const [{ id: rowId }] = await sql`
       INSERT INTO incident_analysis
-        (provider, incident_id, trigger_event, incident_snapshot, technical_brief, executive_brief, model, input_tokens, output_tokens, status)
+        (provider, incident_id, trigger_event, incident_snapshot, technical_brief, executive_brief, briefs_structured, model, input_tokens, output_tokens, status)
       VALUES
-        (${provider}, ${incidentId}, ${triggerEvent}, ${incidentSnapshot}::jsonb, ${briefs.technical}, ${briefs.executive}, ${BEDROCK_MODEL_ID}, ${response.usage?.inputTokens ?? null}, ${response.usage?.outputTokens ?? null}, 'complete')
+        (${provider}, ${incidentId}, ${triggerEvent}, ${incidentSnapshot}::jsonb, ${briefs.technical}, ${briefs.executive}, ${JSON.stringify(structured)}::jsonb, ${BEDROCK_MODEL_ID}, ${response.usage?.inputTokens ?? null}, ${response.usage?.outputTokens ?? null}, 'complete')
       RETURNING id
     `;
 
@@ -100,6 +109,7 @@ export async function runIncidentAnalysis(input: RunIncidentAnalysisInput): Prom
         createdAt: new Date().toISOString(),
         technicalBrief: briefs.technical,
         executiveBrief: briefs.executive,
+        structured,
       });
       if (technicalUrl || executiveUrl) {
         await sql`
