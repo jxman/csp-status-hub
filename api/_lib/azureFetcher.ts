@@ -132,6 +132,30 @@ function parseAffected(title: string, categories: string[]): { services: string[
   return { services, regions: foundRegions };
 }
 
+// Some entries tag only the service in <category> and name the region only in
+// the description prose (2026-09-29: a Cognitive Services incident whose sole
+// category was "Cognitive Services", with "Sweden Central" appearing only in
+// the <description>). Scan that text for known region names as a fallback.
+// Longest names first, and each match is blanked out before the next check, so
+// "East US 2" doesn't also count as "East US". "Global"/"Multiple Regions" are
+// skipped here — as plain prose words they'd false-match.
+const REGIONS_LONGEST_FIRST = [...AZURE_REGIONS]
+  .filter((r) => r !== 'Global' && r !== 'Multiple Regions')
+  .sort((a, b) => b.length - a.length);
+
+function findRegionsInText(text: string): string[] {
+  let remaining = text.replace(/\s+/g, ' ');
+  const found: string[] = [];
+  for (const region of REGIONS_LONGEST_FIRST) {
+    const re = new RegExp(`\\b${region.replace(/ /g, '\\s+')}\\b`, 'g');
+    if (re.test(remaining)) {
+      found.push(region);
+      remaining = remaining.replace(re, ' ');
+    }
+  }
+  return found;
+}
+
 interface RawEntry {
   // Atom fields
   id?: unknown;
@@ -190,7 +214,12 @@ function entryToIncident(entry: RawEntry, index: number, feedUpdatedAt?: string)
   const severity = parseSeverity(title);
   const categories = extractCategories(entry.category);
   const { services, regions } = parseAffected(title, categories);
+  // The id fingerprint uses only category/title regions, never the description
+  // fallback below: the id must stay stable for an incident already in flight,
+  // or check-status.ts would read the change as resolved + new and email
+  // subscribers about the same event twice.
   const id = buildIncidentId(rawId, index, services, regions);
+  const affectedRegions = regions.length > 0 ? regions : findRegionsInText(stripHtml(summary));
   const isResolved = incidentStatus === 'resolved';
 
   return {
@@ -201,7 +230,7 @@ function entryToIncident(entry: RawEntry, index: number, feedUpdatedAt?: string)
     startTime: published,
     endTime: isResolved ? updated : null,
     affectedServices: services,
-    affectedRegions: regions,
+    affectedRegions,
     // Microsoft's own feed <link> points at a raw backend App Service host
     // (e.g. azurestatusprodeus.azurewebsites.net) rather than the public
     // azure.status.microsoft domain, and it's the same generic root URL on

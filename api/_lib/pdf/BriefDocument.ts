@@ -429,7 +429,7 @@ export function BriefDocument({
         structured
           ? metaRow('Severity', severity.toUpperCase(), { fontFamily: 'Helvetica-Bold', color: SEVERITY_COLOR[severity] ?? INK })
           : metaRow('Severity', severity),
-        status ? metaRow('Status', status.charAt(0).toUpperCase() + status.slice(1)) : null,
+        status && status !== 'unknown' ? metaRow('Status', status.charAt(0).toUpperCase() + status.slice(1)) : null,
         metaRow('Trigger', triggerEvent),
         metaRow('Generated', formatGenerated(createdAt))
       ),
