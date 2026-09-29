@@ -5,6 +5,7 @@ import { sql } from '../_lib/db.js';
 import { redis, snapshotKey, type ProviderSnapshot } from '../_lib/redis.js';
 import { sendOutageNotificationEmail, sendResolutionNotificationEmail } from '../_lib/email.js';
 import { getDisabledProviders } from '../_lib/analysisSettings.js';
+import { matchRenamedIncidents, type IncidentRename } from '../_lib/incidentRenames.js';
 import { fetchAws } from '../../src/fetchers/awsFetcher.js';
 import { fetchGcp } from '../../src/fetchers/gcpFetcher.js';
 import { fetchOci } from '../../src/fetchers/ociFetcher.js';
@@ -120,6 +121,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     to?: string;
     newIncidentIds?: string[];
     resolvedIncidentIds?: string[];
+    renamedIncidents?: IncidentRename[];
     error?: string;
     notified?: number;
     resolvedNotified?: number;
@@ -155,8 +157,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Skip both on the very first-ever check for a provider (no row yet) so we don't
       // fire a notification storm for whatever is already in progress at bootstrap.
       const isFirstCheck = existing === null;
-      const newIncidentIds = activeIds.filter((id) => !previousIds.includes(id));
-      const resolvedIncidentIds = previousIds.filter((id) => !activeIds.includes(id));
+      const activeIncidentSnapshots: Record<string, Incident> = Object.fromEntries(
+        activeIncidents.map((i) => [i.id, i])
+      );
+      const appearedIds = activeIds.filter((id) => !previousIds.includes(id));
+      const vanishedIds = previousIds.filter((id) => !activeIds.includes(id));
+      // A vanished id and a new id with the same startTime are one incident
+      // whose derived id changed because the provider edited it (see
+      // incidentRenames.ts) — not a resolution plus a new incident. Pull
+      // those out so neither email fires; the new id is re-analyzed as a
+      // content change instead.
+      const renames = isFirstCheck
+        ? []
+        : matchRenamedIncidents(vanishedIds, appearedIds, previousIncidentSnapshots, activeIncidentSnapshots);
+      const renamedFromIds = new Set(renames.map((r) => r.fromId));
+      const renamedToIds = new Set(renames.map((r) => r.toId));
+      const newIncidentIds = appearedIds.filter((id) => !renamedToIds.has(id));
+      const resolvedIncidentIds = vanishedIds.filter((id) => !renamedFromIds.has(id));
       const notifyWorthy = !isFirstCheck && newIncidentIds.length > 0;
       const resolutionWorthy = !isFirstCheck && resolvedIncidentIds.length > 0;
 
@@ -187,14 +204,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const activeIncidentContentHashes: Record<string, string> = Object.fromEntries(
         activeIncidents.map((i) => [i.id, hashIncidentContent(i)])
       );
-      const activeIncidentSnapshots: Record<string, Incident> = Object.fromEntries(
-        activeIncidents.map((i) => [i.id, i])
-      );
       const contentChangedIncidentIds = isFirstCheck
         ? []
-        : activeIds.filter(
-            (id) => previousIds.includes(id) && previousContentHashes[id] !== activeIncidentContentHashes[id]
-          );
+        : [
+            ...activeIds.filter(
+              (id) => previousIds.includes(id) && previousContentHashes[id] !== activeIncidentContentHashes[id]
+            ),
+            ...renamedToIds,
+          ];
 
       await redis.set<ProviderSnapshot>(snapshotKey(provider), {
         overallStatus: status.overallStatus,
@@ -207,6 +224,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
       results[provider] = { notifyWorthy, from: previousStatus, to: status.overallStatus, newIncidentIds, resolvedIncidentIds };
+      if (renames.length > 0) {
+        results[provider].renamedIncidents = renames;
+        for (const { fromId, toId } of renames) {
+          console.log(
+            `[check-status] rename: ${provider} incident ${fromId} -> ${toId} (same startTime ${activeIncidentSnapshots[toId]?.startTime}; ` +
+              `title "${previousTitles[fromId] ?? ''}" -> "${activeIncidentTitles[toId] ?? ''}") — no new/resolved emails sent`
+          );
+        }
+      }
       if (notifyWorthy) {
         console.log(`[check-status] notify-worthy change: ${provider} new incident(s) ${newIncidentIds.join(', ')} (status ${previousStatus} -> ${status.overallStatus})`);
         results[provider].notified = await notifySubscribers(provider, status, 'new_incident', newIncidents);
