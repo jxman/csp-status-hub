@@ -45,6 +45,14 @@ const styles = StyleSheet.create({
   // double-spaced.
   bodyBlock: { marginBottom: 9, lineHeight: 1.35 },
   bold: { fontFamily: 'Helvetica-Bold' },
+  italic: { fontFamily: 'Helvetica-Oblique' },
+  code: { fontFamily: 'Courier', fontSize: 9 },
+  table: { marginBottom: 10, borderWidth: 1, borderColor: '#d9dcd7', borderBottomWidth: 0 },
+  tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#d9dcd7' },
+  tableHeaderRow: { backgroundColor: '#f2f4f1' },
+  tableCell: { paddingVertical: 3, paddingHorizontal: 5, lineHeight: 1.3 },
+  tableCellFirst: { width: 80, borderRightWidth: 1, borderRightColor: '#d9dcd7' },
+  tableCellFlex: { flex: 1 },
   heading1: { fontSize: 13, fontFamily: 'Helvetica-Bold', marginTop: 10, marginBottom: 6 },
   heading2: { fontSize: 12, fontFamily: 'Helvetica-Bold', marginTop: 9, marginBottom: 5 },
   heading3: { fontSize: 11, fontFamily: 'Helvetica-Bold', marginTop: 8, marginBottom: 4 },
@@ -70,21 +78,76 @@ const KIND_LABEL: Record<'technical' | 'executive', string> = {
 
 const HEADING_RE = /^(#{1,6})\s+(.+)$/;
 const RULE_RE = /^(-{3,}|_{3,}|\*{3,})\s*$/;
+const TABLE_ROW_RE = /^\s*\|.*\|\s*$/;
+const TABLE_SEPARATOR_RE = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+const INLINE_RE = /(\*\*.+?\*\*|`[^`]+`|\*[^*\s](?:[^*]*[^*\s])?\*)/g;
+// react-pdf's built-in Helvetica only covers WinAnsi, so emoji the model
+// uses as visual markers (🔴/🟠/🟡/🟢 priority dots, ✅, ⚠️) render as
+// garbage glyphs. Strip them (plus variation selectors/ZWJ and the space
+// that followed) rather than registering an emoji font.
+const EMOJI_RE = /(?:\p{Extended_Pictographic}|[\u{1F1E6}-\u{1F1FF}]|\u{FE0F}|\u{200D})+\s?/gu;
 const HEADING_STYLES = { 1: styles.heading1, 2: styles.heading2, 3: styles.heading3 } as const;
 
+type PdfNode = ReturnType<typeof h>;
+
+function renderInline(line: string, key: string): Array<string | PdfNode> {
+  const out: Array<string | PdfNode> = [];
+  line.split(INLINE_RE).forEach((part, i) => {
+    if (part === '') return;
+    if (i % 2 === 0) {
+      out.push(part);
+      return;
+    }
+    const k = `${key}-${i}`;
+    if (part.startsWith('**')) out.push(h(Text, { key: k, style: styles.bold }, part.slice(2, -2)));
+    else if (part.startsWith('`')) out.push(h(Text, { key: k, style: styles.code }, part.slice(1, -1)));
+    else out.push(h(Text, { key: k, style: styles.italic }, part.slice(1, -1)));
+  });
+  return out;
+}
+
+function splitTableRow(line: string): string[] {
+  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim());
+}
+
+function renderTable(header: string[], rows: string[][], key: string): PdfNode {
+  // First column (e.g. "Priority") sized to content; the rest share the width.
+  const cellStyle = (c: number) => [styles.tableCell, c === 0 && header.length > 1 ? styles.tableCellFirst : styles.tableCellFlex];
+  return h(
+    View,
+    { key, style: styles.table },
+    h(
+      View,
+      { style: [styles.tableRow, styles.tableHeaderRow] },
+      ...header.map((cell, c) => h(Text, { key: c, style: [...cellStyle(c), styles.bold] }, ...renderInline(cell, `${key}-h${c}`)))
+    ),
+    ...rows.map((row, r) =>
+      h(
+        View,
+        { key: r, style: styles.tableRow, wrap: false },
+        ...header.map((_, c) => h(Text, { key: c, style: cellStyle(c) }, ...renderInline(row[c] ?? '', `${key}-${r}-${c}`)))
+      )
+    )
+  );
+}
+
 // Adapts src/utils/formatBriefText.tsx's markdown-subset parsing (**bold**,
-// #/##/### headings, --- rules) for react-pdf. Blank-line-separated blocks
-// that are a single heading or rule line render as their own standalone
-// element (matching how the model reliably surrounds them with blank
-// lines); any stray heading/rule text mixed into a multi-line paragraph
-// block is dropped rather than leaking through as literal "### "/"---".
+// *italic*, `code`, #/##/### headings, --- rules, pipe tables) for
+// react-pdf. Blank-line-separated blocks that are a single heading or rule
+// line render as their own standalone element (matching how the model
+// reliably surrounds them with blank lines); any stray heading/rule text
+// mixed into a multi-line paragraph block is dropped rather than leaking
+// through as literal "### "/"---". A table (header row + |---| separator)
+// inside a block splits it: text before and after become their own
+// paragraphs around the table.
 function renderBriefBody(text: string) {
   const blocks = text
+    .replace(EMOJI_RE, '')
     .split(/\n{2,}/)
     .map((block) => block.trim())
     .filter(Boolean);
 
-  const nodes: Array<ReturnType<typeof h>> = [];
+  const nodes: PdfNode[] = [];
 
   blocks.forEach((block, blockIndex) => {
     const lines = block.split('\n');
@@ -93,7 +156,7 @@ function renderBriefBody(text: string) {
       const headingMatch = lines[0].match(HEADING_RE);
       if (headingMatch) {
         const level = Math.min(headingMatch[1].length, 3) as 1 | 2 | 3;
-        nodes.push(h(Text, { key: blockIndex, style: HEADING_STYLES[level] }, headingMatch[2]));
+        nodes.push(h(Text, { key: blockIndex, style: HEADING_STYLES[level] }, ...renderInline(headingMatch[2], `${blockIndex}`)));
         return;
       }
       if (RULE_RE.test(lines[0].trim())) {
@@ -102,27 +165,33 @@ function renderBriefBody(text: string) {
       }
     }
 
-    const children: Array<string | ReturnType<typeof h>> = [];
+    let children: Array<string | PdfNode> = [];
     let linesEmitted = 0;
+    let part = 0;
+    const flush = () => {
+      if (children.length > 0) nodes.push(h(Text, { key: `${blockIndex}-${part++}`, style: styles.bodyBlock }, ...children));
+      children = [];
+      linesEmitted = 0;
+    };
 
-    lines.forEach((line, lineIndex) => {
-      if (HEADING_RE.test(line) || RULE_RE.test(line.trim())) return;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (TABLE_ROW_RE.test(line) && TABLE_SEPARATOR_RE.test(lines[i + 1] ?? '')) {
+        flush();
+        const header = splitTableRow(line);
+        const rows: string[][] = [];
+        let j = i + 2;
+        while (j < lines.length && TABLE_ROW_RE.test(lines[j])) rows.push(splitTableRow(lines[j++]));
+        nodes.push(renderTable(header, rows, `${blockIndex}-${part++}`));
+        i = j - 1;
+        continue;
+      }
+      if (HEADING_RE.test(line) || RULE_RE.test(line.trim())) continue;
       if (linesEmitted > 0) children.push('\n');
-      const segments = line.split(/\*\*(.+?)\*\*/g);
-      segments.forEach((segment, segmentIndex) => {
-        if (segment === '') return;
-        children.push(
-          segmentIndex % 2 === 1
-            ? h(Text, { key: `${lineIndex}-${segmentIndex}`, style: styles.bold }, segment)
-            : segment
-        );
-      });
+      children.push(...renderInline(line, `${blockIndex}-${i}`));
       linesEmitted++;
-    });
-
-    if (children.length > 0) {
-      nodes.push(h(Text, { key: blockIndex, style: styles.bodyBlock }, ...children));
     }
+    flush();
   });
 
   return nodes;
