@@ -501,7 +501,7 @@ body {
 /* .sb-sec > .sb-h outranks .incidents-section h3 (the page's own mono section headers) */
 .sb-sec > .sb-h {
   display: flex; align-items: baseline; gap: 10px; margin: 0; padding: 0; font-family: inherit;
-  font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3);
+  font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink);
 }
 .sb-sec > .sb-h::after { content: ""; flex: 1; border-top: 1px solid var(--border); transform: translateY(-3px); }
 .sb-lead { margin: 0; font-size: 14px; line-height: 1.65; color: var(--ink); }
@@ -550,7 +550,7 @@ body {
   padding: 12px 14px; display: grid; gap: 7px;
 }
 .sb-bottom-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
-.sb-bottom-head .label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.sb-bottom-head .label { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); }
 .sb-bottom p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--ink); }
 
 /* ===== Mobile sticky action bar ===== */

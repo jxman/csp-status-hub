@@ -58,11 +58,11 @@ federation (`sts:AssumeRoleWithWebIdentity`, no static AWS keys — see
 `ConverseCommand` with `modelId: BEDROCK_MODEL_ID`. This is a **cross-region
 inference profile ID**, not a bare on-demand model ID — Claude models on
 Bedrock only support `INFERENCE_PROFILE` invocation. Currently
-`us.anthropic.claude-sonnet-4-5-20250929-v1:0` via the `BEDROCK_MODEL_ID`
-env var; the code default (`bedrock.ts`) is `us.anthropic.claude-sonnet-5`,
-which returns `AccessDeniedException` on this AWS account pending an
-AWS-Sales-approved allowlist request — that's why the env var override
-exists and must stay set.
+`us.anthropic.claude-sonnet-4-6` via the `BEDROCK_MODEL_ID` env var; the
+code default (`bedrock.ts`) is `us.anthropic.claude-sonnet-5`, which isn't
+usable on this AWS account yet (Sonnet 5 and 5.5 access is pending with AWS
+support — see CLAUDE.md §9's Marketplace IAM gap). That's why the env var
+override exists and must stay set.
 
 **Forced tool use.** `toolConfig.toolChoice` pins the model to call
 `emit_incident_brief` — it cannot respond with plain text. This means
