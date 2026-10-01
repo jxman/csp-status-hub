@@ -16,6 +16,8 @@ interface AnalysisRun {
   pdf_executive_url: string | null;
   input_tokens: number | null;
   output_tokens: number | null;
+  link: LinkKind;
+  link_until: string | null;
 }
 
 type ConfirmState =
@@ -55,14 +57,48 @@ function statusPill(status: string): { cls: string; label: string } {
   }
 }
 
-// Whether an incident's briefs are still reachable from the dashboard — see
-// getPastIncidentLinks() in api/admin/analysis-admin.ts. Bulk cleanup only
-// ever deletes 'unlinked' runs.
-type LinkState =
-  | { kind: 'active' }
-  | { kind: 'past'; until: string }
-  | { kind: 'recent' }
-  | { kind: 'unlinked' };
+// Per-run retention classification from api/_lib/runRetention.ts (the
+// server is the single source of truth — the cleanup uses the same query).
+type LinkKind =
+  | 'active' | 'past' | 'recent' | 'replacing' | 'failed_kept'
+  | 'superseded' | 'failed_resolved' | 'unlinked';
+
+const DELETABLE: LinkKind[] = ['superseded', 'failed_resolved', 'unlinked'];
+
+function isLinked(r: AnalysisRun): boolean {
+  return r.link === 'active' || r.link === 'past' || r.link === 'recent';
+}
+
+function isDeletable(r: AnalysisRun): boolean {
+  return DELETABLE.includes(r.link);
+}
+
+function linkBadge(r: AnalysisRun, opts: { retentionDays: number; failedRetentionDays: number; supersededGrace: string }) {
+  switch (r.link) {
+    case 'active':
+      return { cls: 'pill ok', label: 'Active', title: 'Latest brief for an incident on the live dashboard' };
+    case 'past': {
+      const until = r.link_until ? new Date(r.link_until) : null;
+      return {
+        cls: 'pill info',
+        label: until ? `Past · until ${until.toLocaleDateString([], { month: 'short', day: 'numeric' })}` : 'Past',
+        title: `Latest brief, linked from Past incidents for ${opts.retentionDays} days after it resolved`,
+      };
+    }
+    case 'recent':
+      return { cls: 'pill info', label: 'Recent', title: 'Latest brief for an incident with a run in the last 24h — kept while it may still show under Recently resolved' };
+    case 'replacing':
+      return { cls: 'pill muted', label: 'Superseded · grace', title: `Replaced by a newer brief less than ${opts.supersededGrace} ago — kept while edge caches may still link to it` };
+    case 'superseded':
+      return { cls: 'pill muted', label: 'Superseded', title: 'A newer brief replaced this one; the dashboard no longer links to it' };
+    case 'failed_kept':
+      return { cls: 'pill warn', label: 'Failed · kept', title: `No successful run since — kept for up to ${opts.failedRetentionDays} days for its error message` };
+    case 'failed_resolved':
+      return { cls: 'pill muted', label: 'Failed · resolved', title: `A later run succeeded, or older than ${opts.failedRetentionDays} days` };
+    default:
+      return { cls: 'pill muted', label: 'Unlinked', title: 'The dashboard no longer links to this incident' };
+  }
+}
 
 const TRIGGER_LABELS: Record<string, string> = { new: 'New', content_changed: 'Updated', resolved: 'Resolved' };
 
@@ -78,10 +114,10 @@ function formatTokens(r: AnalysisRun): string {
 
 export function RunHistoryPanel() {
   const [runs, setRuns] = useState<AnalysisRun[] | null>(null);
-  const [activeKeys, setActiveKeys] = useState<Set<string> | null>(null);
-  const [pastUntil, setPastUntil] = useState<Record<string, string>>({});
-  const [recentKeys, setRecentKeys] = useState<Set<string>>(new Set());
+  const [deletableCount, setDeletableCount] = useState(0);
   const [retentionDays, setRetentionDays] = useState(90);
+  const [failedRetentionDays, setFailedRetentionDays] = useState(30);
+  const [supersededGrace, setSupersededGrace] = useState('2 hours');
   const [activeConfirmed, setActiveConfirmed] = useState(false);
   const [activeReason, setActiveReason] = useState<string | null>(null);
   const [providerFilter, setProviderFilter] = useState('');
@@ -99,10 +135,10 @@ export function RunHistoryPanel() {
       .then((res) => res.json())
       .then((data) => {
         setRuns(data.runs ?? []);
-        setActiveKeys(new Set<string>(data.activeKeys ?? []));
-        setPastUntil(data.pastUntil ?? {});
-        setRecentKeys(new Set<string>(data.recentKeys ?? []));
+        setDeletableCount(data.deletableCount ?? 0);
         if (typeof data.retentionDays === 'number') setRetentionDays(data.retentionDays);
+        if (typeof data.failedRetentionDays === 'number') setFailedRetentionDays(data.failedRetentionDays);
+        if (typeof data.supersededGrace === 'string') setSupersededGrace(data.supersededGrace);
         setActiveConfirmed(!!data.activeConfirmed);
         setActiveReason(data.activeReason ?? null);
       })
@@ -130,20 +166,6 @@ export function RunHistoryPanel() {
       window.removeEventListener('scroll', closeOnScroll, true);
     };
   }, []);
-
-  // Same precedence as the server-side cleanup: active, then a past-incident
-  // link, then the 24h recent-run safety net.
-  function linkState(r: AnalysisRun): LinkState {
-    const key = `${r.provider}:${r.incident_id}`;
-    if (activeKeys?.has(key)) return { kind: 'active' };
-    if (pastUntil[key]) return { kind: 'past', until: pastUntil[key] };
-    if (recentKeys.has(key)) return { kind: 'recent' };
-    return { kind: 'unlinked' };
-  }
-
-  function isLinked(r: AnalysisRun): boolean {
-    return linkState(r).kind !== 'unlinked';
-  }
 
   async function rerun(id: string) {
     setOpenMenuId(null);
@@ -212,13 +234,9 @@ export function RunHistoryPanel() {
     if (providerFilter && r.provider !== providerFilter) return false;
     if (statusFilter && r.status !== statusFilter) return false;
     if (activeFilter === 'linked' && !isLinked(r)) return false;
-    if (activeFilter === 'unlinked' && isLinked(r)) return false;
+    if (activeFilter === 'removable' && !isDeletable(r)) return false;
     return true;
   });
-
-  // Cleanup acts on the whole table server-side, not just these 200 loaded rows —
-  // this count is a floor ("at least this many"), stated as such in the confirm dialog.
-  const unlinkedLoadedCount = activeConfirmed ? runs.filter((r) => !isLinked(r)).length : 0;
 
   return (
     <>
@@ -237,20 +255,20 @@ export function RunHistoryPanel() {
             <option value="failed">Failed</option>
           </select>
           <select value={activeFilter} onChange={(e) => setActiveFilter(e.target.value)} style={selectStyle}>
-            <option value="">Linked + unlinked</option>
+            <option value="">All runs</option>
             <option value="linked">Linked from dashboard</option>
-            <option value="unlinked">Unlinked only</option>
+            <option value="removable">Removable by cleanup</option>
           </select>
           <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>{filtered.length} results</span>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <button
             className="btn-ghost"
-            disabled={!activeConfirmed || bulkBusy || unlinkedLoadedCount === 0}
+            disabled={!activeConfirmed || bulkBusy || deletableCount === 0}
             title={!activeConfirmed ? (activeReason ?? "Can't confirm active-incident state yet") : undefined}
             onClick={() => setConfirmState({ kind: 'bulk' })}
           >
-            {bulkBusy ? 'Cleaning up…' : 'Clean up unlinked'}
+            {bulkBusy ? 'Cleaning up…' : `Clean up unused${activeConfirmed && deletableCount > 0 ? ` (${deletableCount})` : ''}`}
           </button>
           <button className="btn-ghost" onClick={load}>Refresh</button>
         </div>
@@ -282,7 +300,7 @@ export function RunHistoryPanel() {
           <tbody>
             {filtered.map((r) => {
               const pill = statusPill(r.status);
-              const link = linkState(r);
+              const badge = linkBadge(r, { retentionDays, failedRetentionDays, supersededGrace });
               return (
                 <tr key={r.id} style={{ opacity: busyId === r.id ? 0.5 : 1 }}>
                   <td style={cellStyle}>{r.provider.toUpperCase()}</td>
@@ -295,24 +313,9 @@ export function RunHistoryPanel() {
                     )}
                   </td>
                   <td style={cellStyle}>
-                    {!activeConfirmed ? (
-                      <span style={{ color: 'var(--ink-4)' }}>—</span>
-                    ) : link.kind === 'active' ? (
-                      <span className="pill ok"><span className="dot" />Active</span>
-                    ) : link.kind === 'past' ? (
-                      <span
-                        className="pill info"
-                        title={`Linked from Past incidents until ${new Date(link.until).toLocaleDateString()} (${retentionDays} days after it resolved)`}
-                      >
-                        <span className="dot" />Past · until {new Date(link.until).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-                      </span>
-                    ) : link.kind === 'recent' ? (
-                      <span className="pill info" title="Had a run in the last 24h — kept while it may still show under Recently resolved">
-                        <span className="dot" />Recent
-                      </span>
-                    ) : (
-                      <span className="pill muted"><span className="dot" />Unlinked</span>
-                    )}
+                    {activeConfirmed
+                      ? <span className={badge.cls} title={badge.title} style={{ whiteSpace: 'nowrap' }}><span className="dot" />{badge.label}</span>
+                      : <span style={{ color: 'var(--ink-4)' }}>—</span>}
                   </td>
                   <td style={cellStyle}>{TRIGGER_LABELS[r.trigger_event] ?? r.trigger_event}</td>
                   <td style={cellStyle}>
@@ -400,7 +403,7 @@ export function RunHistoryPanel() {
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 8, color: 'var(--ink)' }}>
-              {confirmState.kind === 'single' ? 'Delete this run?' : 'Clean up all unlinked runs?'}
+              {confirmState.kind === 'single' ? 'Delete this run?' : `Clean up ${deletableCount} unused run${deletableCount === 1 ? '' : 's'}?`}
             </div>
             <div style={{ fontSize: 14, color: 'var(--ink-2)', lineHeight: 1.5, marginBottom: 20 }}>
               {confirmState.kind === 'single'
@@ -410,7 +413,13 @@ export function RunHistoryPanel() {
                       <> <b>This incident is still linked from the dashboard</b> — if this is its latest brief, its AI Insight panel will stop working.</>
                     )}
                   </>
-                : <>This permanently deletes every stored analysis run — and its PDFs — for an incident the dashboard no longer links to (at least {unlinkedLoadedCount} shown here; older unlinked runs beyond this 200-row view are included too). Runs for active incidents, incidents in Past incidents (resolved within {retentionDays} days), and incidents with a run in the last 24h are never touched. This can't be undone.</>}
+                : <>
+                    This permanently deletes {deletableCount} analysis run{deletableCount === 1 ? '' : 's'} and their PDFs:
+                    briefs replaced by a newer one more than {supersededGrace} ago, failed runs that were later retried
+                    successfully or are over {failedRetentionDays} days old, and briefs for incidents the dashboard no longer
+                    links to. The latest brief of every active incident, Past incident (resolved within {retentionDays} days),
+                    and incident with a run in the last 24h is never touched. This can&apos;t be undone.
+                  </>}
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
               <button className="btn-ghost" onClick={() => setConfirmState(null)}>Cancel</button>

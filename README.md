@@ -515,24 +515,31 @@ check-status.ts (EventBridge, every 5 min)
   snapshot is missing or more than 24h stale, it refuses rather than
   risk treating "we don't know what's active" as "nothing is active" —
   which would otherwise turn a Redis hiccup into a total wipe.
-- **Linked/unlinked cleanup (2026-10-01):** once the Past incidents section
-  shipped, "non-active" no longer meant "unreachable" — a resolved
-  incident's latest brief and PDFs stay linked from the dashboard for 90
-  days. The Run History badge is now a **Link** column: *Active* (live
-  incident), *Past · until <date>* (in `incident_history`, resolved within
-  `HISTORY_RETENTION_DAYS`; the date is when that link expires), *Recent*
-  (a run in the last 24h — a safety net for a Recently resolved incident
-  whose best-effort history row was never written), or *Unlinked*. The
-  filter and the bulk button ("Clean up unlinked") follow suit, and
-  `cleanup_inactive` deletes only runs whose incident matches none of the
-  three — it still fails closed on a missing/stale Redis snapshot. Runs
-  under an intermediate id from an Azure rename show as Recent, then
-  Unlinked; the incident's history row and briefs live under its final
-  id. A per-row Delete on a linked run still works but warns that the
-  dashboard's AI Insight panel may stop working if it's the latest brief.
-  Nothing deletes runs automatically: an incident whose history row ages
-  out at 90 days just becomes Unlinked, and its runs go on the next manual
-  cleanup.
+- **Per-run retention cleanup (2026-10-01):** once the Past incidents
+  section shipped, "non-active" no longer meant "unreachable", and
+  per-incident rules kept too much: the dashboard only ever shows an
+  incident's *newest complete* run, so earlier runs are unreachable even
+  while the incident is linked. `api/_lib/runRetention.ts` now classifies
+  every run in one SQL query, shared by the **Link** column and the
+  **Clean up unused (N)** button so the two can't disagree:
+  - *Kept:* **Active**, **Past · until <date>** (in `incident_history`,
+    resolved within 90 days) and **Recent** (any run in the last 24h, a
+    safety net for a Recently resolved incident whose best-effort history
+    row was never written). Each applies to the newest complete run only.
+    **Superseded · grace** is a run replaced less than 2h ago; edge
+    caches can still serve its id, the history response for up to 1h.
+    **Failed · kept** is a failure with no successful run since, under
+    30 days old.
+  - *Removed by cleanup:* **Superseded**, **Failed · resolved** (retried
+    successfully, or older than 30 days) and **Unlinked**.
+
+  The cleanup still fails closed when a Redis status snapshot is missing
+  or stale (more than 24h old). It deletes in one statement, so
+  classification and deletion see the same table snapshot. A per-row Delete
+  on a linked run still works, but warns that the dashboard's AI Insight
+  panel may stop working. Nothing runs automatically; runs go on the next
+  manual cleanup. First dry run against production: 31 of 39 runs (46 PDFs)
+  removable, leaving one brief per incident plus one unresolved failure.
 
 #### Structured briefs (2026-09-29)
 
