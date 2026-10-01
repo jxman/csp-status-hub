@@ -1,0 +1,34 @@
+# Snyk policy — reviewed ignores for issues with no fixed version available.
+# Each entry expires so it is re-reviewed; remove an entry once a fix ships.
+version: v1.25.0
+ignore:
+  SNYK-JS-URIJS-19963963:
+    - 'eslint > ajv > uri-js':
+        reason: >-
+          No fixed uri-js release exists; reached only through ESLint 10's own
+          ajv@6 (dev-only linting of this repo's own config). Not shipped to
+          production. Re-check when ESLint drops ajv@6.
+        expires: 2026-12-31T00:00:00.000Z
+        created: 2026-10-01T00:00:00.000Z
+  SNYK-JS-URIJS-19963961:
+    - 'eslint > ajv > uri-js':
+        reason: >-
+          No fixed uri-js release exists; dev-only via ESLint 10's ajv@6.
+          Not shipped to production.
+        expires: 2026-12-31T00:00:00.000Z
+        created: 2026-10-01T00:00:00.000Z
+  SNYK-JS-URIJS-20341609:
+    - 'eslint > ajv > uri-js':
+        reason: >-
+          No fixed uri-js release exists; dev-only via ESLint 10's ajv@6.
+          Not shipped to production.
+        expires: 2026-12-31T00:00:00.000Z
+        created: 2026-10-01T00:00:00.000Z
+  SNYK-JS-BRACES-19963945:
+    - '@vercel/node > @vercel/static-config > ts-morph > @ts-morph/common > fast-glob > micromatch > braces':
+        reason: >-
+          No fixed braces release exists; dev-only via @vercel/node, which this
+          project imports for TypeScript types only. Not shipped to production.
+        expires: 2026-12-31T00:00:00.000Z
+        created: 2026-10-01T00:00:00.000Z
+patch: {}

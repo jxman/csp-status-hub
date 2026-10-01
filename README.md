@@ -64,7 +64,7 @@ tooling sit behind it as a separate backend — see
 
 | Layer            | Technology                                       |
 | ----------------- | ------------------------------------------------- |
-| Frontend          | React 18 + Vite 6                                 |
+| Frontend          | React 18 + Vite 7                                 |
 | Language           | TypeScript 5.6                                     |
 | Styling            | Tailwind CSS 3 (dark mode via `class` strategy, plus a system-preference mode) |
 | XML Parsing        | `fast-xml-parser` 5 (browser + serverless)         |

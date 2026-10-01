@@ -35,17 +35,11 @@ const selectStyle: React.CSSProperties = {
   background: 'var(--bg)', color: 'var(--ink)', fontSize: 13,
 };
 
-// PDF URLs come from our own Postgres rows (always written by
-// api/_lib/pdf/render.ts as an https:// Vercel Blob URL), but this is an
-// admin panel rendering DB content straight into an <a href>, so guard the
-// scheme before trusting it rather than assuming the DB can never contain
-// anything else (e.g. a javascript: URL).
-function isSafeHttpsUrl(value: string): boolean {
-  try {
-    return new URL(value).protocol === 'https:';
-  } catch {
-    return false;
-  }
+// PDF links go through the admin endpoint by run id (it redirects to the
+// Vercel Blob URL after checking it server-side), so stored URLs never reach
+// an href here.
+function pdfHref(runId: string, kind: 'technical' | 'executive'): string {
+  return `/api/admin/analysis-admin?resource=pdf&kind=${kind}&id=${encodeURIComponent(runId)}`;
 }
 
 function statusPill(status: string): { cls: string; label: string } {
@@ -325,11 +319,11 @@ export function RunHistoryPanel() {
                   <td style={cellStyle}>{formatTokens(r)}</td>
                   <td style={cellStyle}>{new Date(r.created_at).toLocaleString()}</td>
                   <td style={cellStyle}>
-                    {r.pdf_technical_url && isSafeHttpsUrl(r.pdf_technical_url) && (
-                      <a href={r.pdf_technical_url} target="_blank" rel="noopener noreferrer" style={{ marginRight: 8 }}>Tech</a>
+                    {r.pdf_technical_url && (
+                      <a href={pdfHref(r.id, 'technical')} target="_blank" rel="noopener noreferrer" style={{ marginRight: 8 }}>Tech</a>
                     )}
-                    {r.pdf_executive_url && isSafeHttpsUrl(r.pdf_executive_url) && (
-                      <a href={r.pdf_executive_url} target="_blank" rel="noopener noreferrer">Exec</a>
+                    {r.pdf_executive_url && (
+                      <a href={pdfHref(r.id, 'executive')} target="_blank" rel="noopener noreferrer">Exec</a>
                     )}
                   </td>
                   <td style={{ ...cellStyle, position: 'relative' }} data-row-menu-root>

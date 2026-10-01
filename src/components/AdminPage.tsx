@@ -153,7 +153,7 @@ export function AdminPage() {
   }, [status, provider, search]);
 
   useEffect(() => {
-    const id = setTimeout(load, 200);
+    const id = setTimeout(() => load(), 200);
     return () => clearTimeout(id);
   }, [load]);
 

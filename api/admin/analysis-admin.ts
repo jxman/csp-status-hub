@@ -49,11 +49,47 @@ async function getActiveIncidentKeys(): Promise<{ keys: string[]; confirmed: boo
   return { keys, confirmed: true };
 }
 
+// PDFs are stored by api/_lib/pdf/render.ts as public Vercel Blob URLs. The
+// admin table links here by run id instead of putting database URLs straight
+// into an <a href>, and this only redirects to an https URL on Blob's public
+// host — so a bad value in the DB can't become a javascript: link.
+const BLOB_HOST_SUFFIX = '.public.blob.vercel-storage.com';
+const RUN_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isBlobPdfUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname.endsWith(BLOB_HOST_SUFFIX);
+  } catch {
+    return false;
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const admin = requireAdmin(req, res);
   if (!admin) return;
 
   if (req.method === 'GET') {
+    if (req.query.resource === 'pdf') {
+      const { id, kind } = req.query;
+      if (typeof id !== 'string' || !RUN_ID_RE.test(id) || (kind !== 'technical' && kind !== 'executive')) {
+        res.status(400).json({ error: 'Invalid id or kind' });
+        return;
+      }
+      const [row] = await sql`
+        SELECT pdf_technical_url, pdf_executive_url FROM incident_analysis WHERE id = ${id}
+      `;
+      const url = row ? (kind === 'technical' ? row.pdf_technical_url : row.pdf_executive_url) : null;
+      if (!isBlobPdfUrl(url)) {
+        res.status(404).json({ error: 'PDF not found' });
+        return;
+      }
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.redirect(302, url);
+      return;
+    }
+
     if (req.query.resource === 'runs') {
       // Link classification needs the active set, so this can't run in
       // parallel with it. If active state is unconfirmed, runs are still
@@ -140,7 +176,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         try {
           await del(blobUrls);
         } catch (err) {
-          console.error(`[analysis-admin] blob delete failed for run ${id}`, err);
+          // id is request input — pass it as an argument, not inside the
+          // message, so a "%" in it can't act as a format directive.
+          console.error('[analysis-admin] blob delete failed for run', id, err);
         }
       }
       res.status(200).json({ deletedRows: 1, deletedBlobs: blobUrls.length });
