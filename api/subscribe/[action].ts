@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { randomBytes } from 'node:crypto';
-import { checkBotId } from 'botid/server';
 import { sql } from '../_lib/db.js';
 import { sendConfirmationEmail, sendUpdateConfirmationEmail, sendWelcomeEmail } from '../_lib/email.js';
+import { checkSignupLimits } from '../_lib/signupLimits.js';
 
 const VALID_PROVIDERS = new Set(['aws', 'azure', 'gcp', 'oci', 'all']);
 const CONFIRM_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
@@ -21,17 +21,22 @@ async function create(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  const verification = await checkBotId();
-  if (verification.isBot) {
-    res.status(403).json({ error: 'Request blocked' });
-    return;
-  }
-
-  const { name, email, providers } = (req.body ?? {}) as {
+  const { name, email, providers, hpField } = (req.body ?? {}) as {
     name?: unknown;
     email?: unknown;
     providers?: unknown;
+    hpField?: unknown;
   };
+
+  // Honeypot: the form's hidden field is never visible to people (and its
+  // name matches no browser autofill type), so anything in it came from a
+  // form-filling bot. Answer exactly like a
+  // real sign-up so the bot learns nothing, but send no email.
+  if (typeof hpField === 'string' && hpField.trim() !== '') {
+    console.log('[subscribe] honeypot field filled — ignoring sign-up');
+    res.status(200).json({ message: 'Check your email to confirm your subscription.' });
+    return;
+  }
 
   if (typeof name !== 'string' || name.trim().length === 0) {
     res.status(400).json({ error: 'Name is required' });
@@ -51,6 +56,20 @@ async function create(req: VercelRequest, res: VercelResponse) {
   }
 
   const normalizedEmail = email.trim().toLowerCase();
+
+  // Counted after validation, so a mistyped form doesn't use up an
+  // address's daily allowance (see signupLimits.ts).
+  const limit = await checkSignupLimits(normalizedEmail);
+  if (!limit.allowed) {
+    console.log(`[subscribe] sign-up limited (${limit.reason})`);
+    res.status(429).json({
+      error:
+        limit.reason === 'email'
+          ? 'Too many sign-up attempts for this email address. Please try again tomorrow.'
+          : 'Sign-ups are temporarily paused because of high volume. Please try again tomorrow.',
+    });
+    return;
+  }
   const confirmToken = randomBytes(32).toString('hex');
   const confirmTokenExpiresAt = new Date(Date.now() + CONFIRM_TOKEN_TTL_MS).toISOString();
 

@@ -46,6 +46,8 @@ export function SubscribeModal({ onClose }: Props) {
   const [allProviders, setAllProviders] = useState(false);
   const [status, setStatus] = useState<'idle' | 'submitting' | 'done' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+  // Honeypot — hidden from people, so only bots fill it (see api/_lib/signupLimits.ts).
+  const [hpField, setHpField] = useState('');
 
   function toggleProvider(id: string) {
     setSelected((prev) => {
@@ -71,7 +73,7 @@ export function SubscribeModal({ onClose }: Props) {
       const res = await fetch('/api/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, providers }),
+        body: JSON.stringify({ name, email, providers, hpField }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -125,6 +127,12 @@ export function SubscribeModal({ onClose }: Props) {
             </div>
 
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div aria-hidden="true" style={{ position: 'absolute', left: -10000, top: 'auto', width: 1, height: 1, overflow: 'hidden' }}>
+                <label>
+                  Leave this field empty
+                  <input type="text" name="hp_field_x7" tabIndex={-1} autoComplete="off" value={hpField} onChange={(e) => setHpField(e.target.value)} />
+                </label>
+              </div>
               <div>
                 <label style={labelStyle} htmlFor="subscribe-name">Name</label>
                 <input

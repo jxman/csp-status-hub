@@ -111,7 +111,7 @@ resolves. Live in production, alongside a session-gated admin view.
 
 | Route | Purpose |
 | --- | --- |
-| `/` (bell icon) | Sign up — name, email, provider checkboxes, invisible bot check |
+| `/` (bell icon) | Sign up — name, email, provider checkboxes (hidden honeypot field) |
 | `/manage?token=...` | Edit providers or unsubscribe (link comes from your confirmation email) |
 | `/admin` | Subscriber list, search/filter, CSV export, manual actions, ad hoc test-email tool — gated behind Sign in with Vercel |
 
@@ -128,7 +128,7 @@ resolves. Live in production, alongside a session-gated admin view.
                ▼
 ┌───────────────────────────────────────────────────────────────────┐
 │  Vercel Serverless Functions                                        │
-│  /api/subscribe             create/stage a subscription (BotID-gated)│
+│  /api/subscribe             create/stage a subscription (rate-limited) │
 │  /api/subscribe/confirm     finalize signup or a staged update       │
 │  /api/subscribe/manage      view/edit providers (token-authed)       │
 │  /api/subscribe/unsubscribe one-click, idempotent opt-out            │
@@ -216,8 +216,27 @@ CU-hr/day, a ~69x drop — projecting to roughly 1.6 CU-hr for the full month.
 
 ### Sign-up & confirmation (double opt-in)
 
-- Bell icon opens a form (name, email, provider checkboxes) gated by an
-  invisible **Vercel BotID** check on the `POST /api/subscribe` handler.
+- Bell icon opens a form (name, email, provider checkboxes). Abuse
+  protection is in `api/_lib/signupLimits.ts`:
+  - a hidden honeypot field (`hpField`); if a bot fills it, the request
+    gets a normal-looking success response but no email is sent
+  - at most 3 sign-up attempts per email address per 24h (Redis key is a
+    SHA-256 of the address, so Redis never holds emails)
+  - at most 30 sign-up attempts per UTC day overall, keeping confirmation
+    mail well inside Resend's Free plan (100 emails/day, shared with
+    outage alerts)
+
+  Over-limit requests get a 429 with a plain-language message. A Redis
+  error fails open, and double opt-in still applies. There is deliberately
+  **no per-IP limit**: Zscaler-style corporate proxies send a whole
+  company's traffic out through a few shared IPs.
+
+  **Why not Vercel BotID (removed 2026-10-01):** its browser challenge was
+  blocked by Zscaler, so sign-ups from Zscaler-managed corporate laptops
+  got a 403 "Request blocked". That network is most of this dashboard's
+  audience. Double opt-in already stops bots from subscribing anyone; the
+  only remaining risk is the form being used to send email, which the
+  limits above bound directly.
 - New sign-ups **and** any provider change to an already-confirmed
   subscription require clicking a confirmation link before taking effect —
   the public form is unauthenticated, so a change here always needs
@@ -598,7 +617,6 @@ the provider reports `unknown` (Azure's feed carries no status).
 - **Neon Postgres** (Vercel Marketplace) — `subscribers` and `notification_log`
 - **Upstash Redis** (Vercel Marketplace) — per-provider status snapshot cache for change detection
 - **Resend** — transactional + outage/resolution email, from `alerts.synepho.com`
-- **Vercel BotID** — invisible bot check on the sign-up form
 - **Sign in with Vercel** — admin auth, restricted to a single hardcoded `ADMIN_EMAIL`
 - **AWS EventBridge** (Rule + Connection + API Destination) — triggers `/api/cron/check-status` every 5 minutes; provisioned via `scripts/setup-eventbridge-cron.sh`
 - **AWS Bedrock** — Claude Sonnet 4.6 (`us.anthropic.claude-sonnet-4-6`, a cross-region inference profile — Claude models have no bare on-demand ID on Bedrock), via Vercel OIDC federation, no static AWS keys — powers the Incident Briefing Engine's `/api/analysis/run`; IAM role provisioned via `scripts/setup-bedrock-oidc.sh`. `BEDROCK_MODEL_ID` env var overrides the code default of `us.anthropic.claude-sonnet-5`, which isn't usable on this AWS account yet (Sonnet 5/5.5 access is pending with AWS support)
@@ -612,7 +630,7 @@ the provider reports `unknown` (Azure's feed carries no status).
 | Status snapshot cache — Upstash Redis | Live |
 | Email — Resend | Live, domain verified |
 | SMS — Twilio | Not built (deferred, Twilio A2P 10DLC registration) |
-| Bot protection — Vercel BotID | Live |
+| Bot protection — honeypot + per-email/daily sign-up limits (BotID removed) | Live |
 | Admin auth — Sign in with Vercel + custom session | Live |
 | Cron (primary) — AWS EventBridge | Live |
 | Cron (fallback) — Vercel native daily cron | Live |
@@ -745,7 +763,6 @@ csp-status-hub/
 ├── src/
 │   ├── App.tsx                    Root layout, dynamic title, Analytics, SpeedInsights
 │   ├── main.tsx                   React entry point + path-based routing (/, /manage, /admin)
-│   ├── botid.ts                   Client-side BotID init, protects POST /api/subscribe
 │   ├── components/
 │   │   ├── StatusHeader.tsx       Header: title, live dot, refresh, bell (subscribe), Settings menu
 │   │   ├── SettingsMenu.tsx       Appearance (light/dark/system), About, Buy Me a Coffee
@@ -842,9 +859,9 @@ vercel dev --listen 3002     # any free port — 3000 is commonly reserved for a
 Plain `npm run dev` runs the Vite frontend only — Azure and everything
 under `/api/*` will error or 404 since the function runtime isn't running.
 
-Vercel BotID passes through as "human" automatically in local dev, so
-`/api/subscribe` isn't blocked the way it is against real (non-browser)
-traffic in production.
+Sign-up limits use the same Upstash Redis as production when run under
+`vercel dev`, so repeated local test sign-ups count against an address's
+3-per-day limit and the 30-per-day total.
 
 ---
 
