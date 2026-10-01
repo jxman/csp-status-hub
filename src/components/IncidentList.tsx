@@ -1,13 +1,15 @@
 import type { Provider, ProviderStatus } from '../types/status';
+import type { SubscribeSource } from './SubscribeModal';
 import { IncidentCard } from './IncidentCard';
 import { PastIncidents } from './PastIncidents';
 
 interface Props {
   providers: ProviderStatus[];
   deepLinkTarget?: { provider: Provider; incidentId: string } | null;
+  onSubscribe?: (source: SubscribeSource, provider?: Provider) => void;
 }
 
-export function IncidentList({ providers, deepLinkTarget }: Props) {
+export function IncidentList({ providers, deepLinkTarget, onSubscribe }: Props) {
   const allIncidents = providers.flatMap((p) =>
     p.activeIncidents.map((inc) => ({ incident: inc, provider: p.provider }))
   );
@@ -25,7 +27,17 @@ export function IncidentList({ providers, deepLinkTarget }: Props) {
     <div className="incidents-section">
       <h3>Active incidents{active.length > 0 ? ` · ${active.length}` : ''}</h3>
       {active.length === 0 ? (
-        <div className="all-clear-msg">No active incidents — all systems operational.</div>
+        <div className="all-clear-msg">
+          No active incidents — all systems operational.
+          {onSubscribe && (
+            <>
+              {' '}
+              <button type="button" className="link-btn" onClick={() => onSubscribe('all_clear')}>
+                Get an email the moment that changes →
+              </button>
+            </>
+          )}
+        </div>
       ) : (
         active.map(({ incident, provider }) => (
           <IncidentCard
@@ -33,6 +45,7 @@ export function IncidentList({ providers, deepLinkTarget }: Props) {
             incident={incident}
             provider={provider}
             autoExpand={isDeepLinkTarget(provider, incident.id)}
+            onSubscribe={onSubscribe ? () => onSubscribe('incident_card', provider) : undefined}
           />
         ))
       )}

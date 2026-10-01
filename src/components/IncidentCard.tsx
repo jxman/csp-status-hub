@@ -12,13 +12,15 @@ interface Props {
   briefId?: string | null;
   // Past incidents show an absolute resolution date instead of "Nd ago".
   historical?: boolean;
+  // Active incidents only: opens the sign-up form with this provider ticked.
+  onSubscribe?: () => void;
 }
 
 const providerShort: Record<Provider, string> = {
   aws: 'AWS', azure: 'Azure', gcp: 'GCP', oci: 'OCI',
 };
 
-export function IncidentCard({ incident, provider, autoExpand, briefId, historical }: Props) {
+export function IncidentCard({ incident, provider, autoExpand, briefId, historical, onSubscribe }: Props) {
   const isResolved = incident.status === 'resolved';
   const sevClass = incident.severity === 'high' ? 'high' : 'med';
   const sevLabel = incident.severity === 'high' ? 'High' : incident.severity === 'medium' ? 'Med' : 'Low';
@@ -66,6 +68,12 @@ export function IncidentCard({ incident, provider, autoExpand, briefId, historic
         ) : (
           <span>Updated {formatRelative(incident.updatedAt)}</span>
         )}
+        <span className="inc-foot-links">
+        {onSubscribe && (
+          <button type="button" className="link-btn" onClick={onSubscribe}>
+            🔔 Alert me about {providerShort[provider]}
+          </button>
+        )}
         {incident.detailUrl && (
           <a
             href={incident.detailUrl}
@@ -76,6 +84,7 @@ export function IncidentCard({ incident, provider, autoExpand, briefId, historic
             View timeline →
           </a>
         )}
+        </span>
       </div>
 
       {briefId !== null && (

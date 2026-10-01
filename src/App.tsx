@@ -1,20 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { useStatusPolling, PROVIDER_ORDER } from './hooks/useStatusPolling';
 import { useTheme } from './hooks/useTheme';
 import { useIncidentDeepLink } from './hooks/useIncidentDeepLink';
 import { useVersionCheck } from './hooks/useVersionCheck';
-import { initAnalytics } from './utils/analytics';
+import { initAnalytics, trackEvent } from './utils/analytics';
 import { StatusHeader } from './components/StatusHeader';
 import { ProviderGrid, type ProviderSlot } from './components/ProviderGrid';
 import { ProviderCardSkeleton } from './components/ProviderCardSkeleton';
 import { IncidentList } from './components/IncidentList';
-import { SubscribeModal } from './components/SubscribeModal';
+import { SubscribeModal, type SubscribeSource } from './components/SubscribeModal';
 import { AboutModal } from './components/AboutModal';
 import { SynephoLogo } from './components/SynephoLogo';
 import { formatRelative } from './utils/formatters';
-import type { ProviderStatus } from './types/status';
+import type { Provider, ProviderStatus } from './types/status';
 
 type UrlBanner =
   | { kind: 'ok'; text: string }
@@ -174,7 +174,7 @@ export default function App() {
   } = useStatusPolling();
 
   const { mode: themeMode, setMode: setThemeMode } = useTheme();
-  const [showAlertsModal, setShowAlertsModal] = useState(false);
+  const [alertsModal, setAlertsModal] = useState<{ source: SubscribeSource; provider?: Provider } | null>(null);
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [urlBanner, dismissUrlBanner] = useUrlBanner();
   const { deepLinkTarget, consume: consumeDeepLink } = useIncidentDeepLink();
@@ -183,6 +183,27 @@ export default function App() {
   useEffect(() => {
     initAnalytics();
   }, []);
+
+  // Every sign-up entry point opens the form through here, so each open is
+  // recorded with where it came from (see SubscribeModal's SubscribeSource).
+  const openAlerts = useCallback((source: SubscribeSource, provider?: Provider) => {
+    trackEvent('subscribe_open', { source, provider: provider ?? 'none' });
+    setAlertsModal({ source, provider });
+  }, []);
+
+  // Shareable sign-up link: /?subscribe=1 (optionally &provider=aws) opens
+  // the form on load, for posting in Teams or email. Params are stripped so
+  // a reload doesn't reopen it.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('subscribe') !== '1') return;
+    const provider = params.get('provider');
+    openAlerts('shared_link', PROVIDER_ORDER.includes(provider as Provider) ? (provider as Provider) : undefined);
+    params.delete('subscribe');
+    params.delete('provider');
+    const next = params.toString();
+    window.history.replaceState({}, '', window.location.pathname + (next ? `?${next}` : ''));
+  }, [openAlerts]);
 
   const slots: ProviderSlot[] = PROVIDER_ORDER.map((id) => ({ provider: id, status: providers[id] }));
   const loadedProviders: ProviderStatus[] = slots
@@ -204,7 +225,13 @@ export default function App() {
     <div className="dash">
       <Analytics />
       <SpeedInsights />
-      {showAlertsModal && <SubscribeModal onClose={() => setShowAlertsModal(false)} />}
+      {alertsModal && (
+        <SubscribeModal
+          source={alertsModal.source}
+          initialProvider={alertsModal.provider}
+          onClose={() => setAlertsModal(null)}
+        />
+      )}
       {showAboutModal && <AboutModal onClose={() => setShowAboutModal(false)} />}
 
       {urlBanner && (
@@ -254,7 +281,7 @@ export default function App() {
         themeMode={themeMode}
         onThemeModeChange={setThemeMode}
         onShowAbout={() => setShowAboutModal(true)}
-        onSubscribe={() => setShowAlertsModal(true)}
+        onSubscribe={() => openAlerts('header')}
       />
 
       {/* Offline banner */}
@@ -299,7 +326,7 @@ export default function App() {
           )}
           <StatsBanner providers={loadedProviders} />
           <ProviderGrid slots={slots} />
-          <IncidentList providers={loadedProviders} deepLinkTarget={deepLinkTarget} />
+          <IncidentList providers={loadedProviders} deepLinkTarget={deepLinkTarget} onSubscribe={openAlerts} />
           <footer style={{
             padding: '16px 32px 24px', fontSize: 11,
             color: 'var(--ink-4)', borderTop: '1px solid var(--border)',

@@ -111,7 +111,7 @@ resolves. Live in production, alongside a session-gated admin view.
 
 | Route | Purpose |
 | --- | --- |
-| `/` (bell icon) | Sign up — name, email, provider checkboxes (hidden honeypot field) |
+| `/` ("Get alerts" button, all-clear message, "Alert me about <provider>" on active incident cards, or `/?subscribe=1[&provider=aws]`) | Sign up — name, email, provider checkboxes (hidden honeypot field). Incident cards and `&provider=` pre-tick that provider |
 | `/manage?token=...` | Edit providers or unsubscribe (link comes from your confirmation email) |
 | `/admin` | Subscriber list, search/filter, CSV export, manual actions, ad hoc test-email tool — gated behind Sign in with Vercel |
 
@@ -925,6 +925,7 @@ covered by `vercel.json` and needs no separate provisioning step.
 | Speed Insights | ✅ Live | Core Web Vitals tracking — enable in dashboard |
 | Function logs  | ✅ Live | `vercel logs <url> --follow` or Logs tab       |
 | Notification log | ✅ Live (data only) | `notification_log` table records every send attempt; no dedicated admin UI reads it yet |
+| Sign-up funnel | ✅ Live | GA4 events (production host only): `subscribe_open` {source, provider} when the form opens, and `subscribe_success` {providers, source} on submit. `source` is `header`, `all_clear`, `incident_card` or `shared_link`, which shows which entry points produce sign-ups |
 
 ---
 

@@ -1,8 +1,15 @@
 import { useState } from 'react';
 import { trackEvent } from '../utils/analytics';
 
+// Which entry point opened the form — sent with subscribe_open and
+// subscribe_success so GA shows which ones actually produce sign-ups.
+export type SubscribeSource = 'header' | 'all_clear' | 'incident_card' | 'shared_link';
+
 interface Props {
   onClose: () => void;
+  source: SubscribeSource;
+  // Pre-ticks one provider (e.g. from an incident card's "Alert me about AWS").
+  initialProvider?: string;
 }
 
 const PROVIDERS: { id: string; label: string }[] = [
@@ -39,10 +46,12 @@ const checkboxStyle: React.CSSProperties = {
   cursor: 'pointer',
 };
 
-export function SubscribeModal({ onClose }: Props) {
+export function SubscribeModal({ onClose, source, initialProvider }: Props) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(initialProvider && PROVIDERS.some((p) => p.id === initialProvider) ? [initialProvider] : [])
+  );
   const [allProviders, setAllProviders] = useState(false);
   const [status, setStatus] = useState<'idle' | 'submitting' | 'done' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
@@ -80,7 +89,7 @@ export function SubscribeModal({ onClose }: Props) {
         throw new Error(body.error ?? 'Something went wrong. Please try again.');
       }
       setStatus('done');
-      trackEvent('subscribe_success', { providers: providers.join(',') });
+      trackEvent('subscribe_success', { providers: providers.join(','), source });
     } catch (err) {
       setStatus('error');
       setErrorMessage(err instanceof Error ? err.message : 'Something went wrong. Please try again.');

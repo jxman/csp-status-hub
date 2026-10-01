@@ -100,12 +100,13 @@ export function StatusHeader({
           ) : refreshLabel}
         </button>
         <button
-          className="icon-btn"
+          className="alerts-btn"
           onClick={onSubscribe}
-          aria-label="Subscribe to alerts"
-          title="Subscribe to alerts"
+          aria-label="Get outage alerts by email"
+          title="Get outage alerts by email"
         >
           <BellIcon />
+          <span className="alerts-btn-label">Get alerts</span>
         </button>
         <SettingsMenu mode={themeMode} onModeChange={onThemeModeChange} onShowAbout={onShowAbout} />
       </div>

@@ -169,6 +169,25 @@ body {
 }
 .icon-btn:hover { background: var(--chip-bg); }
 
+/* Labelled "Get alerts" header button — words make it findable where the
+   bare bell icon was easy to miss. Collapses to the icon on phones. */
+.alerts-btn {
+  height: 30px; padding: 0 11px; border-radius: 6px;
+  border: 1px solid color-mix(in oklab, var(--blue) 45%, var(--border-strong));
+  background: var(--blue-soft); color: var(--blue-text);
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: inherit; font-size: 13px; font-weight: 600;
+  cursor: pointer; flex: 0 0 auto; white-space: nowrap;
+}
+.alerts-btn:hover { background: color-mix(in oklab, var(--blue) 18%, var(--card)); }
+
+/* Button that reads as an inline link (sign-up prompts). */
+.link-btn {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font: inherit; color: var(--blue);
+}
+.link-btn:hover { text-decoration: underline; }
+
 .settings-root { position: relative; }
 .settings-panel {
   position: absolute; top: calc(100% + 8px); right: 0; z-index: 100;
@@ -448,6 +467,8 @@ body {
   margin-top: 10px; font-size: 12px; color: var(--ink-3);
   gap: 8px; flex-wrap: wrap;
 }
+.incident .inc-foot-links { display: inline-flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.incident .inc-foot .link-btn { font-size: 12px; }
 .incident .inc-foot a { color: var(--blue); text-decoration: none; }
 .incident .inc-foot a:hover { text-decoration: underline; }
 
@@ -589,6 +610,8 @@ body {
   .head-right .refresh { font-size: 11px; }
   .btn-ghost { padding: 5px 8px; font-size: 12px; }
   .brand-name { font-size: 15px; }
+  .alerts-btn { width: 30px; padding: 0; justify-content: center; }
+  .alerts-btn-label { display: none; }
   .brand-live { display: none; }
   .brand-logo-link img { height: 20px; }
 
