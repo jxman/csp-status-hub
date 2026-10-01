@@ -9,12 +9,17 @@ export async function sendConfirmationEmail(to: string, name: string, confirmUrl
     from: FROM,
     to,
     subject: 'Confirm your Cloud Status Hub subscription',
-    html: `
-      <p>Hi ${escapeHtml(name)},</p>
-      <p>Confirm your subscription to Cloud Status Hub alerts to start receiving outage notifications for the cloud providers you selected.</p>
-      <p><a href="${confirmUrl}">Confirm subscription</a></p>
-      <p>If you didn't request this, you can ignore this email — you won't be subscribed unless you click the link above.</p>
-    `,
+    html: renderLayout({
+      accent: ACCENT.neutral,
+      eyebrow: 'Subscription',
+      heading: 'Confirm your subscription',
+      body: `
+        ${paragraph(`Hi ${escapeHtml(name)},`)}
+        ${paragraph('Confirm your subscription to Cloud Status Hub alerts to start receiving outage notifications for the cloud providers you selected.')}
+        ${button(confirmUrl, 'Confirm subscription')}
+        ${note("If you didn't request this, you can ignore this email — you won't be subscribed unless you click the button above.")}
+      `,
+    }),
   });
 }
 
@@ -23,12 +28,17 @@ export async function sendUpdateConfirmationEmail(to: string, name: string, conf
     from: FROM,
     to,
     subject: 'Confirm changes to your Cloud Status Hub subscription',
-    html: `
-      <p>Hi ${escapeHtml(name)},</p>
-      <p>Someone (hopefully you) requested a change to which providers you get alerts for. Your current subscription stays active until you confirm the change.</p>
-      <p><a href="${confirmUrl}">Confirm changes</a></p>
-      <p>If you didn't request this, you can ignore this email — no changes will be made unless you click the link above.</p>
-    `,
+    html: renderLayout({
+      accent: ACCENT.neutral,
+      eyebrow: 'Subscription',
+      heading: 'Confirm your changes',
+      body: `
+        ${paragraph(`Hi ${escapeHtml(name)},`)}
+        ${paragraph('Someone (hopefully you) requested a change to which providers you get alerts for. Your current subscription stays active until you confirm the change.')}
+        ${button(confirmUrl, 'Confirm changes')}
+        ${note("If you didn't request this, you can ignore this email — no changes will be made unless you click the button above.")}
+      `,
+    }),
   });
 }
 
@@ -37,12 +47,17 @@ export async function sendWelcomeEmail(to: string, name: string, manageUrl: stri
     from: FROM,
     to,
     subject: "You're subscribed to Cloud Status Hub alerts",
-    html: `
-      <p>Hi ${escapeHtml(name)},</p>
-      <p>You're all set — we'll email you when a provider you follow reports a new outage.</p>
-      <p><a href="${manageUrl}">Manage your subscription</a></p>
-      <p><a href="${unsubscribeUrl}">Unsubscribe</a></p>
-    `,
+    html: renderLayout({
+      accent: ACCENT.neutral,
+      eyebrow: 'Subscription',
+      heading: "You're subscribed",
+      body: `
+        ${paragraph(`Hi ${escapeHtml(name)},`)}
+        ${paragraph("You're all set — we'll email you when a provider you follow reports a new outage, and again when it's resolved.")}
+      `,
+      manageUrl,
+      unsubscribeUrl,
+    }),
   });
 }
 
@@ -80,25 +95,25 @@ function formatRegions(regions: string[]): string {
   return regions.join(', ');
 }
 
-// Renders as a single bolded line for one incident, or a bullet list for several —
-// callers always pass at least one title (falling back to the raw incident id in
-// the rare case a title couldn't be resolved). Each line is followed by the
-// affected region(s) so subscribers don't have to click through to find out scope,
-// plus a per-incident link to its AI brief on the dashboard when one is available.
-function renderIncidentTitles(incidents: EmailIncident[], providerKey: Provider, base: string): string {
-  const briefLine = (i: EmailIncident): string => {
-    const url = briefUrl(base, providerKey, i.id);
-    return url ? `<br/><a href="${escapeHtml(url)}" style="font-size:13px;">View AI analysis →</a>` : '';
-  };
-  if (incidents.length === 1) {
-    return `<p><strong>${escapeHtml(incidents[0].title)}</strong><br/><span style="color:#666;font-size:13px;">Region(s): ${escapeHtml(formatRegions(incidents[0].regions))}</span>${briefLine(incidents[0])}</p>`;
-  }
-  return `<ul>${incidents
-    .map(
-      (i) =>
-        `<li><strong>${escapeHtml(i.title)}</strong><br/><span style="color:#666;font-size:13px;">Region(s): ${escapeHtml(formatRegions(i.regions))}</span>${briefLine(i)}</li>`
-    )
-    .join('')}</ul>`;
+// One card per incident: title, affected region(s) so subscribers don't have to
+// click through to find out scope, and a per-incident link to its AI brief on the
+// dashboard when one is available. Callers always pass at least one incident
+// (falling back to the raw incident id as the title if one couldn't be resolved).
+function renderIncidentCards(incidents: EmailIncident[], providerKey: Provider, base: string): string {
+  return incidents
+    .map((i) => {
+      const url = briefUrl(base, providerKey, i.id);
+      const regionLabel = i.regions.length > 1 ? `Regions (${i.regions.length})` : 'Region';
+      return `
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 12px;border:1px solid ${COLOR.border};border-radius:6px;background:${COLOR.cardBg};">
+          <tr><td style="padding:14px 16px;">
+            <p style="margin:0 0 8px;font-family:${FONT};font-size:${SIZE.body};line-height:1.4;font-weight:600;color:${COLOR.text};">${escapeHtml(i.title)}</p>
+            <p style="margin:0;font-family:${FONT};font-size:${SIZE.small};line-height:1.5;color:${COLOR.muted};"><span style="font-weight:600;color:${COLOR.text};">${regionLabel}:</span> ${escapeHtml(formatRegions(i.regions))}</p>
+            ${url ? `<p style="margin:10px 0 0;font-family:${FONT};font-size:${SIZE.small};line-height:1.5;"><a href="${escapeHtml(url)}" style="color:${COLOR.link};font-weight:600;text-decoration:none;">View AI analysis &rarr;</a></p>` : ''}
+          </td></tr>
+        </table>`;
+    })
+    .join('');
 }
 
 function incidentSubjectFragment(incidents: EmailIncident[]): string {
@@ -139,17 +154,21 @@ export async function sendOutageNotificationEmail(
     from: FROM,
     to,
     subject: `${newIncidentIcon} ${providerDisplayName}: ${incidentSubjectFragment(incidents)}`,
-    html: `
-      <p>Hi ${escapeHtml(name)},</p>
-      <p><strong>${escapeHtml(providerDisplayName)}</strong> just started reporting <strong>${escapeHtml(statusLabel)}</strong>:</p>
-      <p style="margin:0 0 16px;font-size:12px;color:#888;">Sent ${formatEmailTimestamp()}</p>
-      ${renderIncidentTitles(incidents, providerKey, dashboardUrl)}
-      <p><a href="${dashboardUrl}">View on Cloud Status Hub</a> — from there you can click through to the official status page.</p>
-      <p style="margin-top:24px;font-size:12px;color:#666;">
-        <a href="${manageUrl}">Manage your subscription</a> ·
-        <a href="${unsubscribeUrl}">Unsubscribe</a>
-      </p>
-    `,
+    html: renderLayout({
+      accent: ACCENT.outage,
+      eyebrow: incidents.length === 1 ? 'New incident' : `${incidents.length} new incidents`,
+      heading: `${escapeHtml(providerDisplayName)} is reporting ${escapeHtml(statusLabel)}`,
+      sentAt: formatEmailTimestamp(),
+      body: `
+        ${paragraph(`Hi ${escapeHtml(name)},`)}
+        ${paragraph(`<strong>${escapeHtml(providerDisplayName)}</strong> just started reporting <strong>${escapeHtml(statusLabel)}</strong>:`)}
+        ${renderIncidentCards(incidents, providerKey, dashboardUrl)}
+        ${button(dashboardUrl, 'View on Cloud Status Hub')}
+        ${note('From the dashboard you can click through to the official provider status page.')}
+      `,
+      manageUrl,
+      unsubscribeUrl,
+    }),
   });
 
   if (error) {
@@ -188,17 +207,23 @@ export async function sendResolutionNotificationEmail(
     subject: stillOngoing
       ? `${resolvedIcon} ${providerDisplayName}: resolved — ${incidentSubjectFragment(incidents)}`
       : `${resolvedIcon} ${providerDisplayName} is back to normal — ${incidentSubjectFragment(incidents)}`,
-    html: `
-      <p>Hi ${escapeHtml(name)},</p>
-      <p>${intro}</p>
-      <p style="margin:0 0 16px;font-size:12px;color:#888;">Sent ${formatEmailTimestamp()}</p>
-      ${renderIncidentTitles(incidents, providerKey, dashboardUrl)}
-      <p><a href="${dashboardUrl}">View on Cloud Status Hub</a> — from there you can click through to the official status page.</p>
-      <p style="margin-top:24px;font-size:12px;color:#666;">
-        <a href="${manageUrl}">Manage your subscription</a> ·
-        <a href="${unsubscribeUrl}">Unsubscribe</a>
-      </p>
-    `,
+    html: renderLayout({
+      accent: ACCENT.resolved,
+      eyebrow: incidents.length === 1 ? 'Resolved' : `${incidents.length} incidents resolved`,
+      heading: stillOngoing
+        ? `${escapeHtml(providerDisplayName)}: ${incidents.length === 1 ? 'incident' : 'incidents'} resolved`
+        : `${escapeHtml(providerDisplayName)} is back to normal`,
+      sentAt: formatEmailTimestamp(),
+      body: `
+        ${paragraph(`Hi ${escapeHtml(name)},`)}
+        ${paragraph(intro)}
+        ${renderIncidentCards(incidents, providerKey, dashboardUrl)}
+        ${button(dashboardUrl, 'View on Cloud Status Hub')}
+        ${note('From the dashboard you can click through to the official provider status page.')}
+      `,
+      manageUrl,
+      unsubscribeUrl,
+    }),
   });
 
   if (error) {
@@ -206,6 +231,82 @@ export async function sendResolutionNotificationEmail(
     return false;
   }
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Shared layout. Email clients ignore <style> blocks unevenly and fall back to
+// their own default font size for any element that doesn't set one, so every
+// text element sets font-family/size/line-height inline from this one scale:
+// heading 20px, body 15px, small (regions, links, notes) 13px, footer 12px.
+// Table-based layout because Outlook doesn't support max-width on <div>.
+// ---------------------------------------------------------------------------
+
+const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+const SIZE = { heading: '20px', body: '15px', small: '13px', footer: '12px' } as const;
+const COLOR = {
+  text: '#1f2937',
+  muted: '#4b5563',
+  faint: '#6b7280',
+  border: '#e5e7eb',
+  cardBg: '#f9fafb',
+  pageBg: '#f3f4f6',
+  link: '#2563eb',
+} as const;
+const ACCENT = { outage: '#dc2626', resolved: '#16a34a', neutral: '#2563eb' } as const;
+
+function paragraph(html: string): string {
+  return `<p style="margin:0 0 16px;font-family:${FONT};font-size:${SIZE.body};line-height:1.6;color:${COLOR.text};">${html}</p>`;
+}
+
+function note(html: string): string {
+  return `<p style="margin:0;font-family:${FONT};font-size:${SIZE.small};line-height:1.5;color:${COLOR.faint};">${html}</p>`;
+}
+
+function button(href: string, label: string): string {
+  return `
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 16px;">
+      <tr><td style="border-radius:6px;background:${COLOR.link};">
+        <a href="${escapeHtml(href)}" style="display:inline-block;padding:11px 20px;font-family:${FONT};font-size:${SIZE.body};font-weight:600;line-height:1;color:#ffffff;text-decoration:none;border-radius:6px;">${escapeHtml(label)}</a>
+      </td></tr>
+    </table>`;
+}
+
+interface LayoutOptions {
+  accent: string;
+  eyebrow: string;
+  /** Already HTML-escaped. */
+  heading: string;
+  body: string;
+  sentAt?: string;
+  manageUrl?: string;
+  unsubscribeUrl?: string;
+}
+
+function renderLayout({ accent, eyebrow, heading, body, sentAt, manageUrl, unsubscribeUrl }: LayoutOptions): string {
+  const footerLinks =
+    manageUrl && unsubscribeUrl
+      ? `<a href="${escapeHtml(manageUrl)}" style="color:${COLOR.faint};text-decoration:underline;">Manage your subscription</a> &middot; <a href="${escapeHtml(unsubscribeUrl)}" style="color:${COLOR.faint};text-decoration:underline;">Unsubscribe</a>`
+      : '';
+  return `<!doctype html>
+<html><body style="margin:0;padding:0;background:${COLOR.pageBg};">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${COLOR.pageBg};">
+  <tr><td align="center" style="padding:24px 12px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border:1px solid ${COLOR.border};border-top:4px solid ${accent};border-radius:8px;">
+      <tr><td style="padding:24px 28px 8px;">
+        <p style="margin:0 0 6px;font-family:${FONT};font-size:${SIZE.footer};line-height:1.4;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${accent};">${escapeHtml(eyebrow)}</p>
+        <p style="margin:0 0 ${sentAt ? '4px' : '20px'};font-family:${FONT};font-size:${SIZE.heading};line-height:1.3;font-weight:700;color:${COLOR.text};">${heading}</p>
+        ${sentAt ? `<p style="margin:0 0 20px;font-family:${FONT};font-size:${SIZE.small};line-height:1.5;color:${COLOR.faint};">Sent ${escapeHtml(sentAt)}</p>` : ''}
+        ${body}
+      </td></tr>
+      <tr><td style="padding:16px 28px 24px;">
+        <p style="margin:0;padding-top:16px;border-top:1px solid ${COLOR.border};font-family:${FONT};font-size:${SIZE.footer};line-height:1.6;color:${COLOR.faint};">
+          Cloud Status Hub${footerLinks ? `<br/>${footerLinks}` : ''}
+        </p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</body></html>`;
 }
 
 function escapeHtml(s: string): string {
