@@ -30,10 +30,11 @@
     "fast-xml-parser": "^5.5.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "resend": "^6.16.0",
-    "vercel": "^59.10.0"
+    "resend": "^6.16.0"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.3",
+    "@commitlint/config-conventional": "^21.2.3",
     "@eslint/js": "^9.13.0",
     "@types/node": "^22.0.0",
     "@types/react": "^18.3.12",
