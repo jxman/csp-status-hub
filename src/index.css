@@ -26,7 +26,7 @@
   --blue:       oklch(0.62 0.16 250);
   --blue-text:  oklch(0.47 0.14 250);
   --blue-soft:  oklch(0.95 0.03 250);
-  --amber-text: oklch(0.50 0.12 75);
+  --amber-text: oklch(0.42 0.12 75);
   /* Orange sits between red and amber on the AI brief urgency scale */
   --orange:      oklch(0.66 0.17 50);
   --orange-text: oklch(0.48 0.15 50);
@@ -214,7 +214,7 @@ body {
 .pill .dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
 .pill.ok   { background: var(--green-soft); color: var(--green-text); }
 .pill.ok   .dot { background: var(--green); }
-.pill.warn { background: var(--amber-soft); color: oklch(0.42 0.12 75); }
+.pill.warn { background: var(--amber-soft); color: var(--amber-text); }
 .pill.warn .dot { background: var(--amber); }
 .pill.bad  { background: var(--red-soft);   color: var(--red-text); }
 .pill.bad  .dot { background: var(--red); }
@@ -228,7 +228,7 @@ body {
   padding: 2px 6px; border-radius: 4px;
 }
 .sev.high { background: var(--red-soft); color: var(--red-text); }
-.sev.med  { background: var(--amber-soft); color: oklch(0.42 0.12 75); }
+.sev.med  { background: var(--amber-soft); color: var(--amber-text); }
 
 /* ===== Summary strip ===== */
 .footer-full { display: inline; }
@@ -318,6 +318,18 @@ body {
 .region-chevron { width: 14px; height: 14px; color: var(--ink-4); flex: 0 0 auto; transition: transform 0.15s; }
 .region-chevron.open { transform: rotate(180deg); }
 
+/* Long region lists (widespread incidents): tighter rows + "Show more" toggle */
+.region-list.dense .region-block { padding: 2px 16px; }
+.region-list.dense .region-head { padding: 5px 0; }
+.region-more {
+  display: block; width: 100%; margin: 0;
+  padding: 9px 16px; border: none; border-top: 1px solid var(--border);
+  background: none; cursor: pointer; font-family: inherit;
+  font-size: 12px; font-weight: 500; color: var(--blue); text-align: left;
+}
+.region-more:hover { background: var(--chip-bg); }
+.region-more:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+
 /* Service list */
 .svc-list {
   display: grid; grid-template-columns: 1fr auto;
@@ -335,7 +347,7 @@ body {
 .svc-list .status.ok  .d { background: var(--green); }
 .svc-list .status.bad { color: var(--red-text); font-weight: 500; }
 .svc-list .status.bad .d { background: var(--red); }
-.svc-list .status.warn { color: oklch(0.42 0.12 75); }
+.svc-list .status.warn { color: var(--amber-text); }
 .svc-list .status.warn .d { background: var(--amber); }
 
 /* Healthy empty state */

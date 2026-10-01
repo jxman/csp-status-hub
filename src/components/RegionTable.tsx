@@ -225,10 +225,28 @@ function RegionRow({ regionName, overallStatus, services, provider }: RegionRowP
   );
 }
 
+// Beyond this many regions the card collapses to a preview with a "Show more"
+// toggle — a widespread incident (e.g. 16 Azure regions) otherwise stretches the
+// card far past its neighbours. Overflow of exactly one region isn't worth a toggle.
+const REGION_PREVIEW_LIMIT = 5;
+
+const STATUS_RANK: Record<StatusLevel, number> = { outage: 0, degraded: 1, unknown: 2, operational: 3 };
+
 export function RegionTable({ provider }: Props) {
+  const [showAll, setShowAll] = useState(false);
+
+  // Worst status first so the preview always shows the most severe regions
+  const regions = [...provider.regions].sort((a, b) =>
+    STATUS_RANK[a.overallStatus] - STATUS_RANK[b.overallStatus] ||
+    a.regionName.localeCompare(b.regionName));
+
+  const collapsible = regions.length > REGION_PREVIEW_LIMIT + 1;
+  const visible = collapsible && !showAll ? regions.slice(0, REGION_PREVIEW_LIMIT) : regions;
+  const hiddenCount = regions.length - REGION_PREVIEW_LIMIT;
+
   return (
-    <>
-      {provider.regions.map((region) => (
+    <div className={collapsible ? 'region-list dense' : 'region-list'}>
+      {visible.map((region) => (
         <RegionRow
           key={region.regionId}
           regionId={region.regionId}
@@ -239,6 +257,12 @@ export function RegionTable({ provider }: Props) {
           provider={provider.provider}
         />
       ))}
-    </>
+      {collapsible && (
+        <button type="button" className="region-more" aria-expanded={showAll}
+          onClick={() => setShowAll((v) => !v)}>
+          {showAll ? 'Show fewer regions' : `Show ${hiddenCount} more region${hiddenCount !== 1 ? 's' : ''}`}
+        </button>
+      )}
+    </div>
   );
 }
