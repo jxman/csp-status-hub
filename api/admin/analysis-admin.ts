@@ -12,6 +12,7 @@ import { requireAdmin } from '../_lib/auth.js';
 import { sql } from '../_lib/db.js';
 import { redis, snapshotKey, type ProviderSnapshot } from '../_lib/redis.js';
 import { runIncidentAnalysis } from '../_lib/analysisPipeline.js';
+import { HISTORY_RETENTION_DAYS } from '../_lib/incidentHistory.js';
 import {
   ALL_PROVIDERS,
   DEBOUNCE_SETTING_KEY,
@@ -26,11 +27,10 @@ import type { Incident, Provider } from '../../src/types/status.js';
 
 // "Active" here means "currently on the live dashboard" — driven by the same
 // per-provider Redis snapshot check-status.ts writes every 5 min (activeIncidentIds),
-// not anything stored on the incident_analysis row itself. Used both to show an
-// Active/Non-active badge in the Run History table and to scope the bulk cleanup
-// action below. Fails closed (confirmed: false) rather than treating a missing or
-// stale snapshot as "nothing is active" — a Redis hiccup must never make the bulk
-// delete below think every row is eligible for cleanup.
+// not anything stored on the incident_analysis row itself. Fails closed
+// (confirmed: false) rather than treating a missing or stale snapshot as
+// "nothing is active" — a Redis hiccup must never make the bulk cleanup below
+// think every row is eligible for deletion.
 const SNAPSHOT_STALE_MS = 24 * 60 * 60 * 1000;
 
 async function getActiveIncidentKeys(): Promise<{ keys: string[]; confirmed: boolean; reason?: string }> {
@@ -48,13 +48,43 @@ async function getActiveIncidentKeys(): Promise<{ keys: string[]; confirmed: boo
   return { keys, confirmed: true };
 }
 
+// An incident's briefs are still reachable from the dashboard ("linked") when
+// it is active (above), or it is in incident_history within the retention
+// window — the Past incidents section links to its latest brief, and so
+// does Recently resolved — or it had a run in the last 24h. That last rule is
+// a safety net for a Recently resolved incident whose history row was never
+// written (the write in check-status.ts is best-effort). The bulk cleanup
+// deletes only runs for incidents that match none of these.
+//
+// Returns, per incident key, when its past-incident link expires (resolved_at
+// + retention), for the admin table's "Past · until <date>" badge.
+async function getPastIncidentLinks(): Promise<{ pastUntil: Record<string, string>; recentKeys: string[] }> {
+  const [history, recent] = await Promise.all([
+    sql`
+      SELECT provider || ':' || incident_id AS key,
+             resolved_at + make_interval(days => ${HISTORY_RETENTION_DAYS}) AS linked_until
+      FROM incident_history
+      WHERE resolved_at > now() - make_interval(days => ${HISTORY_RETENTION_DAYS})
+    `,
+    sql`
+      SELECT DISTINCT provider || ':' || incident_id AS key
+      FROM incident_analysis
+      WHERE created_at > now() - INTERVAL '24 hours'
+    `,
+  ]);
+  return {
+    pastUntil: Object.fromEntries(history.map((r) => [r.key as string, new Date(r.linked_until as string).toISOString()])),
+    recentKeys: recent.map((r) => r.key as string),
+  };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const admin = requireAdmin(req, res);
   if (!admin) return;
 
   if (req.method === 'GET') {
     if (req.query.resource === 'runs') {
-      const [runs, active] = await Promise.all([
+      const [runs, active, links] = await Promise.all([
         sql`
           SELECT id, provider, incident_id, incident_snapshot->>'title' AS incident_title,
                  incident_snapshot->'affectedRegions' AS affected_regions,
@@ -65,10 +95,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           LIMIT 200
         `,
         getActiveIncidentKeys(),
+        getPastIncidentLinks(),
       ]);
       res.status(200).json({
         runs,
         activeKeys: active.keys,
+        pastUntil: links.pastUntil,
+        recentKeys: links.recentKeys,
+        retentionDays: HISTORY_RETENTION_DAYS,
         activeConfirmed: active.confirmed,
         activeReason: active.reason ?? null,
       });
@@ -150,6 +184,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
+    // Action name kept from before the Past incidents change for
+    // compatibility with an already-open admin tab; it now deletes only
+    // *unlinked* runs (see getPastIncidentLinks above).
     if (action === 'cleanup_inactive') {
       const active = await getActiveIncidentKeys();
       if (!active.confirmed) {
@@ -159,10 +196,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Empty active.keys is a legitimate "nothing is active anywhere" state (already
       // fail-closed above for the "we don't actually know" case) — ANY() over an empty
       // array correctly matches nothing, so NOT(...) correctly matches every row.
+      // The two NOT EXISTS clauses keep incidents still linked from Past
+      // incidents / Recently resolved; the subqueries see the table as it was
+      // before this DELETE, so a deleted row can't unprotect its siblings.
       const rows = await sql`
-        DELETE FROM incident_analysis
-        WHERE NOT (provider || ':' || incident_id = ANY(${active.keys}::text[]))
-        RETURNING pdf_technical_url, pdf_executive_url
+        DELETE FROM incident_analysis a
+        WHERE NOT (a.provider || ':' || a.incident_id = ANY(${active.keys}::text[]))
+          AND NOT EXISTS (
+            SELECT 1 FROM incident_history h
+            WHERE h.provider = a.provider AND h.incident_id = a.incident_id
+              AND h.resolved_at > now() - make_interval(days => ${HISTORY_RETENTION_DAYS})
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM incident_analysis r
+            WHERE r.provider = a.provider AND r.incident_id = a.incident_id
+              AND r.created_at > now() - INTERVAL '24 hours'
+          )
+        RETURNING a.pdf_technical_url, a.pdf_executive_url
       `;
       const blobUrls = rows.flatMap((r) => [r.pdf_technical_url, r.pdf_executive_url].filter((u): u is string => !!u));
       let deletedBlobs = 0;

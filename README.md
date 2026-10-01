@@ -515,6 +515,24 @@ check-status.ts (EventBridge, every 5 min)
   snapshot is missing or more than 24h stale, it refuses rather than
   risk treating "we don't know what's active" as "nothing is active" —
   which would otherwise turn a Redis hiccup into a total wipe.
+- **Linked/unlinked cleanup (2026-10-01):** once the Past incidents section
+  shipped, "non-active" no longer meant "unreachable" — a resolved
+  incident's latest brief and PDFs stay linked from the dashboard for 90
+  days. The Run History badge is now a **Link** column: *Active* (live
+  incident), *Past · until <date>* (in `incident_history`, resolved within
+  `HISTORY_RETENTION_DAYS`; the date is when that link expires), *Recent*
+  (a run in the last 24h — a safety net for a Recently resolved incident
+  whose best-effort history row was never written), or *Unlinked*. The
+  filter and the bulk button ("Clean up unlinked") follow suit, and
+  `cleanup_inactive` deletes only runs whose incident matches none of the
+  three — it still fails closed on a missing/stale Redis snapshot. Runs
+  under an intermediate id from an Azure rename show as Recent, then
+  Unlinked; the incident's history row and briefs live under its final
+  id. A per-row Delete on a linked run still works but warns that the
+  dashboard's AI Insight panel may stop working if it's the latest brief.
+  Nothing deletes runs automatically: an incident whose history row ages
+  out at 90 days just becomes Unlinked, and its runs go on the next manual
+  cleanup.
 
 #### Structured briefs (2026-09-29)
 
