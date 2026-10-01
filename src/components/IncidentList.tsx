@@ -1,5 +1,6 @@
 import type { Provider, ProviderStatus } from '../types/status';
 import { IncidentCard } from './IncidentCard';
+import { PastIncidents } from './PastIncidents';
 
 interface Props {
   providers: ProviderStatus[];
@@ -49,6 +50,8 @@ export function IncidentList({ providers, deepLinkTarget }: Props) {
           ))}
         </>
       )}
+
+      <PastIncidents excludeKeys={new Set(resolved.map(({ provider, incident }) => `${provider}:${incident.id}`))} />
     </div>
   );
 }

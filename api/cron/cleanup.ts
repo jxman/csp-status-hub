@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql } from '../_lib/db.js';
+import { HISTORY_RETENTION_DAYS } from '../_lib/incidentHistory.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (process.env.CRON_SECRET) {
@@ -24,9 +25,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     RETURNING id
   `;
 
+  // Past-incidents retention window (see incidentHistory.ts).
+  const staleHistory = await sql`
+    DELETE FROM incident_history
+    WHERE resolved_at < now() - make_interval(days => ${HISTORY_RETENTION_DAYS})
+    RETURNING provider
+  `;
+
   res.status(200).json({
     checkedAt: new Date().toISOString(),
     deletedPending: stalePending.length,
     deletedUnsubscribed: staleUnsubscribed.length,
+    deletedHistory: staleHistory.length,
   });
 }

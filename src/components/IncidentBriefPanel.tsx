@@ -26,6 +26,8 @@ interface Props {
   // Used for the structured brief's severity/status row.
   incident?: Incident;
   autoExpand?: boolean;
+  // Brief row id, when already known (past incidents) — skips the pointer lookup.
+  briefId?: string;
 }
 
 const ChevronIcon = ({ open }: { open: boolean }) => (
@@ -52,10 +54,10 @@ const SparkleIcon = () => (
   </svg>
 );
 
-export function IncidentBriefPanel({ provider, incidentId, incident, autoExpand }: Props) {
+export function IncidentBriefPanel({ provider, incidentId, incident, autoExpand, briefId }: Props) {
   const [expanded, setExpanded] = useState(autoExpand ?? false);
   const [activeTab, setActiveTab] = useState<'technical' | 'executive'>('technical');
-  const { state, brief, error, load, retry } = useIncidentBrief(provider, incidentId);
+  const { state, brief, error, load, retry } = useIncidentBrief(provider, incidentId, briefId);
 
   const toggle = () => {
     setExpanded((e) => {

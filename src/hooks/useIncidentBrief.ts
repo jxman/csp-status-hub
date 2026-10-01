@@ -12,7 +12,9 @@ interface UseIncidentBrief {
   retry: () => void;
 }
 
-export function useIncidentBrief(provider: Provider, incidentId: string): UseIncidentBrief {
+// `knownBriefId` skips the pointer lookup when the caller already has the
+// brief's row id (past incidents get it from /api/incidents/history).
+export function useIncidentBrief(provider: Provider, incidentId: string, knownBriefId?: string): UseIncidentBrief {
   const [state, setState] = useState<BriefState>('idle');
   const [brief, setBrief] = useState<LatestBrief | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +24,7 @@ export function useIncidentBrief(provider: Provider, incidentId: string): UseInc
   const fetchNow = useCallback(() => {
     setState('loading');
     (async () => {
+      if (knownBriefId) return fetchBriefContent(knownBriefId);
       const pointer = await fetchBriefPointer(provider, incidentId);
       if (!pointer) return null;
       // The pointer fetch above is the only part that has to hit Postgres on
@@ -38,7 +41,7 @@ export function useIncidentBrief(provider: Provider, incidentId: string): UseInc
         setError(err instanceof Error ? err.message : String(err));
         setState('error');
       });
-  }, [provider, incidentId]);
+  }, [provider, incidentId, knownBriefId]);
 
   const load = useCallback(() => {
     if (stateRef.current === 'loading' || stateRef.current === 'loaded') return;

@@ -618,6 +618,38 @@ node scripts/db-migrate.mjs
 ```
 Redis needs no migration step — it's just a key-value cache, provisioned once via the Vercel Marketplace integration.
 
+### Past incidents (90-day history)
+
+The dashboard keeps **Recently resolved** (last 24h, straight from the
+provider feeds) and adds a collapsed **Past incidents · last 90 days**
+section below it. Provider feeds don't keep history — GCP's `incidents.json`
+holds only a handful of incidents, AWS's `all.rss` a few dozen updates — so
+the app records its own:
+
+- **Write:** `check-status.ts` inserts one `incident_history` row per
+  resolved incident (`api/_lib/incidentHistory.ts`, migration 008). The row
+  merges the last active snapshot (real start time and severity) with the
+  provider's own resolved entry when there is one (real end time and final
+  text). It's an upsert, it skips renamed incidents, and it only runs on a
+  tick where something resolved, so Neon isn't woken every 5 minutes.
+- **Read:** `GET /api/incidents/history?cursor=` returns incidents resolved
+  24h–90d ago, 50 per page, each with its latest complete AI brief id. It is
+  only called when someone expands the section, and it's edge-cached for 1h
+  (`s-maxage=3600, stale-while-revalidate=86400`), so most views never touch
+  Postgres. Because each item carries its brief id, its AI Insight panel
+  fetches the immutable brief content directly instead of making a pointer
+  request per card. Incidents without a brief show no AI panel.
+- **Retention:** `cleanup.ts` (daily) deletes rows older than
+  `HISTORY_RETENTION_DAYS` (90). `incident_analysis` is not pruned, so the
+  linked briefs outlive their history rows.
+- **Backfill:** migration 008 seeds the table once from existing `resolved`
+  rows in `incident_analysis`, the only record of incidents before launch.
+- **Cost:** under 10 MB at 90 days (Neon Free: 0.5 GB). Writes ride along
+  with the resolved AI brief run that already wakes Neon, so the expected
+  compute is a few CU-hr/month at most.
+- **Known gap:** an incident that opens and resolves between two 5-minute
+  ticks is never seen as active, so it isn't recorded.
+
 ### Known constraints
 
 - **EventBridge's target endpoint is a literal value, not driven by
@@ -671,11 +703,14 @@ csp-status-hub/
 │   │   └── test-email.ts          POST — send an ad hoc template preview to a confirmed subscriber
 │   ├── cron/
 │   │   ├── check-status.ts        Status diffing + notification dispatch (EventBridge + Vercel cron)
-│   │   └── cleanup.ts             Daily retention purge (unconfirmed 7d, unsubscribed 90d)
+│   │   └── cleanup.ts             Daily retention purge (unconfirmed 7d, unsubscribed 90d, incident history 90d)
+│   ├── incidents/
+│   │   └── history.ts             GET  — past incidents (24h–90d) with AI brief ids, edge-cached 1h
 │   └── _lib/
 │       ├── types.ts               Re-exports shared types for API functions
 │       ├── db.ts                  Neon client
 │       ├── redis.ts               Upstash Redis client + status-snapshot helpers
+│       ├── incidentHistory.ts     Resolved-incident history writes + 90-day retention constant
 │       ├── email.ts               Resend templates (confirm, update-confirm, welcome, outage, resolution)
 │       ├── azureFetcher.ts        Azure fetch/parse logic shared by api/status/azure.ts and the cron job
 │       ├── auth.ts                requireAdmin() session gate

@@ -1,5 +1,5 @@
 import type { Incident, Provider } from '../types/status';
-import { formatRelative } from '../utils/formatters';
+import { formatDateTime, formatRelative } from '../utils/formatters';
 import { trackEvent } from '../utils/analytics';
 import { IncidentBriefPanel } from './IncidentBriefPanel';
 
@@ -7,13 +7,18 @@ interface Props {
   incident: Incident;
   provider: Provider;
   autoExpand?: boolean;
+  // Past incidents only: undefined = look the brief up as usual; a string =
+  // that brief's row id; null = no brief was generated, so no AI panel.
+  briefId?: string | null;
+  // Past incidents show an absolute resolution date instead of "Nd ago".
+  historical?: boolean;
 }
 
 const providerShort: Record<Provider, string> = {
   aws: 'AWS', azure: 'Azure', gcp: 'GCP', oci: 'OCI',
 };
 
-export function IncidentCard({ incident, provider, autoExpand }: Props) {
+export function IncidentCard({ incident, provider, autoExpand, briefId, historical }: Props) {
   const isResolved = incident.status === 'resolved';
   const sevClass = incident.severity === 'high' ? 'high' : 'med';
   const sevLabel = incident.severity === 'high' ? 'High' : incident.severity === 'medium' ? 'Med' : 'Low';
@@ -46,7 +51,7 @@ export function IncidentCard({ incident, provider, autoExpand }: Props) {
         )}
         <span className="inc-time">
           {isResolved && incident.endTime
-            ? `Resolved ${formatRelative(incident.endTime)}`
+            ? `Resolved ${historical ? formatDateTime(incident.endTime) : formatRelative(incident.endTime)}`
             : `Updated ${formatRelative(incident.updatedAt)}`}
         </span>
       </div>
@@ -73,7 +78,15 @@ export function IncidentCard({ incident, provider, autoExpand }: Props) {
         )}
       </div>
 
-      <IncidentBriefPanel provider={provider} incidentId={incident.id} incident={incident} autoExpand={autoExpand} />
+      {briefId !== null && (
+        <IncidentBriefPanel
+          provider={provider}
+          incidentId={incident.id}
+          incident={incident}
+          autoExpand={autoExpand}
+          briefId={briefId}
+        />
+      )}
     </div>
   );
 }

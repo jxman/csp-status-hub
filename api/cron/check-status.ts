@@ -7,6 +7,7 @@ import { sendOutageNotificationEmail, sendResolutionNotificationEmail } from '..
 import { getDisabledProviders } from '../_lib/analysisSettings.js';
 import { matchRenamedIncidents, type IncidentRename } from '../_lib/incidentRenames.js';
 import { recordResolvedIncidents } from '../_lib/resolvedIncidents.js';
+import { buildResolvedIncident, recordIncidentHistory } from '../_lib/incidentHistory.js';
 import { fetchAws } from '../../src/fetchers/awsFetcher.js';
 import { fetchGcp } from '../../src/fetchers/gcpFetcher.js';
 import { fetchOci } from '../../src/fetchers/ociFetcher.js';
@@ -234,6 +235,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .filter((i): i is Incident => Boolean(i));
         await recordResolvedIncidents('azure', resolvedSnapshots).catch((err) => {
           console.error('[check-status] failed to record resolved azure incidents', err);
+        });
+      }
+
+      // Persist each resolved incident to incident_history for the
+      // dashboard's "Past incidents" section (see incidentHistory.ts). Only
+      // runs on a tick where something resolved, so Neon isn't woken every
+      // 5 minutes. Best-effort, same as above. Renamed ids are excluded —
+      // the incident is still active under its new id.
+      if (!isFirstCheck && resolvedIncidentIds.length > 0) {
+        const detectedAt = new Date().toISOString();
+        const resolvedCopies = new Map(
+          status.activeIncidents.filter((i) => i.status === 'resolved').map((i) => [i.id, i])
+        );
+        const historyRows = resolvedIncidentIds
+          .map((id) => buildResolvedIncident(previousIncidentSnapshots[id], resolvedCopies.get(id), detectedAt))
+          .filter((i): i is Incident => i !== null);
+        await recordIncidentHistory(provider as Provider, historyRows).catch((err) => {
+          console.error(`[check-status] failed to record incident history for ${provider}`, err);
         });
       }
 

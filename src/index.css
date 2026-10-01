@@ -399,6 +399,19 @@ body {
   background: var(--card);
 }
 
+/* Past incidents (collapsed by default) */
+.past-incidents { margin-top: 24px; }
+.past-toggle {
+  display: flex; align-items: center; gap: 8px;
+  background: none; border: none; padding: 4px 0; cursor: pointer;
+  font-family: 'Geist Mono', monospace; font-size: 11px;
+  color: var(--ink-3); letter-spacing: 0.12em; text-transform: uppercase; font-weight: 500;
+}
+.past-toggle:hover { color: var(--ink); }
+.past-chevron { display: inline-block; transition: transform 0.15s; }
+.past-chevron.open { transform: rotate(90deg); }
+.past-list { margin-top: 12px; }
+
 /* Incident card */
 .incident {
   background: var(--card);
