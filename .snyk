@@ -32,3 +32,9 @@ ignore:
         expires: 2026-12-31T00:00:00.000Z
         created: 2026-10-01T00:00:00.000Z
 patch: {}
+# Local build output from `vercel build` bundles a frozen copy of each
+# function's node_modules; it's gitignored and never deployed, so scanning
+# it only reports stale versions.
+exclude:
+  global:
+    - .vercel/**
