@@ -87,16 +87,18 @@ const styles = StyleSheet.create({
   poweredBy: { fontSize: 8, color: INK_SOFT, marginTop: 5 },
   poweredByBrand: { color: BRAND_BLUE, fontFamily: 'Helvetica-Bold' },
   // ---- structured briefs ----
+  // Brand blue + matching underline so section breaks are easy to scan;
+  // the earlier grey 8.5pt headings were too faint to follow.
   sectionHeading: {
-    fontSize: 8.5,
+    fontSize: 10.5,
     fontFamily: 'Helvetica-Bold',
     letterSpacing: 0.8,
-    color: INK_SOFT,
-    borderBottomWidth: 1,
-    borderBottomColor: '#d9dcd7',
-    paddingBottom: 3,
-    marginTop: 12,
-    marginBottom: 7,
+    color: BRAND_BLUE,
+    borderBottomWidth: 1.5,
+    borderBottomColor: BRAND_BLUE,
+    paddingBottom: 4,
+    marginTop: 16,
+    marginBottom: 8,
   },
   lead: { fontSize: 10.5, lineHeight: 1.5 },
   urgencyRow: {
