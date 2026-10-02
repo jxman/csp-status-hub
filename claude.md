@@ -33,6 +33,31 @@
 > **Structured briefs** section. Production model is now **Claude Sonnet 4.6**
 > (`us.anthropic.claude-sonnet-4-6`); Sonnet 5/5.5 access is still pending
 > with AWS support (see the Marketplace IAM row in §9).
+>
+> **Scope update (2026-10-01):** five changes shipped together; see the
+> README sections named below and the 2026-10-01 rows in §9.
+> - **Past incidents (90-day history):** resolved incidents are saved to
+>   Postgres `incident_history` (migration 008) and shown in a collapsed
+>   "Past incidents" section with links to their AI briefs. Purged after 90
+>   days by `cleanup.ts`. README: **Past incidents (90-day history)**.
+> - **Admin AI Run History cleanup is per run:** `api/_lib/runRetention.ts`
+>   labels every run (Active / Past / Recent / Superseded / Failed · kept /
+>   Failed · resolved / Unlinked). "Clean up unused (N)" keeps only each
+>   linked incident's newest complete brief and recent unresolved
+>   failures. README: **Per-run retention cleanup**.
+> - **Vercel BotID removed:** sign-ups now rely on a honeypot field plus
+>   per-email and daily limits (`api/_lib/signupLimits.ts`). README:
+>   **Sign-up & confirmation**.
+> - **More sign-up entry points:** a labelled "Get alerts" header button, a
+>   link in the all-clear message, "Alert me about <provider>" on active
+>   incident cards, and a shareable `/?subscribe=1[&provider=]` link. Each
+>   is tracked with GA4 `subscribe_open` / `subscribe_success` events
+>   carrying a `source`. README: **Observability**.
+> - **Security pass (Snyk):** Vite 6 → 7, ESLint 9 → 10, npm `overrides`
+>   for `@vercel/node`'s nested dependencies, and a `.snyk` policy. Admin
+>   PDF links now go through an id-based redirect
+>   (`/api/admin/analysis-admin?resource=pdf`). Workspace-wide dependency
+>   and code scans report 0 open issues.
 
 ---
 
@@ -691,6 +716,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 | **An edited Azure incident can send a false "resolved" + "new incident" email pair** (found 2026-09-29 — subscribers got a "new" email at 13:42 UTC, then a "resolved" and a second "new" for the same Sweden Central incident at 14:57) | Azure's feed has no stable incident id, so `azureFetcher.ts` fingerprints each entry's `<category>` tags (or title). Microsoft retitled the live incident and changed its category from the original to "Cognitive Services" mid-incident, so the derived id changed; `check-status.ts` read the vanished id as resolved and the new one as a new incident | `check-status.ts` now runs `matchRenamedIncidents()` (`api/_lib/incidentRenames.ts`): a vanished id and a new id from the same provider in the same poll with the same `startTime` (the provider's impact-start time, e.g. Azure's `pubDate`) are treated as one renamed incident — no emails, a `rename:` log line with both titles, and a `content_changed` AI brief re-run under the new id. Ambiguous matches (two incidents sharing a start time on either side) fall through to normal new/resolved handling. Verified by replaying the 13:42 → 14:57 sequence through the real handler with mocked Redis/DB/email/fetchers |
 | **Resolved incidents disappeared after 24h; provider feeds keep no history** (2026-10-01 — added a 90-day "Past incidents" section) | Each fetcher's "Recently resolved" list is a 24h window over the provider's own feed, and the feeds themselves retain very little (GCP `incidents.json` held 6 incidents total) | `check-status.ts` upserts each resolved incident into Postgres `incident_history` (migration 008, `api/_lib/incidentHistory.ts`) only on ticks where something resolved — never per tick, which is what previously blew Neon's CU-hr cap. `GET /api/incidents/history` (1h edge cache) serves 24h–90d, each item with its latest AI brief id; `cleanup.ts` purges past 90 days. Incidents that open and resolve within one 5-min tick are not captured. See `README.md`'s **Past incidents** section |
 | **Vercel BotID blocked real sign-ups from Zscaler-managed corporate laptops** (found 2026-10-01 — user's work computer got a 403 "Request blocked" on `POST /api/subscribe` three times; no other 403s in 14 days) | Zscaler-style proxies block or rewrite BotID's browser challenge, so `checkBotId()` reports a bot. That network is most of this dashboard's audience | BotID removed (client init, `vercel.json` challenge rewrites, package). Replaced by `api/_lib/signupLimits.ts`: hidden honeypot field, max 3 sign-ups per email per 24h, max 30 per UTC day overall (inside Resend Free's 100/day, which alerts share), fail-open on Redis errors. Deliberately no per-IP limit: corporate proxies share a few egress IPs across a whole company |
+| **Admin cleanup kept every run of a linked incident** (found 2026-10-01 — user spotted two Run History rows for the same Azure incident both badged "Past") | The dashboard only ever links an incident's *newest complete* run (`/api/analysis/latest` pointer and `/api/incidents/history`'s `briefId`), but the first version of the linked/unlinked check worked per incident, so superseded runs and failures were kept too | `api/_lib/runRetention.ts` classifies per run in one SQL CTE, used by both the badges and the delete. Replaced runs get a **2h grace** because the history endpoint edge-caches `briefId` for 1h. Failed runs are kept until a later run succeeds or they pass 30 days. First production dry run: 31 of 39 runs (46 PDFs) removable |
+| **`@vercel/node` pins vulnerable transitive dependencies, even at its latest version** (found 2026-10-01 during the Snyk pass) | `@vercel/node@17` still pins `undici@5.28.4` and, through `@vercel/static-config`, `ajv@8.6.3` (and so `uri-js`); its `tsx` brings old `esbuild` and it also carries `path-to-regexp@6.1.0`. Upgrading the package doesn't help | `package.json` `overrides` force fixed versions under `@vercel/node` and `@vercel/static-config`, plus `tsx`. This is safe because `api/` only does `import type` from `@vercel/node`, so none of its code runs. When adding an override for an already-installed nested package, also delete its stale `package-lock.json` entry or npm leaves it "invalid" |
+| **Snyk reported fixed vulnerabilities from a stale local `vercel build`** (found 2026-10-01 — `undici@6.28.0` via `@vercel/blob` kept appearing after the real tree was on 6.29.0) | `.vercel/output/functions/*.func/` bundles a frozen copy of each function's `node_modules`. It's gitignored and never deployed, but IDE/workspace scans read it | `.snyk` excludes `.vercel/**`. If a scan shows something odd, check for leftover `.vercel/output` first; it can be deleted (keep `.vercel/project.json`). Four findings with no fixed release anywhere (`uri-js` via ESLint 10's own `ajv@6`, `braces` via `@vercel/node`) are recorded in `.snyk` with reasons and expire 2026-12-31 for re-review |
+| **ESLint 10 required `eslint-plugin-react-hooks` 7, whose recommended set adds React Compiler rules** (2026-10-01) | v7's `recommended` config adds about 14 compiler rules (`purity`, `refs`, `set-state-in-effect`, …) on top of the classic two | `eslint.config.js` pins only `rules-of-hooks` (error) and `exhaustive-deps` (warn), matching the old behaviour. Adopting the compiler rules is a separate, deliberate decision |
+| **Snyk Code flags DB-sourced URLs in `href` even behind a validation function, and ignores inline `deepcode ignore` comments in CLI scans** (2026-10-01) | Snyk's analysis doesn't recognise a custom URL check as a sanitiser, and `// deepcode ignore` comments only work in IDE plugins | Admin PDF links now point at `/api/admin/analysis-admin?resource=pdf&kind=…&id=<run id>`, which checks the stored URL server-side (https + `*.public.blob.vercel-storage.com`) and redirects. Database values never reach an `href` |
 
 ---
 
