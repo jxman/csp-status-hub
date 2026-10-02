@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <title>Cloud Status Hub</title>
-    <meta name="description" content="Real-time operational status for AWS, Azure, GCP, and OCI in a single unified dashboard. Region and service level breakdowns, active incidents, and auto-refreshing updates." />
+    <title>AWS, Azure, Google Cloud &amp; OCI Status | Cloud Status Hub</title>
+    <meta name="description" content="Is AWS, Azure, Google Cloud or Oracle Cloud down? Live status, active outages and incidents by region and service, auto-refreshed every minute." />
     <link rel="canonical" href="https://cloudstatus.synepho.com/" />
     <meta name="robots" content="index, follow" />
     <meta name="theme-color" content="#0f172a" />
@@ -23,8 +23,8 @@
     <meta property="og:url" content="https://cloudstatus.synepho.com/" />
     <meta property="og:site_name" content="Cloud Status Hub" />
     <meta property="og:locale" content="en_US" />
-    <meta property="og:title" content="Cloud Status Hub" />
-    <meta property="og:description" content="Real-time operational status for AWS, Azure, GCP, and OCI in a single unified dashboard. Region and service level breakdowns, active incidents, and auto-refreshing updates." />
+    <meta property="og:title" content="AWS, Azure, Google Cloud &amp; OCI Status | Cloud Status Hub" />
+    <meta property="og:description" content="Is AWS, Azure, Google Cloud or Oracle Cloud down? Live status, active outages and incidents by region and service, auto-refreshed every minute." />
     <meta property="og:image" content="https://cloudstatus.synepho.com/social-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
@@ -32,8 +32,8 @@
 
     <!-- Twitter / X -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Cloud Status Hub" />
-    <meta name="twitter:description" content="Real-time operational status for AWS, Azure, GCP, and OCI in a single unified dashboard. Region and service level breakdowns, active incidents, and auto-refreshing updates." />
+    <meta name="twitter:title" content="AWS, Azure, Google Cloud &amp; OCI Status | Cloud Status Hub" />
+    <meta name="twitter:description" content="Is AWS, Azure, Google Cloud or Oracle Cloud down? Live status, active outages and incidents by region and service, auto-refreshed every minute." />
     <meta name="twitter:image" content="https://cloudstatus.synepho.com/social-image.png" />
     <meta name="twitter:image:alt" content="Cloud Status Hub — unified status dashboard for AWS, Azure, GCP, and OCI" />
 
@@ -41,22 +41,47 @@
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "WebApplication",
-        "name": "Cloud Status Hub",
-        "url": "https://cloudstatus.synepho.com/",
-        "description": "Real-time operational status for AWS, Azure, GCP, and OCI in a single unified dashboard.",
-        "applicationCategory": "UtilitiesApplication",
-        "operatingSystem": "Any",
-        "offers": {
-          "@type": "Offer",
-          "price": "0",
-          "priceCurrency": "USD"
-        }
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://www.synepho.com/#organization",
+            "name": "Synepho",
+            "url": "https://www.synepho.com/",
+            "logo": "https://cloudstatus.synepho.com/logos/synepho-light.png"
+          },
+          {
+            "@type": "WebApplication",
+            "name": "Cloud Status Hub",
+            "alternateName": ["Cloud Provider Status Dashboard", "Cloud Outage Tracker"],
+            "url": "https://cloudstatus.synepho.com/",
+            "description": "Live operational status, outages, and incidents for AWS, Microsoft Azure, Google Cloud, and Oracle Cloud Infrastructure in a single dashboard.",
+            "applicationCategory": "UtilitiesApplication",
+            "operatingSystem": "Any",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            },
+            "publisher": { "@id": "https://www.synepho.com/#organization" },
+            "creator": { "@id": "https://www.synepho.com/#organization" }
+          }
+        ]
       }
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Static fallback for crawlers that don't run JavaScript; React replaces it on mount -->
+    <div id="root">
+      <main style="max-width: 720px; margin: 48px auto; padding: 0 16px;">
+        <h1>Cloud Status Hub</h1>
+        <p>
+          Live status for AWS, Microsoft Azure, Google Cloud (GCP), and Oracle Cloud
+          Infrastructure (OCI) in one dashboard. Check whether a cloud provider is down,
+          see active outages and incidents by region and service, and get email alerts
+          when a new incident starts or resolves. Updates automatically every minute.
+        </p>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
