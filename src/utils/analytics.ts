@@ -20,8 +20,11 @@ export function initAnalytics(): void {
   initialized = true;
 
   window.dataLayer = window.dataLayer || [];
-  window.gtag = function gtag(...args: unknown[]) {
-    window.dataLayer.push(args);
+  // Must push the `arguments` object, not a rest-param array: gtag.js
+  // silently ignores plain arrays in dataLayer, so no hits are ever sent.
+  window.gtag = function gtag() {
+    // eslint-disable-next-line prefer-rest-params
+    window.dataLayer.push(arguments);
   };
   window.gtag('js', new Date());
   window.gtag('config', GA_MEASUREMENT_ID);
