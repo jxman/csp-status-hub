@@ -14,8 +14,6 @@
 
 Real-time operational status dashboard for AWS, Azure, OCI, and GCP in a single unified view. Built for cloud engineers and anyone who needs a quick read on cloud provider health.
 
-> **Status:** Live on Vercel — [cloudstatus.synepho.com](https://cloudstatus.synepho.com) (the old `csp-status-hub.vercel.app` URL still works — permanent redirect, see [docs/CUSTOM-DOMAIN-PLAN.md](./docs/CUSTOM-DOMAIN-PLAN.md))
-
 **What it does**
 
 - **Live dashboard** — current status of all four providers, refreshed every 60 seconds, with a region × service breakdown, active and recently resolved incidents, and links to each official status page.
@@ -667,6 +665,8 @@ total. Calling `check-status` locally can send real emails — see
 ---
 
 ## Deployment
+
+The site runs on Vercel at [cloudstatus.synepho.com](https://cloudstatus.synepho.com). The old `csp-status-hub.vercel.app` URL permanently redirects there (see [docs/CUSTOM-DOMAIN-PLAN.md](./docs/CUSTOM-DOMAIN-PLAN.md)).
 
 Pushing to `main` deploys to production automatically through Vercel's Git
 integration. Check the live build with:
