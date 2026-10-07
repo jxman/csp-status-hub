@@ -70,8 +70,7 @@ keep functioning through the cutover.
       project, with permission to add domains and edit env vars
 - [ ] Access to wherever the Sign in with Vercel OAuth client was registered,
       to add the new callback URL as an allowed redirect URI
-- [ ] A cutover window — low-risk since the audience is internal Marsh
-      staff, but pick a time to run through verification calmly
+- [ ] A cutover window — low-risk since the old URL redirects, but pick a time to run through verification calmly
 - [ ] (Optional) Upgrade Vercel CLI first — currently 53.3.2, latest is
       56.3.1: `npm i -g vercel@latest`
 
@@ -334,8 +333,8 @@ update step in whatever plan replaces this one.
 
 The Step 4 redirect makes this a soft cutover — anyone with the old URL
 bookmarked lands on the new domain automatically, no forced action needed.
-Optionally send a short internal note to Marsh leadership / cloud
-engineering with the new URL for their bookmarks, since 308 redirects get
+Optionally share the new URL with regular users so they can update
+their bookmarks, since 308 redirects get
 cached fairly aggressively by browsers and are otherwise invisible to users.
 
 ## 6. Rollback plan

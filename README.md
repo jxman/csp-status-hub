@@ -1,1001 +1,727 @@
 # Cloud Status Hub
 
-Real-time operational status dashboard for AWS, Azure, OCI, and GCP in a single unified view. Built for Marsh internal leadership and cloud engineering staff.
+[![Live site](https://img.shields.io/website?url=https%3A%2F%2Fcloudstatus.synepho.com&label=live%20site&up_message=cloudstatus.synepho.com&up_color=brightgreen)](https://cloudstatus.synepho.com)
+![React](https://img.shields.io/badge/React_18-20232A?logo=react&logoColor=61DAFB)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite_7-646CFF?logo=vite&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?logo=tailwindcss&logoColor=white)
+![Vercel](https://img.shields.io/badge/Vercel-000000?logo=vercel&logoColor=white)
+![Neon Postgres](https://img.shields.io/badge/Neon_Postgres-00E599?logo=postgresql&logoColor=black)
+![Upstash Redis](https://img.shields.io/badge/Upstash_Redis-00E9A3?logo=upstash&logoColor=black)
+![AWS Bedrock](https://img.shields.io/badge/AWS_Bedrock-232F3E)
+![Claude](https://img.shields.io/badge/Claude_Sonnet_4.6-D97757?logo=anthropic&logoColor=white)
+![Resend](https://img.shields.io/badge/Resend-000000?logo=resend&logoColor=white)
 
-Auto-refreshes every 60 seconds. Shows active incidents, per-service health, and links through to official vendor status pages. Subscribers can also opt in to email alerts when a provider they follow reports a new outage — see [Alerts & Admin](#alerts--admin) below.
+Real-time operational status dashboard for AWS, Azure, OCI, and GCP in a single unified view. Built for cloud engineers and anyone who needs a quick read on cloud provider health.
 
 > **Status:** Live on Vercel — [cloudstatus.synepho.com](https://cloudstatus.synepho.com) (the old `csp-status-hub.vercel.app` URL still works — permanent redirect, see [docs/CUSTOM-DOMAIN-PLAN.md](./docs/CUSTOM-DOMAIN-PLAN.md))
+
+**What it does**
+
+- **Live dashboard** — current status of all four providers, refreshed every 60 seconds, with a region × service breakdown, active and recently resolved incidents, and links to each official status page.
+- **Email alerts** — opt in (double opt-in) to hear when a provider you follow reports a new incident, and again when it resolves.
+- **AI Insight** — each incident gets an AI-generated technical brief and executive brief (AWS Bedrock, Claude), shown on the dashboard and downloadable as a branded PDF.
+- **Past incidents** — resolved incidents are kept for 90 days, with links to their AI briefs.
+- **Admin** — subscriber management, AI run history, retry, and live settings behind Sign in with Vercel.
+
+## Contents
+
+- [Architecture](#architecture)
+- [Tech stack](#tech-stack)
+- [Dashboard](#dashboard)
+- [Email alerts](#email-alerts)
+- [Incident Briefing Engine (AI Insight)](#incident-briefing-engine-ai-insight)
+- [Past incidents (90-day history)](#past-incidents-90-day-history)
+- [Admin](#admin)
+- [Data model](#data-model)
+- [Infrastructure and configuration](#infrastructure-and-configuration)
+- [Project structure](#project-structure)
+- [Local development](#local-development)
+- [Deployment](#deployment)
+- [Observability](#observability)
+- [Known constraints](#known-constraints)
+- [Roadmap](#roadmap)
 
 ---
 
 ## Architecture
 
-```
-Browser (React SPA)
-        │
-        ├─── Direct fetch (CORS-permissive) ─────────────────────────────┐
-        │    AWS   → https://status.aws.amazon.com/rss/all.rss           │
-        │    OCI   → https://ocistatus.oraclecloud.com/api/v2/status.json│
-        │             + api/v2/incident-summary.rss (per-incident detail)│
-        │    GCP   → https://status.cloud.google.com/incidents.json      │
-        │                                                                 │
-        └─── Serverless proxy ──────────────────────────────────────────┘
-             Azure only: /api/status/azure
-                   └─→ Vercel Function (Node.js, cached s-maxage=300)
-                          └─→ rssfeed.azure.status.microsoft/en-us/status/feed/
-                                (RSS/XML → parsed → region × service breakdown → normalized JSON)
+### System overview
 
-┌─────────────────────────────────────────────────────────────────────┐
-│  useStatusPolling (React hook)                                      │
-│  ┌──────────┐ ┌──────────────┐ ┌──────────┐ ┌──────────┐          │
-│  │awsFetcher│ │azureFetcher  │ │ociFetcher│ │gcpFetcher│          │
-│  └────┬─────┘ └──────┬───────┘ └────┬─────┘ └────┬─────┘          │
-│       └──────────────┴──────────────┴─────────────┘                │
-│         each wrapped in withTimeout() (12s) and settled            │
-│         independently — a card renders the instant its own         │
-│         fetch resolves, a slow/hung provider only blocks itself    │
-│                    → per-provider ProviderStatus map (unified schema)│
-│                    → localStorage cache (60s TTL)                   │
-└─────────────────────────────────────────────────────────────────────┘
+The dashboard is a static React SPA. Three of the four providers are fetched
+straight from the browser; everything else — the Azure proxy, sign-ups,
+change detection, AI briefs, and admin — runs as Vercel Functions.
 
-┌─────────────────────────────────────────────────────────────────────┐
-│  UI Layout                                                          │
-│  ┌─────────────────────────────────────────────────────────────┐   │
-│  │ StatusHeader: title · live indicator · refresh · settings   │   │
-│  └─────────────────────────────────────────────────────────────┘   │
-│  ┌──────────┬──────────┬──────────┬──────────────────────────┐    │
-│  │ AWS      │ Azure    │ OCI      │ GCP                      │    │
-│  │ Panel    │ Panel    │ Panel    │ Panel                    │    │
-│  │ services │ services │ services │ services                 │    │
-│  └──────────┴──────────┴──────────┴──────────────────────────┘    │
-│  ┌─────────────────────────────────────────────────────────────┐   │
-│  │ IncidentList: active + recently resolved incidents          │   │
-│  └─────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    browser["Browser<br/>React SPA"]
+    eventbridge["AWS EventBridge<br/>every 5 min"]
+
+    subgraph feeds["Provider status feeds"]
+        direct["AWS · OCI · GCP<br/>CORS-permissive"]
+        azurefeed["Azure<br/>CORS-blocked"]
+    end
+
+    fns["Vercel Functions<br/>/api/*"]
+
+    subgraph stores["Storage"]
+        redis[("Upstash Redis<br/>snapshots · settings · limits")]
+        neon[("Neon Postgres<br/>subscribers · briefs · history")]
+        blob[("Vercel Blob<br/>PDF briefs")]
+    end
+
+    subgraph services["External services"]
+        bedrock["AWS Bedrock<br/>Claude Sonnet 4.6"]
+        resend["Resend<br/>email to subscribers"]
+    end
+
+    browser -->|"direct fetch"| direct
+    browser -->|"Azure proxy, sign-up,<br/>briefs, history, admin"| fns
+    eventbridge -->|"cron trigger"| fns
+    fns -->|"poll"| feeds
+    fns --> stores
+    fns --> services
 ```
 
-This diagram covers the live dashboard's own data path. Alerts and admin
-tooling sit behind it as a separate backend — see
-[Alerts & Admin](#alerts--admin) for that architecture.
+The rest of this README walks through each part: the
+[dashboard](#dashboard) data path, [email alerts](#email-alerts), the
+[AI Insight](#incident-briefing-engine-ai-insight) pipeline, and
+[admin](#admin).
+
+### Serverless functions
+
+Vercel's Hobby plan caps a deployment at 12 functions, so several routes
+share one file (a `vercel.json` rewrite maps the bare path to a bracket
+file, which the handler reads as "no id/action given").
+
+| Function | Routes | Access | Purpose |
+| --- | --- | --- | --- |
+| `api/status/azure.ts` | `GET /api/status/azure` | Public | Azure feed proxy, normalized to the unified schema, plus 24h of resolved incidents from Redis |
+| `api/subscribe/[action].ts` | `POST /api/subscribe`, `/confirm`, `/manage`, `/unsubscribe` | Public / token | Sign-up, confirmation, manage, unsubscribe |
+| `api/auth/[action].ts` | `/api/auth/authorize`, `/callback`, `/signout` | Public | Sign in with Vercel (PKCE) and admin session cookie |
+| `api/admin/subscribers/[id].ts` | `GET /api/admin/subscribers`, `PATCH`/`DELETE /api/admin/subscribers/:id` | Admin | Subscriber list, filters, CSV, manual actions |
+| `api/admin/test-email.ts` | `POST /api/admin/test-email` | Admin | Send any email template to a confirmed subscriber |
+| `api/admin/analysis-admin.ts` | `/api/admin/analysis-admin?resource=…` | Admin | AI run history, retry, delete, cleanup, settings, PDF redirect |
+| `api/analysis/run.ts` | `POST /api/analysis/run` | `CRON_SECRET` | Generate an AI brief for one incident |
+| `api/analysis/latest.ts` | `GET /api/analysis/latest` | Public | Latest brief pointer, or immutable brief content by id |
+| `api/incidents/history.ts` | `GET /api/incidents/history` | Public | Incidents resolved 24h–90d ago |
+| `api/cron/check-status.ts` | `/api/cron/check-status` | `CRON_SECRET` | Change detection, email dispatch, AI and history triggers |
+| `api/cron/cleanup.ts` | `/api/cron/cleanup` | `CRON_SECRET` | Daily retention purge |
 
 ---
 
-## Tech Stack
+## Tech stack
 
-| Layer            | Technology                                       |
-| ----------------- | ------------------------------------------------- |
-| Frontend          | React 18 + Vite 7                                 |
-| Language           | TypeScript 5.6                                     |
-| Styling            | Tailwind CSS 3 (dark mode via `class` strategy, plus a system-preference mode) |
-| XML Parsing        | `fast-xml-parser` 5 (browser + serverless)         |
-| Serverless          | Vercel Functions (Node.js, auto-detected)          |
-| Database            | Neon Postgres (Vercel Marketplace)                 |
-| Cache               | Upstash Redis (Vercel Marketplace)                 |
-| Email               | Resend                                             |
-| AI / LLM            | AWS Bedrock — Claude Sonnet 4.6 (`us.anthropic.claude-sonnet-4-6`, cross-region inference profile), via Vercel-native OIDC → AWS federation — see [Incident Briefing Engine](#incident-briefing-engine-phases-1-4-complete) |
-| PDF Generation       | `@react-pdf/renderer`, uploaded to Vercel Blob (public, 1-year immutable cache) |
-| Admin Auth           | Sign in with Vercel (OAuth, PKCE)                  |
-| Deployment          | Vercel (Vite SPA + `/api` routes)                  |
-| Analytics           | Vercel Web Analytics + Speed Insights              |
-
----
-
-## Data Sources
-
-| Provider | Dashboard                          | Data URL                           | Format   | CORS       | Proxy               |
-| -------- | ----------------------------------- | ----------------------------------- | -------- | ----------- | -------------------- |
-| AWS      | https://status.aws.amazon.com/     | `.../rss/all.rss`                  | RSS/XML  | ✅ Direct  | None                |
-| Azure    | https://azure.status.microsoft/    | `rssfeed.azure.status.microsoft/...` | RSS/XML  | ❌ Blocked | `/api/status/azure` |
-| OCI      | https://ocistatus.oraclecloud.com/ | `.../api/v2/status.json` + `.../api/v2/incident-summary.rss` | JSON + RSS | ✅ Direct  | None                |
-| GCP      | https://status.cloud.google.com/   | `.../incidents.json`               | JSON     | ✅ Direct  | None                |
-
-**Coverage notes:**
-
-- **AWS** — `all.rss` covers only incidents AWS publishes publicly (significant/widespread events). Minor single-service degradations appear only in per-service feeds.
-- **Azure** — Public RSS feed covers only major widespread incidents. Affected services and regions are extracted from structured `<category>` elements (or title text as a fallback) and rolled up into a region × service breakdown, same as AWS/GCP/OCI — matched against a canonical top-10 service list by keyword, with anything else collapsed into a "Multiple Services *" row. Still bounded by whatever Microsoft's feed itself names; full authenticated-account granularity would require the Azure Service Health ARM API.
-- **OCI** — `status.json` is only a bare `{indicator, description}` summary (no incident-level data); `incident-summary.rss` supplies one persistent, stable-guid `<item>` per incident (no dedup pass needed, unlike AWS), with region/service parsed from its `"{service} | {region} | {ref}"` title format.
+| Layer | Technology |
+| --- | --- |
+| Frontend | React 18 + Vite 7 |
+| Language | TypeScript 5.6 |
+| Styling | Tailwind CSS 3 (dark mode via `class` strategy, plus a system-preference mode) |
+| XML parsing | `fast-xml-parser` 5 (browser + serverless) |
+| Serverless | Vercel Functions (Node.js) |
+| Database | Neon Postgres (Vercel Marketplace) |
+| Cache / state | Upstash Redis (Vercel Marketplace) |
+| Email | Resend, from `alerts.synepho.com` |
+| AI / LLM | AWS Bedrock — Claude Sonnet 4.6 (`us.anthropic.claude-sonnet-4-6`), via Vercel OIDC → AWS federation |
+| PDF generation | `@react-pdf/renderer`, stored in Vercel Blob |
+| Admin auth | Sign in with Vercel (OAuth, PKCE) |
+| Scheduling | AWS EventBridge (every 5 min) + Vercel cron (daily) |
+| Analytics | Vercel Web Analytics, Speed Insights, GA4 |
 
 ---
 
-## Provider Order
+## Dashboard
 
-Panels and data are always returned in this order: **AWS → Azure → OCI → GCP**
+### Data sources
+
+| Provider | Dashboard | Data URL | Format | CORS | Fetched via |
+| --- | --- | --- | --- | --- | --- |
+| AWS | https://status.aws.amazon.com/ | `.../rss/all.rss` | RSS/XML | ✅ Direct | Browser |
+| Azure | https://azure.status.microsoft/ | `rssfeed.azure.status.microsoft/...` | RSS/XML | ❌ Blocked | `/api/status/azure` |
+| OCI | https://ocistatus.oraclecloud.com/ | `.../api/v2/status.json` + `.../api/v2/incident-summary.rss` | JSON + RSS | ✅ Direct | Browser |
+| GCP | https://status.cloud.google.com/ | `.../incidents.json` | JSON | ✅ Direct | Browser |
+
+Panels are always shown in this order: **AWS → Azure → OCI → GCP**.
+
+**Coverage notes**
+
+- **AWS** — `all.rss` covers only incidents AWS publishes publicly (significant or widespread events). Minor single-service degradations appear only in per-service feeds. The feed emits one item per *update*, so items are deduplicated by GUID.
+- **Azure** — the public feed covers only major widespread incidents. Affected services and regions come from `<category>` elements (or the title, then the description, as fallbacks) and are rolled up into the same region × service breakdown as the other providers, matched against a top-10 service list with anything else under "Multiple Services *". Full per-account detail would need the authenticated Azure Service Health API.
+- **OCI** — `status.json` is only a bare `{indicator, description}` summary. `incident-summary.rss` supplies one stable-guid item per incident, with region and service parsed from its `"{service} | {region} | {ref}"` title.
+- **GCP** — `incidents.json` is structured; services are matched to a top-10 list by stable `productId` (verify with `npm run verify:gcp`).
+
+### Data path
+
+```mermaid
+flowchart LR
+    subgraph fetchers["Fetchers (src/fetchers)"]
+        aws["awsFetcher<br/>all.rss → dedupe"]
+        azure["azureFetcher<br/>/api/status/azure"]
+        oci["ociFetcher<br/>status.json + RSS"]
+        gcp["gcpFetcher<br/>incidents.json"]
+    end
+
+    timeout["withTimeout()<br/>12s each"]
+    hook["useStatusPolling<br/>per-provider state map"]
+    cache[("localStorage<br/>60s TTL")]
+
+    subgraph ui["UI"]
+        header["StatusHeader"]
+        grid["ProviderGrid<br/>ProviderPanel · RegionTable"]
+        incidents["IncidentList<br/>IncidentCard · AI Insight"]
+        past["PastIncidents"]
+    end
+
+    aws & azure & oci & gcp --> timeout --> hook
+    hook <--> cache
+    hook --> header & grid & incidents
+    past -->|"on expand"| historyApi["/api/incidents/history"]
+```
+
+Every fetcher returns the same unified `ProviderStatus` schema
+(`src/types/status.ts`). Each provider settles independently: a card renders
+the moment its own fetch resolves, and a slow or hung provider only delays
+its own card (skeleton, then an error card after 12s). If all four fail —
+e.g. the network is down — the last good data stays on screen.
+
+### Refresh and caching
+
+| Behavior | Detail |
+| --- | --- |
+| Auto-refresh interval | 60 seconds; pauses while the tab is hidden, fetches immediately on focus |
+| Manual refresh cooldown | 60 seconds (starts after fetch completes) |
+| Client cache (localStorage) | 60s TTL — hydrated on page load |
+| Azure proxy cache | `s-maxage=300, stale-while-revalidate=60` |
+| AI brief cache | Pointer `s-maxage=300`; content `s-maxage=31536000, immutable` once finalized — see [Reading a brief back](#reading-a-brief-back) |
+| Past incidents cache | `s-maxage=3600, stale-while-revalidate=86400` |
+| Offline behavior | Auto-refresh pauses; banner shown; cached data displayed |
+| Stale data indicator | Yellow banner if the last fetch failed but cached data is available |
+| Stale app bundle | `useVersionCheck` polls `/version.json` every 5 min and on tab focus; a banner offers Reload when a new deploy is live |
 
 ---
 
-## Alerts & Admin
-
-Opt-in email alerting: sign up (bell icon), confirm via email, get notified
-the moment a provider you follow reports a new incident — or when one
-resolves. Live in production, alongside a session-gated admin view.
+## Email alerts
 
 | Route | Purpose |
 | --- | --- |
-| `/` ("Get alerts" button, all-clear message, "Alert me about <provider>" on active incident cards, or `/?subscribe=1[&provider=aws]`) | Sign up — name, email, provider checkboxes (hidden honeypot field). Incident cards and `&provider=` pre-tick that provider |
-| `/manage?token=...` | Edit providers or unsubscribe (link comes from your confirmation email) |
-| `/admin` | Subscriber list, search/filter, CSV export, manual actions, ad hoc test-email tool — gated behind Sign in with Vercel |
+| `/` — "Get alerts" header button, the all-clear message, "Alert me about &lt;provider&gt;" on incident cards, or `/?subscribe=1[&provider=aws]` | Sign-up form: name, email, provider checkboxes, hidden honeypot. Incident cards and `&provider=` pre-tick that provider |
+| `/manage?token=...` | Edit providers or unsubscribe (link from the welcome email and every alert) |
 
-### Backend architecture
+### Sign-up and confirmation
 
-```
-┌──────────────────────────────┐
-│  React SPA                    │
-│  /  (bell icon → sign-up)      │
-│  /manage?token=... (edit/unsub)│
-│  /admin (Sign in with Vercel) │
-└──────────────┬─────────────────┘
-               │ POST/GET
-               ▼
-┌───────────────────────────────────────────────────────────────────┐
-│  Vercel Serverless Functions                                        │
-│  /api/subscribe             create/stage a subscription (rate-limited) │
-│  /api/subscribe/confirm     finalize signup or a staged update       │
-│  /api/subscribe/manage      view/edit providers (token-authed)       │
-│  /api/subscribe/unsubscribe one-click, idempotent opt-out            │
-│  /api/auth/*                 Sign in with Vercel (PKCE) + session     │
-│  /api/admin/subscribers*     list/filter/CSV/actions (session-gated)  │
-│  /api/admin/test-email       ad hoc template preview (session-gated)  │
-│  /api/cron/check-status      status diff + notification dispatch      │
-│  /api/cron/cleanup           daily retention purge                    │
-└───────┬────────────────┬────────────────┬─────────────────┬─────────┘
-        │                │                │                 │
-        ▼                ▼                ▼                 ▼
- ┌─────────────┐  ┌───────────────┐  ┌───────────┐  ┌────────────────┐
- │Neon Postgres │  │ Upstash Redis  │  │  Resend   │  │ Vercel Firewall │
- │ subscribers  │  │ per-provider   │  │ transact-  │  │ rate limit on   │
- │ notification_│  │ status snapshot│  │ ional +    │  │ /api/subscribe  │
- │ log          │  │ (5-min cron    │  │ outage/    │  │ 5 req/60s/IP    │
- │              │  │ diff cache)    │  │ resolution │  │                 │
- │              │  │                │  │ email, from│  │                 │
- │              │  │                │  │ alerts.    │  │                 │
- │              │  │                │  │ synepho.com│  │                 │
- └─────────────┘  └───────────────┘  └───────────┘  └────────────────┘
-                          ▲
-                          │ every 5 min
-              ┌────────────────────────────┐
-              │ AWS EventBridge Rule         │
-              │ → API Destination (HTTPS)    │
-              │ → Authorization: Bearer       │
-              │   $CRON_SECRET                │
-              │ (Vercel native daily cron =   │
-              │  free fallback, Hobby-safe)   │
-              └────────────────────────────┘
+```mermaid
+sequenceDiagram
+    actor User
+    participant SPA as React SPA
+    participant API as /api/subscribe
+    participant Redis as Upstash Redis
+    participant DB as Neon Postgres
+    participant Mail as Resend
+
+    User->>SPA: Fill in sign-up form
+    SPA->>API: POST /api/subscribe
+    API->>Redis: Check per-email and daily limits
+    API->>DB: Upsert subscriber (pending_confirmation)
+    API->>Mail: Send confirmation email
+    Mail-->>User: Confirm link
+    User->>API: GET /api/subscribe/confirm?token=...
+    API->>DB: status = confirmed, issue manage_token
+    API->>Mail: Send welcome email (manage + unsubscribe links)
 ```
 
-### Data model
+- **Abuse protection** (`api/_lib/signupLimits.ts`):
+  - a hidden honeypot field (`hpField`); if a bot fills it, the request gets a normal-looking success response but no email is sent
+  - at most 3 sign-up attempts per email address per 24h (the Redis key is a SHA-256 of the address, so Redis never holds emails)
+  - at most 30 sign-up attempts per UTC day overall, keeping confirmation mail well inside Resend's Free plan (100 emails/day, shared with outage alerts)
 
-```sql
-CREATE TABLE subscribers (
-  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name               TEXT NOT NULL,
-  email              TEXT NOT NULL UNIQUE,
-  phone              TEXT,
-  providers          TEXT[] NOT NULL,       -- e.g. {aws,gcp} or the {'all'} sentinel
-  pending_providers  TEXT[],                -- staged change awaiting re-confirmation
-  status             TEXT NOT NULL DEFAULT 'pending_confirmation',
-                     -- pending_confirmation | confirmed | unsubscribed
-  email_verified_at  TIMESTAMPTZ,
-  confirm_token      TEXT,
-  confirm_token_expires_at TIMESTAMPTZ,
-  manage_token       TEXT UNIQUE,           -- regenerated every time a row (re)confirms
-  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-  unsubscribed_at    TIMESTAMPTZ
-);
+  Over-limit requests get a 429 with a plain-language message. A Redis error fails open, and double opt-in still applies. There is deliberately **no per-IP limit**: Zscaler-style corporate proxies send a whole company's traffic out through a few shared IPs.
 
-CREATE TABLE notification_log (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  subscriber_id UUID REFERENCES subscribers(id) ON DELETE CASCADE,
-  provider      TEXT NOT NULL,
-  channel       TEXT NOT NULL,
-  event_type    TEXT NOT NULL,              -- new_incident | incident_resolved
-  sent_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-  success       BOOLEAN NOT NULL
-);
+  **Why not Vercel BotID (removed 2026-10-01):** its browser challenge was blocked by Zscaler, so sign-ups from Zscaler-managed corporate laptops got a 403 "Request blocked". Many cloud engineers work behind proxies like this. Double opt-in already stops bots from subscribing anyone; the only remaining risk is the form being used to send email, which the limits above bound directly.
+- **Re-confirmation:** new sign-ups *and* any provider change made through the public form need a click on a confirmation link before taking effect, since that form is unauthenticated. Resubmitting an email that's still `pending_confirmation` reissues the same link; resubmitting an `unsubscribed` email starts a fresh sign-up.
+- **Welcome email:** sent once after first confirmation and carries the `/manage` and unsubscribe links (`manage_token` doesn't exist until then).
+- **Manage:** edits via `/manage?token=...` apply immediately — the token already proves inbox ownership.
+- **Unsubscribe:** the email link opens `/manage?token=...&action=unsubscribe` with a Cancel / "Yes, unsubscribe" panel rather than unsubscribing on click. That's still one step from the email (CAN-SPAM), but a link scanner prefetching the URL can't unsubscribe anyone. `GET /api/subscribe/unsubscribe` itself stays idempotent.
+
+### Change detection and notification dispatch
+
+```mermaid
+sequenceDiagram
+    participant EB as AWS EventBridge
+    participant Cron as /api/cron/check-status
+    participant Feeds as Provider feeds
+    participant Redis as Upstash Redis
+    participant DB as Neon Postgres
+    participant Mail as Resend
+    participant Run as /api/analysis/run
+
+    EB->>Cron: Every 5 min (Bearer CRON_SECRET)
+    Cron->>Feeds: Run the same four fetchers as the dashboard
+    Cron->>Redis: Read snapshot per provider
+    Note over Cron: Diff incident IDs:<br/>new, resolved, or renamed
+    Cron->>DB: Load confirmed subscribers for the provider
+    Cron->>Mail: Send outage / resolution emails
+    Cron->>DB: Log every attempt to notification_log
+    Cron->>DB: Upsert incident_history (only if something resolved)
+    Cron->>Redis: Write new snapshot (+ resolved:azure)
+    Cron--)Run: waitUntil(fetch) per changed incident — fire-and-forget
 ```
 
-One person, one row — a subscriber's email and provider selection live
-together; `pending_providers` holds a staged edit awaiting re-confirmation
-(see the sign-up flow below). `"all"` is stored as a literal sentinel rather
-than expanded to all four, so future providers get included automatically.
+- **New incident** = an incident ID that wasn't in the previous snapshot, not "overall status went non-operational". A status-based trigger would miss a new incident while an unrelated one already has the provider degraded. The first check ever recorded for a provider is a baseline only.
+- **Resolved** = an ID in the last snapshot that's missing from the fresh fetch. Works whether a provider publishes an explicit resolved marker or just drops the entry.
+- **Renamed** = a vanished ID and a new ID from the same provider, in the same poll, with the same `startTime`. Azure has no stable incident ID, so retitling an incident changes its derived ID; these pairs are treated as one incident (no emails, AI brief re-run under the new ID) instead of a false resolved + new pair. Ambiguous matches fall through to normal handling (`api/_lib/incidentRenames.ts`).
+- **Dispatch:** confirmed subscribers following the provider (or `"all"`) are emailed in parallel; every attempt — success or failure — is logged to `notification_log`. Emails list the affected regions and link to a dashboard deep link (`/?provider=…&incidentId=…`) that scrolls to the incident and opens its AI Insight panel.
+- **Azure resolved incidents:** Azure's feed just drops a cleared incident, so its last snapshot is saved to Redis `resolved:azure` and merged back into `/api/status/azure` for 24h.
+- **Cadence:** Vercel Hobby's native cron runs at most once a day — too coarse for alerting — so an AWS EventBridge Rule calls `check-status` every 5 minutes through an API Destination (`Authorization: Bearer $CRON_SECRET`). Vercel's daily cron stays wired as a free fallback. Provisioned by `scripts/setup-eventbridge-cron.sh`.
 
-Per-provider **status snapshot state** (used for change detection) lives in
-**Upstash Redis**, not Postgres — one key per provider (`snapshot:<provider>`),
-read/written on every 5-minute cron tick. An earlier `provider_status_snapshot`
-Postgres table did this instead, but querying it every 5 minutes, 24/7, kept
-Neon's compute from ever autosuspending and blew through the Free plan's
-100 CU-hr/month allowance. Redis is billed by request count, not
-compute-uptime, so a workload that's cheap-but-constant no longer burns a
-metered resource just by staying alive. The old table is left in place
-(unused) rather than dropped, as a historical record.
+---
 
-**Confirmed fix, via Neon's usage panel:** July (pre-fix, hit the cap on Jul 29)
-used 102 of the 100 CU-hr Free plan allowance — ≈3.52 CU-hr/day averaged over
-the month. August (post-fix) sat at 0.36 CU-hr through Aug 7 — ≈0.051
-CU-hr/day, a ~69x drop — projecting to roughly 1.6 CU-hr for the full month.
+## Incident Briefing Engine (AI Insight)
 
-### Sign-up & confirmation (double opt-in)
-
-- Bell icon opens a form (name, email, provider checkboxes). Abuse
-  protection is in `api/_lib/signupLimits.ts`:
-  - a hidden honeypot field (`hpField`); if a bot fills it, the request
-    gets a normal-looking success response but no email is sent
-  - at most 3 sign-up attempts per email address per 24h (Redis key is a
-    SHA-256 of the address, so Redis never holds emails)
-  - at most 30 sign-up attempts per UTC day overall, keeping confirmation
-    mail well inside Resend's Free plan (100 emails/day, shared with
-    outage alerts)
-
-  Over-limit requests get a 429 with a plain-language message. A Redis
-  error fails open, and double opt-in still applies. There is deliberately
-  **no per-IP limit**: Zscaler-style corporate proxies send a whole
-  company's traffic out through a few shared IPs.
-
-  **Why not Vercel BotID (removed 2026-10-01):** its browser challenge was
-  blocked by Zscaler, so sign-ups from Zscaler-managed corporate laptops
-  got a 403 "Request blocked". That network is most of this dashboard's
-  audience. Double opt-in already stops bots from subscribing anyone; the
-  only remaining risk is the form being used to send email, which the
-  limits above bound directly.
-- New sign-ups **and** any provider change to an already-confirmed
-  subscription require clicking a confirmation link before taking effect —
-  the public form is unauthenticated, so a change here always needs
-  re-verification. Resubmitting with an email already `pending_confirmation`
-  just reissues the same confirm link; resubmitting an `unsubscribed` email
-  resets it as a fresh sign-up.
-- A **welcome email**, sent once right after first confirmation, carries the
-  `/manage` and unsubscribe links — `manage_token` doesn't exist until that
-  point, so it can't be included in the original confirmation email.
-- Editing via `/manage?token=...` takes effect immediately, no
-  re-confirmation — the token itself already proves inbox ownership, unlike
-  the public sign-up form.
-- The email's "Unsubscribe" link lands on `/manage?token=...&action=unsubscribe`
-  with a confirmation panel (Cancel / "Yes, unsubscribe") rather than
-  unsubscribing directly on click — still one click past the email
-  (CAN-SPAM's "one step" requirement), but immune to an automated
-  link-scanner silently unsubscribing someone by prefetching a raw mutating
-  URL. The underlying `GET /api/subscribe/unsubscribe` endpoint stays
-  idempotent; it's just no longer linked to directly from outside the app.
-
-### Change detection & notification dispatch
-
-- `/api/cron/check-status` runs the same four fetchers the live dashboard
-  uses, then diffs each provider's fresh incident list against its Redis
-  snapshot.
-- **Notify-worthy = a new incident ID appears** that wasn't in the previous
-  snapshot — not simply "overall status went non-operational." A status-gated
-  trigger would miss a brand-new incident while an unrelated one is already
-  keeping that provider non-operational; ID diffing catches new incidents
-  independent of whatever else is ongoing. The very first check ever
-  recorded for a provider is a baseline only, not a notification trigger.
-- **Resolution notifications** are the mirror case: any ID present in the
-  last snapshot but missing from the fresh fetch is treated as resolved and
-  triggers a separate resolution email. Works whether a provider publishes
-  an explicit resolved marker or just silently drops the entry once cleared.
-- Confirmed subscribers following the affected provider (or `"all"`) are
-  emailed in parallel via Resend; every attempt — success or failure — is
-  logged to `notification_log`. Outage and resolution emails both list the
-  affected region(s) alongside the incident title.
-- **Cadence:** an AWS EventBridge Rule triggers `check-status` every 5
-  minutes via an API Destination (`Authorization: Bearer $CRON_SECRET`) —
-  Vercel Hobby's native cron caps at once/day, too coarse for alerting.
-  Vercel's own daily cron stays wired as a free, redundant fallback.
-  Provisioned via `scripts/setup-eventbridge-cron.sh` (idempotent,
-  self-heals if the target endpoint or rule description drift — see
-  **Known constraints** below).
-
-### Incident Briefing Engine (Phases 1-4, complete)
-
-AI-generated technical + executive briefs per incident, built on AWS Bedrock
-(Claude Sonnet 4.6), surfaced on the dashboard and downloadable as branded
-PDFs. Full design in the artifact-linked design doc. For a deeper walkthrough
-of the prompt itself, how to iterate on it, and a scoped plan for exposing
-some of it through an admin UI, see
+AI-generated technical and executive briefs for each incident, built on AWS
+Bedrock (Claude Sonnet 4.6), shown in the dashboard's **AI Insight** panel
+and downloadable as branded PDFs. For a deeper walkthrough of the prompt,
+how to iterate on it, and a plan for editing it from the admin UI, see
 [`docs/PROMPT-REFINEMENT-GUIDE.md`](./docs/PROMPT-REFINEMENT-GUIDE.md).
 
-#### Architecture — Bedrock, Claude, and the AI Insight workflow
+### Generating a brief
 
-```
-check-status.ts (EventBridge, every 5 min)
-        │  diffs the new provider snapshot against Redis, same tick that
-        │  drives outage/resolution emails (see Change detection above)
-        │
-        ├─ per changed incident: new / content_changed / resolved?
-        │       (content-hash trigger, independent of the notify-worthy
-        │        diff — catches a vendor editing incident text in place)
-        │
-        └─ waitUntil(fetch('/api/analysis/run')) ── fire-and-forget,
-           AFTER notifySubscribers() has already been called, so a slow
-           or failed Bedrock call can never delay/block an outage email
-                │
-                ▼
-   /api/analysis/run  (CRON_SECRET-gated; admin retry re-enters the same
-        │              pipeline via bypassDebounce, see Admin controls below)
-        │  debounce check: MAX(created_at) per (provider, incidentId) vs.
-        │  settings:analysis-debounce-minutes (Redis, live-editable) or
-        │  ANALYSIS_DEBOUNCE_MINUTES (env default, 30 min)
-        ▼
-   api/_lib/analysisPipeline.ts → runIncidentAnalysis()
-        │
-        │  1. buildSystemPrompt() + buildUserMessage(provider, incident)
-        │     (api/_lib/analysisPrompt.ts) — includes a hand-curated
-        │     per-service-category resiliency reference table so the
-        │     model cites reviewed guidance instead of inventing specifics
-        │     from a thin vendor paragraph, and a hard rule keeping
-        │     DR/failover language conditional
-        │
-        ▼
-   AWS Bedrock — ConverseCommand
-        │  Auth: Vercel OIDC → sts:AssumeRoleWithWebIdentity (no static
-        │  AWS keys) via @vercel/oidc-aws-credentials-provider, role from
-        │  scripts/setup-bedrock-oidc.sh (api/_lib/bedrock.ts)
-        │  Model: BEDROCK_MODEL_ID — a cross-region inference profile ID,
-        │  not a bare on-demand model ID (Claude models on Bedrock only
-        │  support INFERENCE_PROFILE invocation). Currently
-        │  us.anthropic.claude-sonnet-4-6 — the code default
-        │  (bedrock.ts) is us.anthropic.claude-sonnet-5, but Sonnet 5
-        │  and 5.5 access on this AWS account is still pending with AWS
-        │  support (see CLAUDE.md §9's Marketplace IAM gap), so the env
-        │  var override pins the working Sonnet 4.6 profile instead
-        │  Forced tool-use: toolConfig requires the emit_incident_brief
-        │  tool (buildToolConfig()) so the model must return structured
-        │  { technical: {...}, executive: {...} } fields (urgency-tagged
-        │  actions, bottom line, etc. — src/utils/structuredBrief.ts) —
-        │  no free-text parsing, one round trip for both brief variants
-        ▼
-   parseStructuredBriefs() validates the tool-use input, then:
-        │
-        ├─ INSERT into incident_analysis (Postgres/Neon) — briefs_structured
-        │  (JSON the dashboard + PDF render from), technical_brief/
-        │  executive_brief (plain-text rendering of the same content, for
-        │  legacy readers), model id, input/output token counts,
-        │  status='complete' (or 'failed' with the error, on a missing
-        │  tool-use response or a thrown Bedrock error — the trigger is
-        │  never lost silently)
-        │
-        └─ best-effort, AFTER the row above already committed:
-           renderAndUploadBriefPdfs() → @react-pdf/renderer → Vercel Blob
-           (public, 1-year immutable cache) → UPDATE ...SET pdf_*_url
-           (a PDF failure never affects the already-published text brief)
+```mermaid
+flowchart TB
+    cron["check-status.ts<br/>(every 5 min)"]
+    trigger{"Incident new,<br/>content changed,<br/>or resolved?"}
+    run["/api/analysis/run<br/>(fire-and-forget, after emails)"]
+    debounce{"Debounce passed?<br/>default 30 min per incident"}
+    prompt["Build prompt<br/>analysisPrompt.ts"]
+    bedrock["AWS Bedrock Converse<br/>forced tool use: emit_incident_brief"]
+    parse["parseStructuredBriefs()"]
+    row[("incident_analysis row<br/>complete or failed")]
+    pdf["Render PDFs<br/>@react-pdf/renderer"]
+    blob[("Vercel Blob")]
+    retry["Admin retry<br/>(bypasses debounce)"]
 
-   Reading it back:
-        GET /api/analysis/latest?provider=&incidentId=  (public) → pointer
-             only ({id, createdAt}) for the latest complete row — cheap,
-             short CDN cache
-        GET /api/analysis/latest?id=<uuid>  (public) → immutable content
-             for one row id, cached forever once finalized — same file,
-             not a separate route (see Pointer/content split below)
-             → IncidentBriefPanel.tsx's "AI Insight" panel + Download PDF
-        GET /api/admin/analysis-admin?resource=runs  (admin) → full history
-             across every trigger, incl. failed rows → RunHistoryPanel.tsx
-             (manual retry re-enters runIncidentAnalysis with
-             bypassDebounce: true)
+    cron --> trigger -->|yes| run --> debounce
+    debounce -->|yes| prompt --> bedrock --> parse --> row
+    debounce -->|no| skip["Skip"]
+    row -->|"best effort"| pdf --> blob
+    blob -->|"UPDATE pdf_*_url"| row
+    retry --> prompt
 ```
 
-- **Trigger, layered on top of the notify-worthy diff above:**
-  `check-status.ts` also hashes each active incident's
-  `status + latestUpdate + affectedServices + affectedRegions` and stores the
-  hash per incident ID in the same Redis snapshot
-  (`activeIncidentContentHashes`). An incident is `new` (same predicate as
-  the notify-worthy diff), `content_changed` (ID was already active but its
-  hash changed — catches a vendor editing an ongoing incident's text without
-  the ID changing), or `resolved` (same predicate as the resolution diff).
-- **Never in the critical path of an outage email.** For every
-  new/content_changed/resolved incident, `check-status.ts` fires one
-  `waitUntil(fetch('/api/analysis/run', ...))` per incident — never awaited,
-  placed after the existing `notifySubscribers()` calls — so a slow or
-  failed Bedrock call can't delay or block a notification.
-- **`/api/analysis/run`** debounces (default 30 min per incident, a live
-  Redis override `settings:analysis-debounce-minutes` beats the
-  `ANALYSIS_DEBOUNCE_MINUTES` env default without a redeploy), then calls
-  Bedrock's Converse API (`BEDROCK_MODEL_ID`, a cross-region inference
-  profile — Claude models have no bare on-demand ID on Bedrock; currently
-  `us.anthropic.claude-sonnet-4-6` — Claude Sonnet 5 and 5.5 access on
-  this account is still pending with AWS support, see CLAUDE.md §9) with a forced tool-use call (`emit_incident_brief`)
-  to get structured `{technical, executive}` briefs in one request (see
-  **Structured briefs** below). A
-  hand-curated per-service-category resiliency reference table
-  (`api/_lib/analysisPrompt.ts`) keeps the model selecting from reviewed
-  guidance instead of inventing specifics from a thin vendor paragraph, and
-  a hard prompt rule keeps DR/failover language conditional ("if a failover
-  path exists, consider...") rather than a blanket instruction to fail over.
-- **Auth to Bedrock:** Vercel's native OIDC → AWS federation
-  (`sts:AssumeRoleWithWebIdentity` via `@vercel/oidc-aws-credentials-provider`)
-  — no static AWS keys, matching this account's OIDC-over-static-keys
-  standard. IAM OIDC provider + role provisioned via
-  `scripts/setup-bedrock-oidc.sh` (idempotent, mirrors
-  `scripts/setup-eventbridge-cron.sh`'s structure).
-- **Storage:** one row per trigger (not per incident) in Postgres'
-  `incident_analysis` table — an incident accumulates rows across its
-  lifecycle, and the debounce check reads `MAX(created_at)` per
-  `(provider, incident_id)`. A failed run (Bedrock error, malformed
-  tool-use response) still writes a `status='failed'` row with the error
-  message rather than losing the trigger silently.
-- **Reading it back (Phase 2, revised 2026-08-29):** `GET /api/analysis/latest`
-  is a public, unauthenticated, CDN-cached endpoint (no Redis layer — it
-  only fires on-demand when a user expands a panel, not on every 60s poll)
-  returning just the single most recent `status='complete'` row for a
-  `(provider, incidentId)`. The dashboard's "AI Insight" panel
-  (`IncidentBriefPanel.tsx`) lazy-fetches this on first expand — zero
-  requests fire until a user actually opens it — with a Technical/Executive
-  toggle. Older versions for the same incident still exist in Postgres
-  (used by admin run history / retry), but the dashboard only ever shows
-  the latest one — no version stepper, since a stale prior version reads
-  as contradicting the incident's current live status.
-- **Pointer/content split (2026-09-02):** `/api/analysis/latest` used to
-  return the full brief (both texts + PDF URLs) with a 60s
-  `s-maxage`/30s `stale-while-revalidate` — short enough that sustained
-  traffic (repeat page loads, several visitors opening the same incident,
-  a stuck-open tab being reloaded) could re-invoke the function, and
-  therefore re-query Neon, roughly once a minute — fast enough to defeat
-  Neon's autosuspend the same way the pre-Redis `provider_status_snapshot`
-  table once did (see **Backend architecture** above). Since
-  `incident_analysis` rows never mutate after `status='complete'`
-  (`analysisPipeline.ts` INSERTs the row, then only best-effort backfills
-  the two PDF URLs via a `COALESCE` UPDATE), the read was split into two
-  cases inside the *same* `api/analysis/latest.ts` file (see
-  **Function-count fix** just below for why it's one file, not two
-  routes): `?provider=&incidentId=` returns only a `{id, createdAt}`
-  pointer, cacheable for 5 minutes since a new pointer can't appear faster
-  than the debounce interval; `?id=<uuid>` returns the brief text and PDF
-  links for that one immutable row, cached `s-maxage=31536000, immutable`
-  once "finalized" (both PDF URLs present, or 5 minutes old, to bound a
-  row whose PDF step never lands). `useIncidentBrief.ts` fetches the
-  pointer, then the content behind its id — once any visitor has ever
-  loaded a given brief id, every later view (any visitor, any reload, for
-  the rest of that incident's life) is served from Vercel's edge cache and
-  the browser's own HTTP cache with no Postgres query at all.
-- **Function-count fix (2026-09-02, same day):** the pointer/content split
-  above first shipped as two files — `api/analysis/latest.ts` and a new
-  `api/analysis/brief/[id].ts` — which pushed this Hobby-plan deployment
-  from 12 Serverless Functions (already at the cap) to 13 and broke the
-  next deploy (`No more than 12 Serverless Functions can be added to a
-  Deployment on the Hobby plan`). Folded back into one file (`?id=` on
-  `/api/analysis/latest` instead of a separate route — see above), and two
-  more pairs consolidated the same way for headroom against the same cap:
-  `api/subscribe/index.ts` (bare `POST /api/subscribe`) merged into
-  `api/subscribe/[action].ts` as its `action === undefined` case, and
-  `api/admin/subscribers/index.ts` (bare `GET` list/CSV) merged into
-  `api/admin/subscribers/[id].ts` as its `id === null` case. Both reuse
-  the same bracket-file trick `analysis-admin.ts` already established
-  (see its own header comment) — a `vercel.json` rewrite maps the bare
-  path to the bracket file with no dynamic segment populated, which the
-  handler reads as "no id/action given, so list/create instead." No
-  client-visible URL or behavior changed — `/api/subscribe` and
-  `/api/admin/subscribers` still work exactly as before. Net: 10 functions
-  deployed, down from what would have been 13.
-- **PDF export (Phase 3):** generated once per analysis version, right
-  after the text brief succeeds, as a best-effort step that can never
-  affect the already-published text (`api/_lib/pdf/render.ts`). Built with
-  `@react-pdf/renderer` (Helvetica built-in fonts, no external font-file
-  fetch), Synepho-branded, uploaded to Vercel Blob at
-  `incident-analysis/{provider}/{slugified-incident-id}/{row-id}-{technical|executive}.pdf`
-  with a 1-year immutable `Cache-Control` — the row's own UUID guarantees
-  the path is unique, so nothing already published is ever overwritten. A
-  fixed footer repeats on every page: the disclaimer, plus (added
-  2026-08-29) a "Powered by Synepho — for live status and updates, visit
-  cloudstatus.synepho.com" line so a page reads correctly even if printed
-  or forwarded on its own. The dashboard only shows a "Download PDF" link
-  once a URL exists — pre-Phase-3 rows and any PDF-generation failure both
-  render nothing rather than a broken link.
-  - **Spacing fix (2026-08-29):** `renderBriefBody()` originally rendered
-    every line of the brief as its own block-level `<Text>`, so
-    `line-height` and `margin-bottom` both applied per line instead of
-    per paragraph — every multi-line section (e.g. adjacent bullets) read
-    as double-spaced. Now splits on real blank-line paragraph breaks only,
-    joining each paragraph's own lines with a literal `\n` inside one
-    `<Text>`. Also fixed the executive PDF repeating its closing
-    disclaimer twice (the prompt already appends it as the brief's own
-    final line, on top of the PDF's separate recurring footer) by
-    stripping a trailing exact-match copy before rendering.
-- **Email link (Phase 4):** outage/resolution emails link each incident to
-  `${APP_BASE_URL}/?provider=...&incidentId=...` — a stable dashboard
-  deep-link rather than a PDF/brief snapshot at send time, since brief
-  generation is async and hasn't run yet when the email goes out (the
-  fire-and-forget analysis trigger fires *after* `notifySubscribers()`
-  completes in the same tick). `useIncidentDeepLink` (`src/hooks/`) parses
-  the params once on load, strips them from the URL, and scrolls to and
-  auto-expands the matching incident's AI Insight panel once real data has
-  loaded; silently no-ops if the incident's since rolled off the feed.
-- **Admin controls (Phase 4):** a single `api/admin/analysis-admin.ts`
-  endpoint (merged from what would otherwise be three routes — this
-  project's Vercel Hobby plan caps at 12 Serverless Functions per
-  deployment, and three separate routes would have exceeded it) backs three
-  admin-only surfaces: run history (last 200 `incident_analysis` rows,
-  client-side filtered), a manual re-run action available on every row
-  regardless of status — not just `status='failed'` ones, so a `complete`
-  row can be forced to regenerate too, e.g. to pick up a prompt change for
-  an incident that's still active (reruns the shared pipeline with
-  `bypassDebounce: true`, always inserting a new row rather than mutating
-  the one it was triggered from), and live settings — the
-  debounce interval and a per-provider kill switch
-  (`settings:analysis-disabled-providers` in Redis, read once per cron
-  tick, fails open on a Redis error so a hiccup can't silently stop
-  analysis for every provider). The kill switch only gates the analysis
-  trigger — outage/resolution emails keep sending normally for a
-  "disabled" provider, since it's a Bedrock-cost control, not a monitoring
-  pause. The Bedrock/PDF pipeline itself lives in
-  `api/_lib/analysisPipeline.ts`, shared between `/api/analysis/run` (the
-  CRON_SECRET-gated fire-and-forget path) and the admin retry action (the
-  `requireAdmin`-gated path) so neither duplicates the ~80 lines of
-  Bedrock/Postgres/PDF logic.
-- **Active/non-active state + cleanup (2026-09-01):** the dashboard only
-  ever shows *active* incidents, but `incident_analysis` rows (and their
-  PDFs) accumulate forever once an incident rolls off the live feed —
-  with no history UI planned yet, that's pure clutter. Run History now
-  shows an Active/Non-active badge per row and an "Active incidents
-  only"/"Non-active only" filter, both driven by
-  `getActiveIncidentKeys()` — the same per-provider `activeIncidentIds`
-  Redis snapshot `check-status.ts` writes every 5 minutes, not anything
-  stored on the row itself. A "Clean up non-active" button (plus a
-  per-row Delete in the `⋯` menu) permanently deletes matching rows and
-  their Vercel Blob PDFs via the new `cleanup_inactive`/`delete_run`
-  actions. The bulk action fails closed: if any provider's Redis
-  snapshot is missing or more than 24h stale, it refuses rather than
-  risk treating "we don't know what's active" as "nothing is active" —
-  which would otherwise turn a Redis hiccup into a total wipe.
-- **Per-run retention cleanup (2026-10-01):** once the Past incidents
-  section shipped, "non-active" no longer meant "unreachable", and
-  per-incident rules kept too much: the dashboard only ever shows an
-  incident's *newest complete* run, so earlier runs are unreachable even
-  while the incident is linked. `api/_lib/runRetention.ts` now classifies
-  every run in one SQL query, shared by the **Link** column and the
-  **Clean up unused (N)** button so the two can't disagree:
-  - *Kept:* **Active**, **Past · until <date>** (in `incident_history`,
-    resolved within 90 days) and **Recent** (any run in the last 24h, a
-    safety net for a Recently resolved incident whose best-effort history
-    row was never written). Each applies to the newest complete run only.
-    **Superseded · grace** is a run replaced less than 2h ago; edge
-    caches can still serve its id, the history response for up to 1h.
-    **Failed · kept** is a failure with no successful run since, under
-    30 days old.
-  - *Removed by cleanup:* **Superseded**, **Failed · resolved** (retried
-    successfully, or older than 30 days) and **Unlinked**.
+- **Trigger:** `check-status.ts` hashes each active incident's `status + latestUpdate + affectedServices + affectedRegions` and stores the hash in the Redis snapshot. An incident triggers a brief when it's `new`, `content_changed` (same ID, different hash — catches a vendor editing text in place), or `resolved`.
+- **Never delays an email:** the trigger is a `waitUntil(fetch('/api/analysis/run'))` placed after `notifySubscribers()`, never awaited, so a slow or failed Bedrock call can't block a notification.
+- **Debounce:** default 30 minutes per incident. The Redis key `settings:analysis-debounce-minutes` (editable from admin) overrides the `ANALYSIS_DEBOUNCE_MINUTES` env default without a redeploy.
+- **Prompt:** `api/_lib/analysisPrompt.ts` includes a hand-curated resiliency reference table per service category, so the model cites reviewed guidance rather than inventing specifics from a thin vendor paragraph, and a hard rule keeps DR/failover advice conditional ("if a failover path exists, consider…").
+- **Model:** `BEDROCK_MODEL_ID` must be a cross-region inference profile ID — Claude models on Bedrock have no bare on-demand ID. Production uses `us.anthropic.claude-sonnet-4-6`; the code default (`us.anthropic.claude-sonnet-5`) isn't usable on this AWS account until Sonnet 5/5.5 access clears with AWS support (see `claude.md` §9, Marketplace IAM row).
+- **Auth to Bedrock:** Vercel OIDC → `sts:AssumeRoleWithWebIdentity` via `@vercel/oidc-aws-credentials-provider` — no static AWS keys. Role provisioned by `scripts/setup-bedrock-oidc.sh` (`api/_lib/bedrock.ts`).
+- **Storage:** one `incident_analysis` row per trigger, not per incident. A failed run (Bedrock error, malformed tool response, missing field) still writes a `status='failed'` row with the error, so a trigger is never lost silently.
+- **PDFs:** rendered once per row after the text is saved, as a best-effort step that can never affect the published brief (`api/_lib/pdf/`). Helvetica built-in fonts, Synepho-branded, uploaded to `incident-analysis/{provider}/{incident-slug}/{row-id}-{technical|executive}.pdf` with a 1-year immutable cache. A footer on every page carries the disclaimer and a "Powered by Synepho" line. The dashboard shows "Download PDF" only once a URL exists.
 
-  The cleanup still fails closed when a Redis status snapshot is missing
-  or stale (more than 24h old). It deletes in one statement, so
-  classification and deletion see the same table snapshot. A per-row Delete
-  on a linked run still works, but warns that the dashboard's AI Insight
-  panel may stop working. Nothing runs automatically; runs go on the next
-  manual cleanup. First dry run against production: 31 of 39 runs (46 PDFs)
-  removable, leaving one brief per incident plus one unresolved failure.
+### Structured briefs
 
-#### Structured briefs (2026-09-29)
+The `emit_incident_brief` tool schema asks the model for fixed fields
+(`src/utils/structuredBrief.ts`) rather than free-form markdown, which
+drifted in format from run to run:
 
-Briefs were originally two free-form markdown strings, and the model's
-formatting drifted run to run: urgency written as "(Highest Urgency)",
-"[Immediate]", emoji dots, or a table, depending on the run, plus a
-repeated incident header and pipe tables that neither renderer handled.
-The `emit_incident_brief` tool schema now asks for fixed fields instead
-(`src/utils/structuredBrief.ts`):
+- **Technical:** `whatWeKnow`, `nextActions[]`, `servicesToCheck[]`, `resiliencyQuestions[]`. Actions and question groups carry an urgency: `immediate` (red), `high` (orange), `medium` (amber), `monitor` (blue).
+- **Executive:** `bottomLine` (stance `act-now` / `decide-if-confirmed` / `awareness`), `whatsHappening`, `seriousness`, `customerImpact` (likelihood `yes` / `possible` / `unlikely`), and conditional `decisions[]`.
 
-- **Technical:** `whatWeKnow`, `nextActions[]`, `servicesToCheck[]`,
-  `resiliencyQuestions[]`. Actions and question groups carry an urgency
-  from a fixed scale: `immediate` (red), `high` (orange), `medium` (amber),
-  `monitor` (blue).
-- **Executive:** `bottomLine` (stance `act-now` / `decide-if-confirmed` /
-  `awareness`), `whatsHappening`, `seriousness`, `customerImpact`
-  (likelihood `yes` / `possible` / `unlikely`), and conditional `decisions[]`.
-
-`parseStructuredBriefs()` validates the output. It drops malformed list items,
-sorts lists most-urgent first, and fails the run (`status='failed'`) if a
-required field is missing. The JSON is stored in
-`incident_analysis.briefs_structured` (migration
-`scripts/db/007_incident_analysis_structured.sql`), and
-`StructuredBrief.tsx` and `BriefDocument.ts` render it with the same section order and
+`parseStructuredBriefs()` drops malformed list items, sorts lists most-urgent
+first, and fails the run if a required field is missing. The JSON is stored
+in `incident_analysis.briefs_structured`; `StructuredBrief.tsx` (dashboard)
+and `BriefDocument.ts` (PDF) render it with the same section order and
 colors. `technical_brief`/`executive_brief` still get a plain-text rendering
-(`technicalToText()`/`executiveToText()`) for anything reading those
-columns. Rows from before this change have no structured JSON and still
-render through the markdown path (`formatBriefText.tsx` / `renderBriefBody()`).
+for anything reading those columns, and rows from before structured briefs
+render through the older markdown path (`formatBriefText.tsx` /
+`renderBriefBody()`).
 
-Layout: on the dashboard, a panel at least 1100px wide (a container query on
-`.ai-insight-body`, not the viewport) splits each brief into two equal
-columns. Technical: what we know + next actions | services + resiliency
-questions. Executive: bottom line, what's happening, seriousness | customer
-impact + decisions. Narrower panels and phones get one column; the PDF is
-always one column. The status chip and the PDF's Status row are hidden when
-the provider reports `unknown` (Azure's feed carries no status).
+Layout: a panel at least 1100px wide (a container query on
+`.ai-insight-body`, not the viewport) splits each brief into two columns;
+narrower panels, phones, and the PDF use one column. The status chip is
+hidden when the provider reports `unknown` (Azure's feed has no status).
 
-### Admin
+### Reading a brief back
 
-- **Auth:** Sign in with Vercel (OAuth, PKCE). Any Vercel user can complete
-  the OAuth flow — the actual access boundary is the app's own check: the
-  callback decodes the `id_token` and compares its `email` claim against a
-  single hardcoded `ADMIN_EMAIL`, bouncing anyone else with `?error=forbidden`.
-  A separate HMAC-signed session cookie (7-day expiry) is then issued,
-  decoupled from Vercel's own 1-hour access-token lifetime.
-- **List/search/filter:** `GET /api/admin/subscribers` — `status`,
-  `provider`, and `q` (name/email substring) query params.
-- **CSV export:** same endpoint, `?format=csv`, respects active filters.
-- **Manual actions:** `PATCH /api/admin/subscribers/[id]` —
-  `resend_confirmation` / `force_unsubscribe`; `DELETE` for a hard delete.
-- **Ad hoc test email:** `/api/admin/test-email` — preview any notification
-  template against a real confirmed subscriber's address, from the admin UI.
+```mermaid
+sequenceDiagram
+    actor User
+    participant Panel as AI Insight panel
+    participant Edge as Vercel edge cache
+    participant API as /api/analysis/latest
+    participant DB as Neon Postgres
 
-### Backend pieces
+    User->>Panel: Expand AI Insight (first time)
+    Panel->>Edge: GET ?provider=&incidentId=
+    Edge->>API: (cache miss, 5-min TTL)
+    API->>DB: Latest complete row id
+    API-->>Panel: { id, createdAt }
+    Panel->>Edge: GET ?id={row id}
+    Note over Edge: Immutable, cached 1 year once finalized —<br/>later views never reach Postgres
+    Edge-->>Panel: Brief JSON + PDF links
+```
 
-- **Neon Postgres** (Vercel Marketplace) — `subscribers` and `notification_log`
-- **Upstash Redis** (Vercel Marketplace) — per-provider status snapshot cache for change detection
-- **Resend** — transactional + outage/resolution email, from `alerts.synepho.com`
-- **Sign in with Vercel** — admin auth, restricted to a single hardcoded `ADMIN_EMAIL`
-- **AWS EventBridge** (Rule + Connection + API Destination) — triggers `/api/cron/check-status` every 5 minutes; provisioned via `scripts/setup-eventbridge-cron.sh`
-- **AWS Bedrock** — Claude Sonnet 4.6 (`us.anthropic.claude-sonnet-4-6`, a cross-region inference profile — Claude models have no bare on-demand ID on Bedrock), via Vercel OIDC federation, no static AWS keys — powers the Incident Briefing Engine's `/api/analysis/run`; IAM role provisioned via `scripts/setup-bedrock-oidc.sh`. `BEDROCK_MODEL_ID` env var overrides the code default of `us.anthropic.claude-sonnet-5`, which isn't usable on this AWS account yet (Sonnet 5/5.5 access is pending with AWS support)
-- **Vercel Blob** — stores the branded PDF briefs from Phase 3, public access, 1-year immutable cache
-- **Vercel Firewall** — rate limiting on the sign-up endpoint (5 req/60s/IP)
-- **AWS Route 53** (`synepho.com` zone) — pre-existing DNS, also hosts Resend's domain-verification records (MX/SPF/DKIM) and a `p=none` DMARC record for `alerts.synepho.com`, both provisioned via `scripts/setup-resend-dns.sh`
+- Nothing is fetched until someone expands the panel.
+- The dashboard always shows only the **latest** complete brief for an incident — an older version can contradict the incident's current status. Earlier rows stay in Postgres for admin history and retry.
+- The pointer can't change faster than the debounce interval, so a 5-minute cache is safe. Content for a row id never changes once finalized (both PDF URLs present, or the row is 5 minutes old), so it's cached as immutable. Past-incident cards already carry their brief id and skip the pointer request.
+- Why it's split this way, and why it's one function rather than two: see [CHANGELOG.md → Pointer/content split](./CHANGELOG.md#pointercontent-split-2026-09-02).
 
-| Piece | Status |
+---
+
+## Past incidents (90-day history)
+
+The dashboard shows **Recently resolved** (last 24h, straight from the
+provider feeds) and a collapsed **Past incidents · last 90 days** section
+below it. Provider feeds keep almost no history — GCP's `incidents.json`
+holds a handful of incidents, AWS's `all.rss` a few dozen updates — so the
+app records its own.
+
+- **Write:** `check-status.ts` upserts one `incident_history` row per resolved incident (`api/_lib/incidentHistory.ts`), merging the last active snapshot (real start time and severity) with the provider's own resolved entry when there is one (real end time and final text). Renamed incidents are skipped. It only runs on ticks where something resolved, so Neon isn't woken every 5 minutes.
+- **Read:** `GET /api/incidents/history?cursor=` returns incidents resolved 24h–90d ago, 50 per page, each with its latest complete AI brief id. Only called when the section is expanded, and edge-cached for 1h.
+- **Retention:** `cleanup.ts` deletes rows older than `HISTORY_RETENTION_DAYS` (90). Linked `incident_analysis` rows are pruned separately (see [AI run history and retention](#ai-run-history-and-retention)).
+- **Backfill:** migration 008 seeded the table from existing `resolved` rows in `incident_analysis`.
+- **Cost:** under 10 MB at 90 days (Neon Free: 0.5 GB); writes ride along with the resolved-brief run that already wakes Neon.
+- **Known gap:** an incident that opens and resolves between two 5-minute ticks is never seen as active, so it isn't recorded.
+
+---
+
+## Admin
+
+`/admin` is gated behind Sign in with Vercel.
+
+- **Auth:** any Vercel user can complete the OAuth flow; the real access check is the callback comparing the `id_token`'s `email` claim to `ADMIN_EMAIL`, bouncing anyone else with `?error=forbidden`. A separate HMAC-signed session cookie (7-day expiry) is then issued, independent of Vercel's 1-hour access token.
+- **Subscribers:** `GET /api/admin/subscribers` with `status`, `provider`, and `q` (name/email substring) filters; `?format=csv` exports with the same filters. `PATCH /api/admin/subscribers/:id` supports `resend_confirmation` / `force_unsubscribe`; `DELETE` hard-deletes.
+- **Test email:** `/api/admin/test-email` sends any notification template to a real confirmed subscriber's address.
+- **AI settings:** the debounce interval and a per-provider kill switch (`settings:analysis-disabled-providers` in Redis, read once per cron tick, fails open). The kill switch only stops AI briefs — outage and resolution emails still go out.
+
+### AI run history and retention
+
+Run history (`RunHistoryPanel.tsx`) lists the last 200 `incident_analysis`
+rows, including failures. Any row can be re-run — not just failed ones, e.g.
+to pick up a prompt change — which always inserts a new row through the
+same pipeline with `bypassDebounce: true`. PDF links go through
+`/api/admin/analysis-admin?resource=pdf&kind=…&id=…`, which checks the
+stored URL server-side before redirecting, so database values never reach
+an `href`.
+
+The dashboard only ever shows an incident's newest complete run, so older
+runs pile up unreachable. `api/_lib/runRetention.ts` labels every run in one
+SQL query, shared by the **Link** column and the **Clean up unused (N)**
+button so the two can't disagree:
+
+| Label | Meaning | Cleanup |
+| --- | --- | --- |
+| **Active** | Newest complete run of a currently active incident | Kept |
+| **Past · until &lt;date&gt;** | Newest complete run of an incident in `incident_history` (resolved within 90 days) | Kept |
+| **Recent** | Newest complete run from the last 24h (safety net for a resolved incident whose history row was never written) | Kept |
+| **Superseded · grace** | Replaced less than 2h ago — edge caches may still serve its id | Kept |
+| **Failed · kept** | A failure with no successful run since, under 30 days old | Kept |
+| **Superseded** | Replaced by a newer complete run | Removed |
+| **Failed · resolved** | Retried successfully, or older than 30 days | Removed |
+| **Unlinked** | Not reachable from the dashboard | Removed |
+
+Cleanup is manual only. It deletes rows and their Blob PDFs in one
+statement, so classification and deletion see the same snapshot, and it
+refuses to run if any provider's Redis status snapshot is missing or more
+than 24h old. A per-row Delete still works on a linked run but warns that
+the dashboard's AI Insight panel may stop working.
+
+---
+
+## Data model
+
+```mermaid
+erDiagram
+    subscribers ||--o{ notification_log : "receives"
+    incident_history }o..o{ incident_analysis : "provider + incident_id"
+
+    subscribers {
+        uuid id PK
+        text name
+        text email UK
+        text_array providers "e.g. {aws,gcp} or {all}"
+        text_array pending_providers "staged change awaiting confirmation"
+        text status "pending_confirmation | confirmed | unsubscribed"
+        text confirm_token
+        text manage_token UK
+        timestamptz created_at
+    }
+    notification_log {
+        uuid id PK
+        uuid subscriber_id FK
+        text provider
+        text channel
+        text event_type "new_incident | incident_resolved"
+        boolean success
+        timestamptz sent_at
+    }
+    incident_analysis {
+        uuid id PK
+        text provider
+        text incident_id
+        text trigger_event "new | content_changed | resolved"
+        jsonb incident_snapshot
+        jsonb briefs_structured
+        text technical_brief
+        text executive_brief
+        text model
+        text pdf_technical_url
+        text pdf_executive_url
+        text status "complete | failed"
+        timestamptz created_at
+    }
+    incident_history {
+        text provider PK
+        text incident_id PK
+        text title
+        timestamptz start_time
+        timestamptz resolved_at
+        jsonb snapshot
+    }
+```
+
+The full DDL is in `scripts/db/*.sql`. A few notes:
+
+- **One person, one row.** `pending_providers` holds a staged edit awaiting re-confirmation. `"all"` is stored as a literal sentinel so future providers are included automatically.
+- **`incident_analysis` has one row per trigger**, indexed on `(provider, incident_id, created_at DESC)` for the debounce check and latest-brief lookup.
+- **`provider_status_snapshot`** (migrations 003/005) is unused and kept only as a historical record — snapshots moved to Redis (see below).
+
+**Redis keys** (Upstash):
+
+| Key | Purpose |
 | --- | --- |
-| Database — Neon Postgres | Live |
-| Status snapshot cache — Upstash Redis | Live |
-| Email — Resend | Live, domain verified |
-| SMS — Twilio | Not built (deferred, Twilio A2P 10DLC registration) |
-| Bot protection — honeypot + per-email/daily sign-up limits (BotID removed) | Live |
-| Admin auth — Sign in with Vercel + custom session | Live |
-| Cron (primary) — AWS EventBridge | Live |
-| Cron (fallback) — Vercel native daily cron | Live |
-| Rate limiting — Vercel Firewall | Live |
-| Incident Briefing Engine — AWS Bedrock + Vercel Blob | Phases 1-4, complete |
+| `snapshot:<provider>` | Last-seen incident IDs, titles, and content hashes for change detection |
+| `resolved:azure` | Azure incidents that vanished from the feed, shown as resolved for 24h |
+| `settings:analysis-debounce-minutes` | Live AI debounce override |
+| `settings:analysis-disabled-providers` | Per-provider AI kill switch |
+| sign-up limit counters | Per-email (hashed) and per-day sign-up counts |
+
+Snapshots live in Redis rather than Postgres because a query every 5
+minutes kept Neon's compute from ever autosuspending; Redis bills per
+request instead. See [CHANGELOG.md → Status snapshots moved to Redis](./CHANGELOG.md#status-snapshots-moved-from-postgres-to-redis).
+
+---
+
+## Infrastructure and configuration
+
+| Piece | Role | Status |
+| --- | --- | --- |
+| Vercel | SPA hosting, functions, daily cron fallback, Blob | Live |
+| Neon Postgres (Marketplace) | Subscribers, notification log, AI briefs, incident history | Live |
+| Upstash Redis (Marketplace) | Status snapshots, settings, sign-up limits | Live |
+| Resend | Confirmation, welcome, outage, and resolution email from `alerts.synepho.com` | Live, domain verified |
+| AWS EventBridge (Rule + Connection + API Destination) | Calls `/api/cron/check-status` every 5 minutes — `scripts/setup-eventbridge-cron.sh` | Live |
+| AWS Bedrock | AI briefs via OIDC federation — `scripts/setup-bedrock-oidc.sh` | Live |
+| Vercel Blob | PDF briefs, public, 1-year immutable cache | Live |
+| Sign in with Vercel | Admin auth, restricted to `ADMIN_EMAIL` | Live |
+| Bot protection | Honeypot + per-email/daily sign-up limits (BotID removed) | Live |
+| Vercel Firewall | Rate limit on `/api/subscribe` (5 req/60s/IP) | Live |
+| AWS Route 53 (`synepho.com`) | DNS, including Resend's MX/SPF/DKIM and a `p=none` DMARC record for `alerts.synepho.com` — `scripts/setup-resend-dns.sh` | Live |
+| SMS (Twilio) | — | Not built (deferred, A2P 10DLC registration) |
 
 Everything above runs on a free tier.
 
-**Environment variables** (see `.env.local`, gitignored — pull with `vercel env pull`):
-`DATABASE_URL`, `RESEND_API_KEY`, `RESEND_EMAIL_DOMAIN`, `APP_BASE_URL`, `CRON_SECRET`, `VERCEL_OAUTH_CLIENT_ID`, `VERCEL_OAUTH_CLIENT_SECRET`, `SESSION_SECRET`, `ADMIN_EMAIL`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`.
+### Environment variables
 
-**Incident Briefing Engine env vars** (see `scripts/setup-bedrock-oidc.sh`'s
-output for `AWS_ROLE_ARN`): `AWS_ROLE_ARN`, `AWS_REGION` (pin explicitly to
-`us-east-1` — Vercel can auto-inject a value that drifts under multi-region
-routing), `BEDROCK_MODEL_ID` (optional, defaults to
-`us.anthropic.claude-sonnet-5` in code; currently overridden to
-`us.anthropic.claude-sonnet-4-6` in production — see above),
-`ANALYSIS_DEBOUNCE_MINUTES` (optional, defaults to `30`; the live Redis key
-`settings:analysis-debounce-minutes` overrides it without a redeploy),
-`BLOB_READ_WRITE_TOKEN` (auto-injected once a Vercel Blob store is
-connected to the project — see `vercel blob create-store`).
+The dashboard itself needs none — all four status sources are public. The
+backend's variables are already set on the Vercel project (Production,
+Preview, Development); pull them with `vercel env pull .env.local`.
 
-**Database migrations** live in `scripts/db/*.sql`, applied via:
+| Variable | Used by |
+| --- | --- |
+| `DATABASE_URL` | Neon Postgres |
+| `KV_REST_API_URL`, `KV_REST_API_TOKEN` | Upstash Redis |
+| `RESEND_API_KEY`, `RESEND_EMAIL_DOMAIN` | Email |
+| `APP_BASE_URL` | Links in emails |
+| `CRON_SECRET` | EventBridge / Vercel cron and `/api/analysis/run` auth |
+| `VERCEL_OAUTH_CLIENT_ID`, `VERCEL_OAUTH_CLIENT_SECRET`, `SESSION_SECRET`, `ADMIN_EMAIL` | Admin auth |
+| `AWS_ROLE_ARN` | Bedrock OIDC role (printed by `scripts/setup-bedrock-oidc.sh`) |
+| `AWS_REGION` | Pin to `us-east-1` — Vercel can inject a value that drifts under multi-region routing |
+| `BEDROCK_MODEL_ID` | Optional; code default `us.anthropic.claude-sonnet-5`, production override `us.anthropic.claude-sonnet-4-6` |
+| `ANALYSIS_DEBOUNCE_MINUTES` | Optional, default `30`; the Redis setting overrides it |
+| `BLOB_READ_WRITE_TOKEN` | Auto-injected once a Vercel Blob store is connected |
+
+### Database migrations
+
+Migrations live in `scripts/db/*.sql` and run in filename order:
+
 ```bash
 vercel env pull .env.local
 set -a && source .env.local && set +a
 node scripts/db-migrate.mjs
 ```
-Redis needs no migration step — it's just a key-value cache, provisioned once via the Vercel Marketplace integration.
 
-### Past incidents (90-day history)
-
-The dashboard keeps **Recently resolved** (last 24h, straight from the
-provider feeds) and adds a collapsed **Past incidents · last 90 days**
-section below it. Provider feeds don't keep history — GCP's `incidents.json`
-holds only a handful of incidents, AWS's `all.rss` a few dozen updates — so
-the app records its own:
-
-- **Write:** `check-status.ts` inserts one `incident_history` row per
-  resolved incident (`api/_lib/incidentHistory.ts`, migration 008). The row
-  merges the last active snapshot (real start time and severity) with the
-  provider's own resolved entry when there is one (real end time and final
-  text). It's an upsert, it skips renamed incidents, and it only runs on a
-  tick where something resolved, so Neon isn't woken every 5 minutes.
-- **Read:** `GET /api/incidents/history?cursor=` returns incidents resolved
-  24h–90d ago, 50 per page, each with its latest complete AI brief id. It is
-  only called when someone expands the section, and it's edge-cached for 1h
-  (`s-maxage=3600, stale-while-revalidate=86400`), so most views never touch
-  Postgres. Because each item carries its brief id, its AI Insight panel
-  fetches the immutable brief content directly instead of making a pointer
-  request per card. Incidents without a brief show no AI panel.
-- **Retention:** `cleanup.ts` (daily) deletes rows older than
-  `HISTORY_RETENTION_DAYS` (90). `incident_analysis` is not pruned, so the
-  linked briefs outlive their history rows.
-- **Backfill:** migration 008 seeds the table once from existing `resolved`
-  rows in `incident_analysis`, the only record of incidents before launch.
-- **Cost:** under 10 MB at 90 days (Neon Free: 0.5 GB). Writes ride along
-  with the resolved AI brief run that already wakes Neon, so the expected
-  compute is a few CU-hr/month at most.
-- **Known gap:** an incident that opens and resolves between two 5-minute
-  ticks is never seen as active, so it isn't recorded.
-
-### Known constraints
-
-- **EventBridge's target endpoint is a literal value, not driven by
-  `APP_BASE_URL`.** It lives in the live AWS API Destination resource and in
-  `scripts/setup-eventbridge-cron.sh`'s `TARGET_ENDPOINT` constant, outside
-  the app's own deploy. Any future domain change must re-run that script —
-  it self-heals drift on the endpoint and the rule description instead of
-  skipping when the resource already exists, but only if it's actually run.
-- **Bracket-syntax dynamic routes (`api/admin/subscribers/[id].ts`) aren't
-  auto-wired outside Next.js.** A Vite project needs an explicit `vercel.json`
-  rewrite (`/api/admin/subscribers/:id` → `/api/admin/subscribers/[id]`) —
-  already in place, but worth knowing before adding another bracket route.
-- **Diffing-and-dispatching endpoints aren't safe read-only healthchecks.**
-  `check-status` both detects state changes *and* sends real emails on a
-  detected change in the same request — curling it manually to "just check"
-  can trigger live notifications if something genuinely changed since the
-  last tick.
-- **AWS doesn't always change an incident's `<title>` on its final update.**
-  Found 2026-09-22: an EC2 `us-east-1` incident's title stayed "Service
-  impact: Increased Error Rates" across its entire lifecycle (investigating
-  → confirmed → resolved) — the resolution was stated only in the
-  `<description>` body ("The issue has been resolved and the service is
-  operating normally."). `awsFetcher.ts`'s `isResolved()` previously checked
-  only the title, so this incident stayed stuck as "active" in the Redis
-  snapshot forever, and its `new_incident` email went out but its
-  `incident_resolved` email never did. `isResolved()` now checks the
-  description text too.
+Redis needs no migration — it's provisioned once through the Vercel
+Marketplace integration.
 
 ---
 
-## Project Structure
+## Project structure
 
 ```
 csp-status-hub/
-├── api/                           Vercel serverless functions
-│   ├── status/
-│   │   └── azure.ts               Azure Atom feed proxy (fetch, parse, normalize)
-│   ├── subscribe/
-│   │   ├── index.ts               POST — create/stage a subscription
-│   │   ├── confirm.ts             GET  — finalize signup or a staged update
-│   │   ├── manage.ts              GET/POST — view/edit providers by token
-│   │   └── unsubscribe.ts         GET  — one-click, idempotent opt-out
-│   ├── auth/
-│   │   ├── authorize.ts           GET  — start Sign in with Vercel (PKCE)
-│   │   ├── callback.ts            GET  — token exchange, email allowlist check, session cookie
-│   │   └── signout.ts             POST — clear session cookie
+├── api/                              Vercel serverless functions
+│   ├── status/azure.ts               Azure feed proxy
+│   ├── subscribe/[action].ts         Sign-up, confirm, manage, unsubscribe
+│   ├── auth/[action].ts              Sign in with Vercel (authorize, callback, signout)
 │   ├── admin/
-│   │   ├── subscribers/
-│   │   │   ├── index.ts           GET  — list/filter/CSV export + summary counts
-│   │   │   └── [id].ts            PATCH/DELETE — resend/unsubscribe/delete
-│   │   └── test-email.ts          POST — send an ad hoc template preview to a confirmed subscriber
+│   │   ├── subscribers/[id].ts       Subscriber list/CSV + per-subscriber actions
+│   │   ├── test-email.ts             Ad hoc template preview
+│   │   └── analysis-admin.ts         AI run history, retry, cleanup, settings, PDF redirect
+│   ├── analysis/
+│   │   ├── run.ts                    Generate a brief (CRON_SECRET-gated)
+│   │   └── latest.ts                 Public brief pointer / immutable content
+│   ├── incidents/history.ts          Past incidents (24h–90d)
 │   ├── cron/
-│   │   ├── check-status.ts        Status diffing + notification dispatch (EventBridge + Vercel cron)
-│   │   └── cleanup.ts             Daily retention purge (unconfirmed 7d, unsubscribed 90d, incident history 90d)
-│   ├── incidents/
-│   │   └── history.ts             GET  — past incidents (24h–90d) with AI brief ids, edge-cached 1h
+│   │   ├── check-status.ts           Change detection, emails, AI + history triggers
+│   │   └── cleanup.ts                Daily retention purge
 │   └── _lib/
-│       ├── types.ts               Re-exports shared types for API functions
-│       ├── db.ts                  Neon client
-│       ├── redis.ts               Upstash Redis client + status-snapshot helpers
-│       ├── incidentHistory.ts     Resolved-incident history writes + 90-day retention constant
-│       ├── email.ts               Resend templates (confirm, update-confirm, welcome, outage, resolution)
-│       ├── azureFetcher.ts        Azure fetch/parse logic shared by api/status/azure.ts and the cron job
-│       ├── auth.ts                requireAdmin() session gate
-│       ├── session.ts             HMAC-signed admin session cookie (sign/verify)
-│       └── cookies.ts             Cookie header parsing
+│       ├── analysisPipeline.ts       Bedrock → Postgres → PDF pipeline (shared by run + admin retry)
+│       ├── analysisPrompt.ts         System prompt, user message, tool schema
+│       ├── analysisSettings.ts       Live Redis settings (debounce, kill switch)
+│       ├── bedrock.ts                Bedrock client via Vercel OIDC
+│       ├── pdf/                      BriefDocument, render + Blob upload, slug
+│       ├── runRetention.ts           Per-run labels + cleanup query
+│       ├── incidentHistory.ts        History writes + 90-day retention constant
+│       ├── incidentRenames.ts        Renamed-incident matching
+│       ├── resolvedIncidents.ts      Azure resolved-incident cache
+│       ├── signupLimits.ts           Honeypot + per-email/daily limits
+│       ├── azureFetcher.ts           Azure fetch/parse (proxy + cron)
+│       ├── email.ts                  Resend templates
+│       ├── db.ts · redis.ts          Neon and Upstash clients
+│       ├── auth.ts · session.ts · cookies.ts   Admin session gate
+│       └── types.ts                  Re-exports shared types
 │
 ├── src/
-│   ├── App.tsx                    Root layout, dynamic title, Analytics, SpeedInsights
-│   ├── main.tsx                   React entry point + path-based routing (/, /manage, /admin)
+│   ├── main.tsx                      Entry point + path routing (/, /manage, /admin)
+│   ├── App.tsx                       Root layout, title, analytics, version banner
 │   ├── components/
-│   │   ├── StatusHeader.tsx       Header: title, live dot, refresh, bell (subscribe), Settings menu
-│   │   ├── SettingsMenu.tsx       Appearance (light/dark/system), About, Buy Me a Coffee
-│   │   ├── AboutModal.tsx         About dialog: description, creator credit, version/build info
-│   │   ├── ProviderGrid.tsx       4-column responsive grid; renders a skeleton slot for any provider still loading
-│   │   ├── ProviderCardSkeleton.tsx  Single-card loading placeholder, shown per-slot until that provider's fetch resolves
-│   │   ├── ProviderPanel.tsx      Per-provider expandable card + service list
-│   │   ├── RegionTable.tsx        Region → top-10 service status rows (all four providers)
-│   │   ├── FlatServiceList.tsx    Flat top-10 list for the no-active-incident state (no regions to show yet)
-│   │   ├── IncidentList.tsx       Active + recently resolved incidents, sorted by recency
-│   │   ├── IncidentCard.tsx       Per-incident detail row with severity and link
-│   │   ├── StatusBadge.tsx        Color-coded status pill
-│   │   ├── ServiceRow.tsx         Single service row in region view
-│   │   ├── ErrorState.tsx         Per-provider fetch failure fallback
-│   │   ├── SubscribeModal.tsx     Sign-up form (name, email, provider checkboxes)
-│   │   ├── ManagePage.tsx         /manage — edit providers, confirm-before-unsubscribe
-│   │   └── AdminPage.tsx          /admin — subscriber list, filters, CSV export, actions, test-email tool
-│   ├── fetchers/
-│   │   ├── awsFetcher.ts          RSS parse + GUID parsing + deduplication
-│   │   ├── azureFetcher.ts        Calls /api/status/azure proxy, normalizes response
-│   │   ├── gcpFetcher.ts          incidents.json → normalized schema
-│   │   └── ociFetcher.ts          status.json + incident-summary.rss → normalized schema
-│   ├── hooks/
-│   │   ├── useStatusPolling.ts    60s polling, cooldown, offline detection, 60s cache; tracks each provider independently so one slow/failed fetch doesn't block the others
-│   │   ├── useTheme.ts            Light/dark/system appearance mode, localStorage persistence
-│   │   └── useVersionCheck.ts     Polls dist/version.json vs. the running bundle's build date; flags a stale long-open tab after a new deploy
-│   ├── types/
-│   │   └── status.ts              Unified schema (StatusLevel, ProviderStatus, etc.)
-│   └── utils/
-│       ├── awsServices.ts         AWS top-10 canonical service list
-│       ├── azureServices.ts       Azure top-10 canonical service list + keyword matchers
-│       ├── gcpServices.ts         GCP top-10 canonical service list
-│       ├── ociServices.ts         OCI top-10 canonical service list + keyword matchers
-│       ├── statusHelpers.ts       Status → color/label/dot mapping
-│       ├── formatters.ts          Relative/absolute time formatting
-│       └── withTimeout.ts         Races a fetch against a timeout (12s) so one hung provider can't stall the page
+│   │   ├── StatusHeader.tsx          Title, live dot, refresh, Get alerts, Settings
+│   │   ├── ProviderGrid.tsx          4-column grid with per-provider skeletons
+│   │   ├── ProviderPanel.tsx         Expandable provider card
+│   │   ├── RegionTable.tsx           Region → top-10 service rows
+│   │   ├── FlatServiceList.tsx       Top-10 list when no incident is active
+│   │   ├── IncidentList.tsx          Active + recently resolved incidents
+│   │   ├── IncidentCard.tsx          Incident row with link + AI Insight
+│   │   ├── IncidentBriefPanel.tsx    AI Insight panel (Technical/Executive, PDF)
+│   │   ├── StructuredBrief.tsx       Structured brief renderer
+│   │   ├── PastIncidents.tsx         90-day history section
+│   │   ├── SubscribeModal.tsx        Sign-up form
+│   │   ├── ManagePage.tsx            /manage
+│   │   ├── AdminPage.tsx             /admin
+│   │   ├── admin/                    RunHistoryPanel, AnalysisSettingsPanel
+│   │   └── …                         StatusBadge, ServiceRow, ErrorState, SettingsMenu, AboutModal, …
+│   ├── fetchers/                     aws, azure, oci, gcp, analysis, history
+│   ├── hooks/                        useStatusPolling, useIncidentBrief, useIncidentDeepLink, useTheme, useVersionCheck
+│   ├── types/status.ts               Unified schema
+│   └── utils/                        Per-provider service lists, structuredBrief, formatters, withTimeout, analytics, …
 │
 ├── scripts/
-│   ├── db/*.sql                   Migrations, applied in filename order
-│   ├── db-migrate.mjs             Idempotent migration runner
-│   ├── setup-resend-dns.sh        Adds Resend DNS records to the Route 53 zone
-│   ├── setup-eventbridge-cron.sh  Provisions the AWS EventBridge cron trigger
-│   ├── deploy.sh                  Deploy wrapper (opens the deployed URL on completion)
-│   └── verify-gcp-services.mjs    Re-validates GCP productIds against the live catalog
-│
-├── public/
-│   └── favicon.svg                Cloud icon with green status dot
-│
-├── vercel.json                    Rewrites, function config, cron schedules
-├── vite.config.ts                 Injects __APP_VERSION__/__BUILD_DATE__ from package.json + build time; also emits dist/version.json (same build date) for useVersionCheck.ts
-├── tailwind.config.ts
-├── tsconfig.json
-├── claude.md                      Original architecture handoff and data source research
+│   ├── db/*.sql                      Migrations (001–008)
+│   ├── db-migrate.mjs                Migration runner
+│   ├── setup-eventbridge-cron.sh     EventBridge cron trigger
+│   ├── setup-bedrock-oidc.sh         Bedrock OIDC provider + role
+│   ├── setup-resend-dns.sh           Resend DNS records in Route 53
+│   ├── deploy.sh                     Deploy wrapper
+│   └── verify-gcp-services.mjs       Re-validate GCP productIds
 │
 ├── docs/
-│   ├── ENHANCEMENTS.md            Backlog of dashboard optimizations and improvements
-│   ├── AWS-MIGRATION-ASSESSMENT.md  Assessment for a potential move off Vercel to AWS
-│   ├── CUSTOM-DOMAIN-PLAN.md      Plan to move the app to a synepho.com subdomain
-│   └── PROMPT-REFINEMENT-GUIDE.md  How the AI Insight prompt/pipeline works, how to refine it, and a plan for an admin UI to customize it live
+│   ├── ENHANCEMENTS.md               Backlog
+│   ├── PROMPT-REFINEMENT-GUIDE.md    AI prompt walkthrough
+│   ├── CUSTOM-DOMAIN-PLAN.md         Move to cloudstatus.synepho.com
+│   └── AWS-MIGRATION-ASSESSMENT.md   Assessment of moving off Vercel
+│
+├── claude.md                         Original architecture handoff + data source research
+├── CHANGELOG.md                      Shipped work and design history
+├── vercel.json                       Redirects, rewrites, function config, crons
+└── vite.config.ts                    Build constants + dist/version.json
 ```
 
 ---
 
-## Local Development
+## Local development
 
 **Prerequisites:** Node.js 20+, npm
 
 ```bash
-# Install dependencies
 npm install
-
-# Start dev server (http://localhost:5173)
-npm run dev
-
-# Type-check + build
-npm run build
-
-# Lint
+npm run dev          # Vite frontend only, http://localhost:5173
+npm run build        # type-check + build
 npm run lint
-
-# Verify GCP's canonical service IDs still resolve against the live product catalog
-npm run verify:gcp
+npm run verify:gcp   # check GCP service IDs against the live product catalog
 ```
 
-The Azure proxy (`/api/status/azure`) and everything under **Alerts & Admin**
-above are Vercel Functions. For full local testing (Azure data, sign-up,
-manage, admin, cron), use the Vercel CLI instead of plain `npm run dev`:
+`npm run dev` runs only the frontend — Azure and everything under `/api/*`
+will fail. For the full app (Azure data, sign-up, manage, admin, cron), use
+the Vercel CLI:
 
 ```bash
-vercel env pull .env.local   # first time only, or after env vars change
-vercel dev --listen 3002     # any free port — 3000 is commonly reserved for a separate dev server
+vercel env pull .env.local   # first time, or after env vars change
+vercel dev --listen 3002     # any free port
 ```
 
-Plain `npm run dev` runs the Vite frontend only — Azure and everything
-under `/api/*` will error or 404 since the function runtime isn't running.
-
-Sign-up limits use the same Upstash Redis as production when run under
-`vercel dev`, so repeated local test sign-ups count against an address's
-3-per-day limit and the 30-per-day total.
+Under `vercel dev` the app uses the production Upstash Redis, so local test
+sign-ups count against an address's 3-per-day limit and the 30-per-day
+total. Calling `check-status` locally can send real emails — see
+[Known constraints](#known-constraints).
 
 ---
 
 ## Deployment
 
-```bash
-# Deploy to production (lint → build → deploy → open browser)
-npm run deploy
+Pushing to `main` deploys to production automatically through Vercel's Git
+integration. Check the live build with:
 
-# Deploy to preview URL (lint → build → deploy → open browser)
-npm run deploy:preview
+```bash
+curl https://cloudstatus.synepho.com/version.json
 ```
 
-Both scripts run lint and build first, then open the deployed URL automatically in your browser on completion.
+Manual deploys are also available (lint → build → deploy → open browser):
 
-**First-time setup:**
 ```bash
-vercel login   # authenticate
-vercel link    # link this directory to the Vercel project
+npm run deploy           # production
+npm run deploy:preview   # preview URL
 ```
 
-Vercel auto-detects the Vite framework and Node.js serverless functions in `/api`. No additional configuration required beyond `vercel.json`.
-
-**Environment variables:** the dashboard itself needs none — all four
-status data sources are public and unauthenticated. Alerts & Admin needs
-the variables listed above; they're already provisioned on the Vercel
-project (Production, Preview, and Development), so a fresh clone just
-needs `vercel env pull .env.local` rather than sourcing new values.
+First-time CLI setup: `vercel login`, then `vercel link`.
 
 **Cron:** `/api/cron/check-status` (every 5 min) is triggered by AWS
-EventBridge, provisioned separately via `scripts/setup-eventbridge-cron.sh`
-— it isn't part of `vercel deploy` and doesn't need re-running on every
-deploy, only if the cron infrastructure itself needs to change (including
-after a domain change — see **Known constraints** above).
-`/api/cron/cleanup` (daily) uses Vercel's own native cron, which *is*
-covered by `vercel.json` and needs no separate provisioning step.
-
----
-
-## Refresh and Caching Behavior
-
-| Behavior                    | Detail                                                          |
-| ----------------------------- | ------------------------------------------------------------------ |
-| Auto-refresh interval       | 60 seconds                                                      |
-| Manual refresh cooldown     | 60 seconds (starts after fetch completes)                       |
-| Client cache (localStorage) | 60s TTL — hydrated on page load, matches poll interval          |
-| Azure CDN cache             | `s-maxage=300, stale-while-revalidate=60` on Vercel Function    |
-| AI Insight brief cache      | Pointer (`/api/analysis/latest?provider=&incidentId=`) `s-maxage=300`; content (`/api/analysis/latest?id=`) `s-maxage=31536000, immutable` once finalized — see **Pointer/content split** in [Alerts & Admin](#alerts--admin) |
-| Alerts change-detection cadence | 5 minutes (AWS EventBridge → `/api/cron/check-status`)      |
-| Offline behavior            | Auto-refresh pauses; banner shown; cached data displayed        |
-| Stale data indicator        | Yellow banner if last fetch failed but cached data is available |
-| Stale bundle (app itself) indicator | Client polls `dist/version.json` every 5 min (+ immediate on tab-focus) against the running bundle's build timestamp; banner + Reload button on mismatch — see `useVersionCheck.ts` |
+EventBridge, provisioned separately with `scripts/setup-eventbridge-cron.sh`.
+It isn't part of a deploy and only needs re-running if the cron setup
+changes — including after a domain change. `/api/cron/cleanup` (daily) uses
+Vercel's native cron from `vercel.json`.
 
 ---
 
 ## Observability
 
-| Feature        | Status  | Notes                                          |
-| --------------- | --------- | -------------------------------------------------- |
-| Web Analytics  | ✅ Live | Vercel Web Analytics — enable in dashboard     |
-| Speed Insights | ✅ Live | Core Web Vitals tracking — enable in dashboard |
-| Function logs  | ✅ Live | `vercel logs <url> --follow` or Logs tab       |
-| Notification log | ✅ Live (data only) | `notification_log` table records every send attempt; no dedicated admin UI reads it yet |
-| Sign-up funnel | ✅ Live | GA4 events (production host only): `subscribe_open` {source, provider} when the form opens, and `subscribe_success` {providers, source} on submit. `source` is `header`, `all_clear`, `incident_card` or `shared_link`, which shows which entry points produce sign-ups |
+| Feature | Status | Notes |
+| --- | --- | --- |
+| Web Analytics | ✅ Live | Vercel Web Analytics |
+| Speed Insights | ✅ Live | Core Web Vitals |
+| Function logs | ✅ Live | `vercel logs <url> --follow` or the Logs tab |
+| Notification log | ✅ Live (data only) | `notification_log` records every send attempt; no admin UI reads it yet |
+| Sign-up funnel | ✅ Live | GA4 events (production host only): `subscribe_open` {source, provider} when the form opens, and `subscribe_success` {providers, source} on submit. `source` is `header`, `all_clear`, `incident_card` or `shared_link` |
+
+---
+
+## Known constraints
+
+- **EventBridge's target endpoint is a literal value, not driven by `APP_BASE_URL`.** It lives in the AWS API Destination and in `scripts/setup-eventbridge-cron.sh`'s `TARGET_ENDPOINT`, outside the app's deploy. Any domain change must re-run that script; it self-heals drift on the endpoint and rule description, but only when run.
+- **Bracket-syntax routes aren't auto-wired outside Next.js.** Each `[id].ts` / `[action].ts` file needs an explicit `vercel.json` rewrite — worth knowing before adding another.
+- **The Hobby plan allows 12 functions per deployment.** The project is at 11; add routes to an existing file where possible.
+- **`check-status` is not a safe healthcheck.** It detects changes *and* sends real emails in the same request, so calling it manually can send live notifications.
+- **AWS doesn't always change an incident's `<title>` when it resolves.** Some incidents state the resolution only in `<description>`, so `awsFetcher.ts`'s `isResolved()` checks both.
+- **A new AI brief can take ~5 minutes to show** because the pointer request is edge-cached for 5 minutes. Query `/api/analysis/latest?id=<row id>` to see a fresh run immediately.
+- **Azure incident IDs are derived, not stable.** Rename matching handles the common case; changing the ID fingerprint logic itself would read every in-flight incident as resolved + new and re-email subscribers.
+
+More provider-specific caveats are in `claude.md` §9.
 
 ---
 
 ## Roadmap
 
-### Completed
+Shipped work is listed in [CHANGELOG.md](./CHANGELOG.md).
 
-- React + Vite + TypeScript + Tailwind scaffold
-- AWS, GCP, OCI live data via direct browser fetch
-- Azure live data via Vercel serverless proxy (Atom feed → normalized JSON)
-- Top-10 canonical service status per provider (all four)
-- Azure per-service status derived from incident title keyword matching
-- Active incident list with severity and recency sorting
-- Recently resolved incidents shown with green styling (24h window)
-  - Azure's feed drops an incident the moment it clears, so `check-status.ts` saves the last-seen payload to Redis (`resolved:azure`, see `api/_lib/resolvedIncidents.ts`) when an Azure incident vanishes, and `/api/status/azure` merges those back in for 24h. The resolved time shown is when the cron noticed (≤5 min late), since Azure publishes no end time
-- Auto-refresh + manual refresh with cooldown
-- Offline detection + localStorage caching (60s TTL)
-- Light/dark/system appearance modes, moved under a Settings menu
-- Responsive mobile layout
-- Provider order: AWS → Azure → OCI → GCP
-- Dynamic browser tab title (shows active incident count)
-- Favicon + Open Graph / Twitter card meta tags
-- Vercel Web Analytics
-- Vercel Speed Insights
-- Azure function CDN caching (`s-maxage=300`)
-- Page Visibility API — polling pauses when tab is hidden, resumes with immediate fetch on focus
-- Stats summary strip (providers degraded, regions impacted, services impacted, active incidents)
-- Services impacted count with `+` suffix when broad multi-service incidents are active
-- Bell icon in header opens a real sign-up form (double opt-in email alerting — see [Alerts & Admin](#alerts--admin) for the full build)
-- Footer disclaimer (data source attribution, non-affiliation notice) + short About sentence for SEO
-- Mobile-optimised 1×4 stat strip with condensed tile layout
-- Deployment scripts: `npm run deploy` and `npm run deploy:preview` (lint → build → deploy → open)
-- Operational service status now shown in green (was gray)
-- Equal-width provider cards (4×1fr grid — first card no longer wider during outages)
-- Azure RSS parser fix — feed returns RSS format (`rss.channel.item`), not Atom (`feed.entry`); services and regions now extracted from structured `<category>` elements
-- Active incidents shown as expandable rows in provider panels; clicking reveals affected services and latest update text
-- AWS region rows normalized — removed canonical region ID (e.g. `me-central-1`) from header; display name only
-- Date parsing hardened — Azure RFC 2822 dates normalized to ISO 8601 server-side; client formatters guard against `Invalid Date` with `isNaN` check
-- GCP active incidents no longer silently dropped — `incidents.json` omits `end` entirely for ongoing incidents instead of setting it `null`; strict `!== null` check treated `undefined` as closed
-- GCP incident detail link fixed — `uri` field is a relative path (`incidents/{id}`), not an absolute URL; now resolved against `status.cloud.google.com`
-- Active incident cards show "Updated X ago" (latest update time) instead of the static original start date
-- `ProviderGrid` no longer re-sorts by severity — renders the documented fixed order (AWS → Azure → OCI → GCP) on every refresh
-- GCP region/service matrix now follows the same top-10-plus-"Multiple Services *" display pattern as AWS, matched by stable `productId` (verified against `status.cloud.google.com/products.json`) with title keyword as fallback
-- `npm run verify:gcp` — re-validates the 10 hardcoded GCP `productId`s against the live product catalog on demand
-- Custom domain — dashboard moved to `cloudstatus.synepho.com`, permanent redirect from the old `csp-status-hub.vercel.app` URL (see `docs/CUSTOM-DOMAIN-PLAN.md`)
-- Azure region/service breakdown now matches AWS/GCP/OCI — grouped from parsed incident regions/services into a real region → service map, with a canonical top-10 list and "Multiple Services *" catch-all
-- Azure "View timeline" link fixed — the feed's own `<link>` pointed at an internal backend hostname, not the public `azure.status.microsoft` domain, and wasn't incident-specific; `detailUrl` now always uses the canonical public domain
-- AWS EventBridge cron target endpoint drift fixed — see **Known constraints** in Alerts & Admin
-- OCI real per-incident feed (`incident-summary.rss`) wired in — region/service breakdown and the incident table now populate the same way AWS/GCP/Azure do, replacing the earlier `status.json`-only summary
-- Alerts & Admin: sign-up, double opt-in confirmation, manage/unsubscribe, admin subscriber list with CSV export and manual actions, ad hoc test-email tool, Sign in with Vercel admin auth, AWS EventBridge 5-minute change detection, resolution notifications (fires when a previously-active incident disappears from a provider's feed, not just when new ones appear), Upstash Redis status-snapshot cache (replacing an earlier Postgres table that kept Neon compute from autosuspending) — full architecture in [Alerts & Admin](#alerts--admin)
-- SEO: page `<h1>`, sitemap `lastmod`, `noindex` header on `/admin` and `/manage`, crawlable About text in the footer
-- Incident Briefing Engine, Phase 1: per-incident content-hash trigger (new/content_changed/resolved) layered on `check-status.ts`'s existing diff, fire-and-forget `/api/analysis/run` calling AWS Bedrock via Vercel OIDC federation, `incident_analysis` Postgres table — see [Alerts & Admin](#alerts--admin)
-- Incident Briefing Engine, Phase 2: public `/api/analysis/latest` read endpoint (originally `/api/analysis/history` with a version stepper; simplified 2026-08-29 to always show just the current version — see **Reading it back** below), lazy-fetched "AI Insight" panel on each incident card with a Technical/Executive toggle
-- Incident Briefing Engine, Phase 3: `@react-pdf/renderer`-generated, Synepho-branded PDF export per brief version, uploaded to Vercel Blob with a 1-year immutable cache, "Download PDF" links on the dashboard
-- Incident Briefing Engine, Phase 4 (final phase): outage/resolution emails link to a dashboard deep-link that auto-expands the right incident's AI Insight panel; admin run history, manual retry for failed rows, and live settings (debounce interval, per-provider kill switch) — see [Alerts & Admin](#alerts--admin)
-- Incident Briefing Engine PDF polish (2026-08-29): fixed double-spaced body text (paragraph-block rendering instead of per-line blocks), removed a duplicate trailing disclaimer in the executive PDF, added a "Powered by Synepho" + site-URL line to the footer — see **PDF export (Phase 3)** in [Alerts & Admin](#alerts--admin)
-- AI Insight panel simplified (2026-08-29): dashboard now shows only the single latest brief per incident instead of a multi-version stepper (`/api/analysis/latest` replaces `/api/analysis/history`) — see **Reading it back (Phase 2)** in [Alerts & Admin](#alerts--admin)
-- About modal refreshed (2026-08-29): copy tightened to lead with the AI Insight feature; version bumped to 1.2.0 to reflect the Incident Briefing Engine work landed since the last bump
-- Header logo now returns to the dashboard itself (2026-08-31): links to `cloudstatus.synepho.com` in the same tab instead of opening the personal site `synepho.com` in a new one — the footer's "Built by John Xanthopoulos" credit still links out to `synepho.com`
-- AI Insight disclaimer reworded and now appended to both briefs (2026-08-31): no longer leads with DR/failover framing — states plainly that the brief is AI-generated guidance, the reader's environment may differ and need other steps, and not to assume automatic failover is configured. Previously appended only to the executive brief's closing line; now appended to both the technical and executive briefs (`api/_lib/analysisPrompt.ts`)
-- Admin AI Run History: re-run enabled for any row, not just failed ones (2026-08-31): the row action menu (`RunHistoryPanel.tsx`) and `api/admin/analysis-admin.ts`'s `retry` action both dropped the `status='failed'` restriction, so a `complete` row can be forced to regenerate — e.g. to pick up a prompt change for an incident that's still active — without waiting for a natural `content_changed`/`resolved` trigger
-- GCP `latestUpdate` fix — Description included, not just Summary (2026-09-01): GCP's Summary section is near-static boilerplate that repeats verbatim across every update for an incident, while the actual evolving narrative lives in Description; `extractGcpSummary()` was extracting Summary only, so both the incident card and the AI Insight content-change trigger (which hashes `latestUpdate`) went stale on real GCP incidents — see `CLAUDE.md`'s Known Constraints & Caveats table for the full writeup
-- Stale-bundle detection + reload prompt (2026-09-01): a long-open tab can keep running the JS bundle it loaded with even while its 60s poll cycle keeps fetching fresh data, so a deploy's fix never reaches it until reloaded. `vite.config.ts` now emits `dist/version.json` from the same build timestamp baked into the bundle; the new `useVersionCheck()` hook (`src/hooks/useVersionCheck.ts`) polls it every 5 minutes and on tab-focus, and `App.tsx` shows a "new version available" banner with a Reload button on mismatch
-- Admin AI Run History: Active/non-active badge, filter, and cleanup (2026-09-01): the dashboard only ever shows active incidents, so `incident_analysis` rows and PDFs for rolled-off incidents just accumulated with no way to see or clear them. Run History now shows an Active/Non-active badge per row (from the same Redis `activeIncidentIds` snapshot `check-status.ts` already writes), a matching filter, a per-row Delete action, and a "Clean up non-active" bulk action that deletes matching rows and their Blob PDFs — see **Active/non-active state + cleanup** in [Alerts & Admin](#alerts--admin)
-- AI Insight brief endpoint split into pointer + immutable content (2026-09-02): `/api/analysis/latest` previously returned the full brief text and PDF URLs with only a 60s edge cache, so sustained visitor traffic on a popular incident could re-query Neon roughly once a minute — fast enough to defeat autosuspend, the same failure shape the earlier Redis migration fixed for the status-snapshot cache. `incident_analysis` rows never mutate once `status='complete'`, so `/api/analysis/latest?provider=&incidentId=` now returns just a `{id, createdAt}` pointer (5-minute cache), and `/api/analysis/latest?id=<uuid>` (`useIncidentBrief.ts`) serves the actual brief text/PDF links with a 1-year immutable cache once the row is finalized — see **Pointer/content split** in [Alerts & Admin](#alerts--admin)
-- Consolidated three endpoint pairs into one function each to stay under the Hobby plan's 12-function cap (2026-09-02): the pointer/content split above first shipped as a separate `api/analysis/brief/[id].ts` file, which tipped this deployment from 12 functions (already at the cap) to 13 and broke the deploy. Merged back into `api/analysis/latest.ts` via a `?id=` query param, and two more pairs (`api/subscribe/index.ts` into `[action].ts`, `api/admin/subscribers/index.ts` into `[id].ts`) consolidated the same way for headroom — no client-visible URL changes — see **Function-count fix** in [Alerts & Admin](#alerts--admin)
-- AWS resolution-notification fix (2026-09-22): a subscriber reported getting the new-incident email but never the resolution email for an AWS EC2 `us-east-1` incident. Cause: AWS's `all.rss` feed doesn't always change an incident's `<title>` on its final update — this one kept "Service impact: Increased Error Rates" through its whole lifecycle and stated the resolution only in the `<description>` body. `awsFetcher.ts`'s `isResolved()` checked the title only, so the incident stayed stuck "active" in the Redis snapshot indefinitely. Now checks the description text too — see **Known constraints** below
-- DMARC record added for `alerts.synepho.com` (2026-09-22): Resend's dashboard flagged "needs attention — no DMARC record found" (SPF/DKIM were already valid). Added `_dmarc.alerts.synepho.com` (`v=DMARC1; p=none; adkim=r; aspf=r`) via Route 53, now also provisioned by `scripts/setup-resend-dns.sh` so a from-scratch domain setup includes it
-
-### Pending (see docs/ENHANCEMENTS.md)
+**Pending** (details in [docs/ENHANCEMENTS.md](./docs/ENHANCEMENTS.md)):
 
 - Aggregate status indicator in the header
 - localStorage cache schema versioning
@@ -1003,8 +729,8 @@ covered by `vercel.json` and needs no separate provisioning step.
 - Keyboard accessibility (`aria-expanded`, `aria-controls`) on expandable panels
 - Top-level React error boundary
 - SMS alerts (deferred pending Twilio A2P 10DLC registration)
-- Escalation notices and per-subscriber severity thresholds (optional widening — resolution notices are already built, see [Alerts & Admin](#alerts--admin))
+- Escalation notices and per-subscriber severity thresholds
 
 ---
 
-\_Maintained by John Xanthopoulos
+_Maintained by John Xanthopoulos_

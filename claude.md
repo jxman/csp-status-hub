@@ -63,7 +63,7 @@
 
 ## 1. Project Overview
 
-Build a **client-first, serverless-backed** React web application displaying real-time operational status for AWS, Azure, GCP, and OCI in a single unified view. Primary audience: Marsh internal leadership and cloud engineering staff. Data freshness is the priority — the app shows current status at time of viewing with auto-refresh.
+Build a **client-first, serverless-backed** React web application displaying real-time operational status for AWS, Azure, GCP, and OCI in a single unified view. Primary audience: cloud engineers and technical leaders who need a quick read on cloud provider health. Data freshness is the priority — the app shows current status at time of viewing with auto-refresh.
 
 **In Scope:**
 - Current status per provider at page load, with auto-refresh polling (60s default)
@@ -779,5 +779,5 @@ Open Claude Code from the project root directory (`/Users/johxan/Documents/my-pr
 
 ---
 
-*Maintained by: John Xanthopoulos, Cloud Engineering — Marsh*  
+*Maintained by: John Xanthopoulos*  
 *Next review: After Phase 1 completion*
