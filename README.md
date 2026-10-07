@@ -524,6 +524,7 @@ Everything above runs on a free tier.
 The dashboard itself needs none — all four status sources are public. The
 backend's variables are already set on the Vercel project (Production,
 Preview, Development); pull them with `vercel env pull .env.local`.
+[`.env.example`](./.env.example) lists every variable with a short note.
 
 | Variable | Used by |
 | --- | --- |

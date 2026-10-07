@@ -3,39 +3,37 @@ node_modules/
 
 # Build output
 dist/
+build/
+coverage/
+*.tsbuildinfo
 
-# Environment
-.env
-.env.local
-.env.*.local
+# Environment (keep the example template)
+.env*
+!.env.example
 
 # Vercel
 .vercel/
-
-# System
-.DS_Store
-
-# Dev screenshots (working files, not source) — but keep real assets under public/
-*.png
-!public/**/*.png
 
 # IDE
 .vscode/
 .idea/
 *.swp
 
-# Playwright MCP working files
-.playwright-mcp/
+# System
+.DS_Store
+Thumbs.db
 
-# Temporary files (screenshots, local scratch)
+# Dev screenshots in the project root (real assets live under public/)
+/*.png
+
+# Logs and temp
+*.log
+npm-debug.log*
+.eslintcache
+tmp/
 .tmp/
 *.tmp
 
-# Claude Code local settings (permissions, not source)
+# Tool working files
+.playwright-mcp/
 .claude/
-
-# Logs
-*.log
-npm-debug.log*
-.env*.local
-.env*
