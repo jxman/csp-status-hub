@@ -95,7 +95,7 @@ const opsLinkGroups: { label: string; links: { label: string; href: string }[] }
   },
   {
     label: 'AWS',
-    links: [{ label: 'EventBridge →', href: 'https://600424110307.signin.aws.amazon.com/console' }],
+    links: [{ label: 'EventBridge →', href: 'https://us-east-1.console.aws.amazon.com/events/home?region=us-east-1#/rules' }],
   },
 ];
 

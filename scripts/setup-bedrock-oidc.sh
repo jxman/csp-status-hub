@@ -11,8 +11,9 @@
 # before creating one. Mirrors setup-eventbridge-cron.sh's structure.
 #
 # Verified against this AWS account before writing this script:
-#   - Account: 600424110307, region: us-east-1 (same region the existing
-#     EventBridge rule already runs in).
+#   - Region: us-east-1 (same region the existing EventBridge rule already
+#     runs in). The account ID is looked up at runtime from the active AWS
+#     credentials rather than hard-coded.
 #   - Bedrock model access for anthropic.claude-sonnet-5 is already
 #     AUTHORIZED/AVAILABLE in us-east-1 — no manual console step needed.
 #   - The model only supports INFERENCE_PROFILE invocation; the inference
@@ -31,7 +32,8 @@
 set -e
 
 VERCEL_TEAM_SLUG="johns-projects-2d2073fd"
-AWS_ACCOUNT_ID="600424110307"
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+echo "Using AWS account ${AWS_ACCOUNT_ID} — Ctrl+C now if that is not the account you expect."
 ROLE_NAME="csp-status-hub-bedrock-role"
 OIDC_ISSUER_HOST="oidc.vercel.com/${VERCEL_TEAM_SLUG}"
 # Scoped to the whole Claude family, not just one model ID — Claude Sonnet 5
