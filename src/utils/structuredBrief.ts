@@ -82,16 +82,40 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
 const oneOf = <T extends string>(v: unknown, allowed: readonly T[]): T | null =>
   typeof v === 'string' && (allowed as readonly string[]).includes(v) ? (v as T) : null;
-const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+
+// Claude sometimes returns a nested object or array in a tool call as a
+// JSON-encoded string ("executive": "{\"bottomLine\": ...}") instead of the
+// value itself; the content is complete, just quoted. Seen 2026-10-04 (two
+// failed runs) and reproduced in about 1 of 4 calls on the same input, so
+// every object/array position decodes such a string before validating.
+const unwrap = (v: unknown): unknown => {
+  if (typeof v !== 'string') return v;
+  const t = v.trim();
+  if (!t.startsWith('{') && !t.startsWith('[')) return v;
+  try {
+    return JSON.parse(t);
+  } catch {
+    return v;
+  }
+};
+const obj = (v: unknown): Record<string, unknown> | null => {
+  const u = unwrap(v);
+  return isObj(u) ? u : null;
+};
+const arr = (v: unknown): unknown[] => {
+  const u = unwrap(v);
+  return Array.isArray(u) ? u.map(unwrap) : [];
+};
 
 // Returns null if any required field is missing/invalid. Individual list
 // items that are malformed are dropped rather than failing the whole brief;
 // list sections are sorted most-urgent first so ordering never depends on
 // the model getting it right.
 export function parseStructuredBriefs(input: unknown): StructuredBriefs | null {
-  if (!isObj(input) || !isObj(input.technical) || !isObj(input.executive)) return null;
-  const t = input.technical;
-  const e = input.executive;
+  const root = obj(input);
+  const t = obj(root?.technical);
+  const e = obj(root?.executive);
+  if (!t || !e) return null;
 
   const whatWeKnow = str(t.whatWeKnow);
   const nextActions = arr(t.nextActions)
@@ -114,12 +138,10 @@ export function parseStructuredBriefs(input: unknown): StructuredBriefs | null {
     .filter((q): q is TechnicalBriefData['resiliencyQuestions'][number] => !!q?.category && !!q.urgency && q.questions.length > 0)
     .sort((a, b) => urgencyRank(a.urgency) - urgencyRank(b.urgency));
 
-  const bottomLine = isObj(e.bottomLine)
-    ? { stance: oneOf(e.bottomLine.stance, EXEC_STANCES), text: str(e.bottomLine.text) }
-    : null;
-  const customerImpact = isObj(e.customerImpact)
-    ? { likelihood: oneOf(e.customerImpact.likelihood, IMPACT_LIKELIHOODS), detail: str(e.customerImpact.detail) }
-    : null;
+  const bl = obj(e.bottomLine);
+  const bottomLine = bl ? { stance: oneOf(bl.stance, EXEC_STANCES), text: str(bl.text) } : null;
+  const ci = obj(e.customerImpact);
+  const customerImpact = ci ? { likelihood: oneOf(ci.likelihood, IMPACT_LIKELIHOODS), detail: str(ci.detail) } : null;
   const whatsHappening = str(e.whatsHappening);
   const seriousness = str(e.seriousness);
   const decisions = arr(e.decisions)

@@ -36,6 +36,20 @@ function extractToolInput(content: ToolUseContent[] | undefined): unknown {
   return content?.find((block) => block.toolUse?.name === EMIT_INCIDENT_BRIEF_TOOL_NAME)?.toolUse?.input;
 }
 
+// Bedrock calls per run. A malformed tool call is usually a one-off (the same
+// input succeeds on the next call), so one retry recovers it at the cost of a
+// second call only when the first fails.
+const MAX_ATTEMPTS = 2;
+
+// Short description of what the model sent, saved in a failed row's error so
+// a failure can be diagnosed from the admin page without re-running it.
+function describeToolInput(input: unknown): string {
+  const kind = (v: unknown) => (v === undefined ? 'missing' : v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v);
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) return `input=${kind(input)}`;
+  const o = input as Record<string, unknown>;
+  return `technical=${kind(o.technical)}, executive=${kind(o.executive)}`;
+}
+
 export async function runIncidentAnalysis(input: RunIncidentAnalysisInput): Promise<RunIncidentAnalysisResult> {
   const { provider, incidentId, triggerEvent, incident, bypassDebounce = false } = input;
 
@@ -55,29 +69,47 @@ export async function runIncidentAnalysis(input: RunIncidentAnalysisInput): Prom
   }
 
   try {
-    const response = await bedrock.send(
-      new ConverseCommand({
-        modelId: BEDROCK_MODEL_ID,
-        system: [{ text: buildSystemPrompt() }],
-        messages: [{ role: 'user', content: [{ text: buildUserMessage(provider, incident) }] }],
-        toolConfig: buildToolConfig(),
-      })
-    );
-
     const incidentSnapshot = JSON.stringify(incident);
-    const toolInput = extractToolInput(response.output?.message?.content as ToolUseContent[] | undefined);
-    const structured: StructuredBriefs | null = toolInput === undefined ? null : parseStructuredBriefs(toolInput);
+    // Token counts are summed across attempts so a retried run records what
+    // it actually cost, failed or not.
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let structured: StructuredBriefs | null = null;
+    const attemptErrors: string[] = [];
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS && !structured; attempt++) {
+      const response = await bedrock.send(
+        new ConverseCommand({
+          modelId: BEDROCK_MODEL_ID,
+          system: [{ text: buildSystemPrompt() }],
+          messages: [{ role: 'user', content: [{ text: buildUserMessage(provider, incident) }] }],
+          toolConfig: buildToolConfig(),
+        })
+      );
+      inputTokens += response.usage?.inputTokens ?? 0;
+      outputTokens += response.usage?.outputTokens ?? 0;
+
+      const toolInput = extractToolInput(response.output?.message?.content as ToolUseContent[] | undefined);
+      structured = toolInput === undefined ? null : parseStructuredBriefs(toolInput);
+      if (!structured) {
+        const what = toolInput === undefined ? 'no emit_incident_brief tool call' : `invalid structure (${describeToolInput(toolInput)})`;
+        attemptErrors.push(`attempt ${attempt}: ${what}, stopReason=${response.stopReason ?? 'unknown'}`);
+        console.warn(`[analysisPipeline] ${provider}/${incidentId} attempt ${attempt}/${MAX_ATTEMPTS}: ${what}, stopReason=${response.stopReason}`);
+      }
+    }
+
     if (!structured) {
-      const reason = toolInput === undefined ? 'no_tool_use' : 'invalid_structure';
-      const error =
+      const reason = attemptErrors.every((e) => e.includes('no emit_incident_brief')) ? 'no_tool_use' : 'invalid_structure';
+      const summary =
         reason === 'no_tool_use'
           ? 'Model did not return the expected emit_incident_brief tool call'
           : 'Model returned an emit_incident_brief call missing required structured fields';
+      const error = `${summary} [${attemptErrors.join('; ')}]`;
       await sql`
         INSERT INTO incident_analysis
-          (provider, incident_id, trigger_event, incident_snapshot, model, status, error)
+          (provider, incident_id, trigger_event, incident_snapshot, model, input_tokens, output_tokens, status, error)
         VALUES
-          (${provider}, ${incidentId}, ${triggerEvent}, ${incidentSnapshot}::jsonb, ${BEDROCK_MODEL_ID}, 'failed', ${error})
+          (${provider}, ${incidentId}, ${triggerEvent}, ${incidentSnapshot}::jsonb, ${BEDROCK_MODEL_ID}, ${inputTokens}, ${outputTokens}, 'failed', ${error})
       `;
       return { status: 'failed', reason };
     }
@@ -92,7 +124,7 @@ export async function runIncidentAnalysis(input: RunIncidentAnalysisInput): Prom
       INSERT INTO incident_analysis
         (provider, incident_id, trigger_event, incident_snapshot, technical_brief, executive_brief, briefs_structured, model, input_tokens, output_tokens, status)
       VALUES
-        (${provider}, ${incidentId}, ${triggerEvent}, ${incidentSnapshot}::jsonb, ${briefs.technical}, ${briefs.executive}, ${JSON.stringify(structured)}::jsonb, ${BEDROCK_MODEL_ID}, ${response.usage?.inputTokens ?? null}, ${response.usage?.outputTokens ?? null}, 'complete')
+        (${provider}, ${incidentId}, ${triggerEvent}, ${incidentSnapshot}::jsonb, ${briefs.technical}, ${briefs.executive}, ${JSON.stringify(structured)}::jsonb, ${BEDROCK_MODEL_ID}, ${inputTokens}, ${outputTokens}, 'complete')
       RETURNING id
     `;
 

@@ -324,7 +324,13 @@ drifted in format from run to run:
 - **Executive:** `bottomLine` (stance `act-now` / `decide-if-confirmed` / `awareness`), `whatsHappening`, `seriousness`, `customerImpact` (likelihood `yes` / `possible` / `unlikely`), and conditional `decisions[]`.
 
 `parseStructuredBriefs()` drops malformed list items, sorts lists most-urgent
-first, and fails the run if a required field is missing. The JSON is stored
+first, and fails the run if a required field is missing. Claude sometimes
+returns a nested object as a JSON-encoded string (`"executive": "{...}"`), so
+any object or array field that arrives as a string is decoded before it's
+checked. If the response still fails, the pipeline calls Bedrock once more
+(`MAX_ATTEMPTS = 2`, so `api/analysis/run.ts` and `analysis-admin.ts` allow
+150s). A failed row's `error` lists each attempt's `stopReason` and field
+types, and token counts cover every attempt. The JSON is stored
 in `incident_analysis.briefs_structured`; `StructuredBrief.tsx` (dashboard)
 and `BriefDocument.ts` (PDF) render it with the same section order and
 colors. `technical_brief`/`executive_brief` still get a plain-text rendering

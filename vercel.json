@@ -26,11 +26,11 @@
   ],
   "functions": {
     "api/analysis/run.ts": {
-      "maxDuration": 60,
+      "maxDuration": 150,
       "includeFiles": "node_modules/pdfkit/js/standard-fonts/**"
     },
     "api/admin/analysis-admin.ts": {
-      "maxDuration": 60,
+      "maxDuration": 150,
       "includeFiles": "node_modules/pdfkit/js/standard-fonts/**"
     },
     "api/**/*.ts": {
