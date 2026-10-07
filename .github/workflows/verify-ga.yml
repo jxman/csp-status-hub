@@ -1,0 +1,24 @@
+name: Verify Google Analytics
+
+on:
+  schedule:
+    - cron: '0 13 * * *' # Daily, 13:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Playwright is installed only here, not as a project dependency, so it
+      # doesn't add to Vercel builds or Snyk scans.
+      - run: npm install --no-save --no-package-lock --ignore-scripts playwright@1.63.0
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/verify-ga.mjs

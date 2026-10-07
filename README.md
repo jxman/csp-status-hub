@@ -620,7 +620,8 @@ csp-status-hub/
 │   ├── setup-bedrock-oidc.sh         Bedrock OIDC provider + role
 │   ├── setup-resend-dns.sh           Resend DNS records in Route 53
 │   ├── deploy.sh                     Deploy wrapper
-│   └── verify-gcp-services.mjs       Re-validate GCP productIds
+│   ├── verify-gcp-services.mjs       Re-validate GCP productIds
+│   └── verify-ga.mjs                 Confirm GA4 hits leave the live site
 │
 ├── docs/
 │   ├── ENHANCEMENTS.md               Backlog
@@ -646,6 +647,7 @@ npm run dev          # Vite frontend only, http://localhost:5173
 npm run build        # type-check + build
 npm run lint
 npm run verify:gcp   # check GCP service IDs against the live product catalog
+npm run verify:ga    # confirm GA4 page_view hits leave the live site (needs: npm i --no-save playwright && npx playwright install chromium)
 ```
 
 `npm run dev` runs only the frontend — Azure and everything under `/api/*`
@@ -701,6 +703,7 @@ Vercel's native cron from `vercel.json`.
 | Function logs | ✅ Live | `vercel logs <url> --follow` or the Logs tab |
 | Notification log | ✅ Live (data only) | `notification_log` records every send attempt; no admin UI reads it yet |
 | Sign-up funnel | ✅ Live | GA4 events (production host only): `subscribe_open` {source, provider} when the form opens, and `subscribe_success` {providers, source} on submit. `source` is `header`, `all_clear`, `incident_card` or `shared_link` |
+| GA4 health check | ✅ Live | Daily GitHub Action (`verify-ga.yml`, 13:00 UTC) loads the live site in a clean headless browser and fails unless a GA4 `page_view` reaches `/g/collect`. GitHub emails on failure. Catches silent breakage that a loaded gtag.js hides |
 
 ---
 
