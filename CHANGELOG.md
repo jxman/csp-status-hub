@@ -95,7 +95,7 @@ Oldest first.
 - More sign-up entry points with GA4 `subscribe_open` / `subscribe_success` tracking — README: [Observability](./README.md#observability)
 - Security pass (Snyk): Vite 6 → 7, ESLint 9 → 10, npm `overrides` for `@vercel/node`'s nested dependencies, `.snyk` policy, id-based admin PDF redirect
 
-### 2026-10-15
+### 2026-10-15 — v1.3.0
 
 - Opt-in Terminal theme (Settings → Terminal): green-on-black, monospace, square corners, bracketed status tags. Never the default; first-time visitors still get System. Builds on the dark theme (`theme-dark` + `theme-terminal` classes) so only tokens and a few shapes change
 - Settings menu now closes after picking a theme
