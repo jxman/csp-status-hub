@@ -101,15 +101,18 @@ export function SubscribeModal({ onClose, source, initialProvider }: Props) {
       style={{
         position: 'fixed', inset: 0, zIndex: 1000,
         background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 24,
+        // Top-align + scroll, with the card's margin: auto doing the centering:
+        // a card taller than the screen (short phones, the monospace Terminal
+        // theme) scrolls instead of being clipped above the top edge.
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+        padding: 'clamp(12px, 4vw, 24px)', overflowY: 'auto',
       }}
       onClick={onClose}
     >
       <div
         style={{
           background: 'var(--card)', border: '1px solid var(--border)',
-          borderRadius: 18, padding: '44px 48px', maxWidth: 500, width: '100%',
+          borderRadius: 18, padding: 'clamp(28px, 8vw, 44px) clamp(20px, 7vw, 48px)', margin: 'auto', maxWidth: 500, width: '100%',
           boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
           display: 'flex', flexDirection: 'column', gap: 20,
         }}

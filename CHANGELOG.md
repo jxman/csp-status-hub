@@ -99,6 +99,7 @@ Oldest first.
 
 - Opt-in Terminal theme (Settings → Terminal): green-on-black, monospace, square corners, bracketed status tags. Never the default; first-time visitors still get System. Builds on the dark theme (`theme-dark` + `theme-terminal` classes) so only tokens and a few shapes change
 - Settings menu now closes after picking a theme
+- About and Subscribe popups scroll on short phone screens instead of spilling off the top (the Close button was unreachable on a 375×667 screen, worst in the Terminal theme)
 
 ---
 
