@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { SettingsMenu } from './SettingsMenu';
 import { SynephoLogo } from './SynephoLogo';
-
-type ThemeMode = 'light' | 'dark' | 'system';
+import type { ThemeMode } from '../hooks/useTheme';
 
 interface Props {
   lastRefreshedAt: string | null;

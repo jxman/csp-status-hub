@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-
-type ThemeMode = 'light' | 'dark' | 'system';
+import type { ThemeMode } from '../hooks/useTheme';
 
 interface Props {
   mode: ThemeMode;
@@ -48,6 +47,13 @@ const CoffeeIcon = () => (
     <path d="M14 2v2" />
     <path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1" />
     <path d="M6 2v2" />
+  </svg>
+);
+
+const TerminalIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 17l6-5-6-5" />
+    <path d="M12 19h8" />
   </svg>
 );
 
@@ -101,7 +107,7 @@ export function SettingsMenu({ mode, onModeChange, onShowAbout }: Props) {
               <button
                 key={opt.id}
                 className={`settings-theme-opt${mode === opt.id ? ' active' : ''}`}
-                onClick={() => onModeChange(opt.id)}
+                onClick={() => { setOpen(false); onModeChange(opt.id); }}
                 role="menuitemradio"
                 aria-checked={mode === opt.id}
               >
@@ -110,6 +116,15 @@ export function SettingsMenu({ mode, onModeChange, onShowAbout }: Props) {
               </button>
             ))}
           </div>
+          <button
+            className={`settings-theme-opt settings-theme-opt--wide${mode === 'terminal' ? ' active' : ''}`}
+            onClick={() => { setOpen(false); onModeChange('terminal'); }}
+            role="menuitemradio"
+            aria-checked={mode === 'terminal'}
+          >
+            <TerminalIcon />
+            Terminal
+          </button>
 
           <div className="settings-divider" />
 

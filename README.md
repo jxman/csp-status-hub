@@ -114,7 +114,7 @@ file, which the handler reads as "no id/action given").
 | --- | --- |
 | Frontend | React 18 + Vite 7 |
 | Language | TypeScript 5.6 |
-| Styling | Tailwind CSS 3 (dark mode via `class` strategy, plus a system-preference mode) |
+| Styling | Tailwind CSS 3 (dark mode via `class` strategy, plus a system-preference mode and an opt-in Terminal theme) |
 | XML parsing | `fast-xml-parser` 5 (browser + serverless) |
 | Serverless | Vercel Functions (Node.js) |
 | Database | Neon Postgres (Vercel Marketplace) |

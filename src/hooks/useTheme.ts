@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 
-type ThemeMode = 'light' | 'dark' | 'system';
-type ResolvedTheme = 'light' | 'dark';
+// 'terminal' is an opt-in look (green-on-black, monospace). It's never the
+// default — first-time visitors still get 'system'.
+export type ThemeMode = 'light' | 'dark' | 'system' | 'terminal';
+type ResolvedTheme = 'light' | 'dark' | 'terminal';
 
 function getInitialMode(): ThemeMode {
   if (typeof window === 'undefined') return 'system';
   const stored = localStorage.getItem('csp-theme');
-  if (stored === 'light' || stored === 'dark' || stored === 'system') return stored;
+  if (stored === 'light' || stored === 'dark' || stored === 'system' || stored === 'terminal') return stored;
   return 'system';
 }
 
@@ -29,11 +31,12 @@ export function useTheme() {
 
   useEffect(() => {
     const root = document.documentElement;
-    if (resolvedTheme === 'dark') {
-      root.classList.add('dark', 'theme-dark');
-    } else {
-      root.classList.remove('dark', 'theme-dark');
-    }
+    // Terminal builds on dark: it keeps the `dark` class (Tailwind dark:
+    // variants, dark logo) and layers `theme-terminal` token overrides on top.
+    const isDark = resolvedTheme === 'dark' || resolvedTheme === 'terminal';
+    root.classList.toggle('dark', isDark);
+    root.classList.toggle('theme-dark', isDark);
+    root.classList.toggle('theme-terminal', resolvedTheme === 'terminal');
   }, [resolvedTheme]);
 
   useEffect(() => {

@@ -213,6 +213,10 @@ body {
   background: var(--chip-bg); border-color: var(--border-strong); color: var(--ink);
   font-weight: 600;
 }
+.settings-theme-opt--wide {
+  flex-direction: row; justify-content: center; gap: 6px;
+  width: 100%; margin-top: 4px; font-size: 12px;
+}
 .settings-divider { height: 1px; background: var(--border); margin: 10px 2px; }
 .settings-menu-item {
   display: flex; align-items: center; gap: 8px; width: 100%;
@@ -653,4 +657,95 @@ body {
 
 @media (min-width: 721px) and (max-width: 1099px) {
   .a-grid { grid-template-columns: 1fr 1fr !important; align-items: stretch; }
+}
+
+/* ===== Terminal theme (opt-in via Settings → Terminal) =====
+   Layered on top of .theme-dark (useTheme adds both classes), so only the
+   tokens and a few shapes change. Status dots stay round; everything boxy
+   goes square-cornered and monospace. */
+.theme-terminal {
+  --bg:            #050805;
+  --card:          #0a100a;
+  --border:        #1b3a1f;
+  --border-strong: #2a5a30;
+  --chip-bg:       #0f1d10;
+
+  --ink:   #b6ffb9;
+  --ink-2: #7fe08a;
+  --ink-3: #4fae5c;
+  --ink-4: #3a7d44;
+
+  --red:         #ff5555;
+  --red-text:    #ff7b7b;
+  --red-soft:    #2a0c0c;
+  --amber:       #ffcc33;
+  --amber-text:  #ffd866;
+  --amber-soft:  #2a2108;
+  --green:       #33ff66;
+  --green-text:  #5cff85;
+  --green-soft:  #0c2412;
+  --blue:        #4fd6ff;
+  --blue-text:   #7fe3ff;
+  --blue-soft:   #08202a;
+  --orange:      #ff9933;
+  --orange-text: #ffb366;
+  --orange-soft: #2a1608;
+
+  --shadow-sm: none;
+  color-scheme: dark;
+}
+.theme-terminal body,
+.theme-terminal .dash,
+.theme-terminal button,
+.theme-terminal input,
+.theme-terminal select,
+.theme-terminal textarea {
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.theme-terminal ::selection { background: var(--green); color: var(--bg); }
+
+/* Faint CRT scanlines — decorative only, never intercepts clicks */
+.theme-terminal .dash { position: relative; }
+.theme-terminal .dash::after {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 50;
+  background: repeating-linear-gradient(
+    to bottom, rgba(0,0,0,0) 0, rgba(0,0,0,0) 2px, rgba(0,0,0,0.18) 3px
+  );
+}
+
+/* Square corners everywhere except the round status dots */
+.theme-terminal *:not(.dot):not(.d):not(.brand-dot):not(.rounded-full) { border-radius: 0; }
+
+.theme-terminal .settings-panel { box-shadow: 0 0 0 1px var(--border-strong), 0 0 24px rgba(51,255,102,0.08); }
+
+/* Prompt + blinking cursor on the title */
+.theme-terminal .brand-name { font-weight: 500; letter-spacing: 0; color: var(--green); }
+.theme-terminal .brand-name::before { content: '$ '; color: var(--ink-3); }
+.theme-terminal .brand-name::after {
+  content: '_'; margin-left: 2px; color: var(--green);
+  animation: term-blink 1.1s steps(1) infinite;
+}
+@keyframes term-blink { 50% { opacity: 0; } }
+
+.theme-terminal .brand-dot { box-shadow: 0 0 6px var(--green); }
+.theme-terminal .brand-dot.bad { box-shadow: 0 0 8px var(--red); }
+
+/* Section headers read like comments */
+.theme-terminal .incidents-section h3::before { content: '// '; color: var(--ink-4); }
+
+/* Status pills as bracketed tags */
+.theme-terminal .pill { background: transparent; border: 1px solid currentColor; text-transform: uppercase; }
+.theme-terminal .pill::before { content: '['; margin-right: -1px; }
+.theme-terminal .pill::after  { content: ']'; margin-left: -1px; }
+
+/* Soft phosphor glow on status colors */
+.theme-terminal .pill.ok,
+.theme-terminal .svc-list .status.ok { text-shadow: 0 0 6px color-mix(in oklab, var(--green) 45%, transparent); }
+.theme-terminal .pill.bad,
+.theme-terminal .svc-list .status.bad { text-shadow: 0 0 6px color-mix(in oklab, var(--red) 45%, transparent); }
+
+.theme-terminal .brief-tab.active { color: var(--bg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-terminal .brand-name::after { animation: none; }
 }
