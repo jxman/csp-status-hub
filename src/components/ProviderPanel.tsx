@@ -11,8 +11,6 @@ import { AWS_CRITICAL_SERVICE_IDS, AWS_SERVICE_NAMES } from '../utils/awsService
 
 interface Props {
   provider: ProviderStatus;
-  // True on this provider's own page (/aws etc.): the card starts expanded.
-  isFocused?: boolean;
 }
 
 const SHORT_NAMES: Record<string, string> = { aws: 'AWS', azure: 'Azure', gcp: 'GCP', oci: 'OCI' };
@@ -55,13 +53,13 @@ const ChevronIcon = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function ProviderPanel({ provider, isFocused = false }: Props) {
+export function ProviderPanel({ provider }: Props) {
   const hasRegions = provider.regions.length > 0;
   const hasActiveIncidents = provider.activeIncidents.filter((i) => i.status !== 'resolved').length > 0;
   // Cards with regions or active incidents are always expanded (rows collapse individually).
   // Flat-service cards (healthy providers) are collapsible at the card level.
   const isExpandable = !hasRegions && !hasActiveIncidents;
-  const [expanded, setExpanded] = useState(isFocused);
+  const [expanded, setExpanded] = useState(false);
 
   if (provider.fetchError && provider.regions.length === 0 && provider.activeIncidents.length === 0 && !provider.coverageNote) {
     return <ErrorState provider={provider.provider} error={provider.fetchError} sourceUrl={provider.sourceUrl} />;

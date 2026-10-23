@@ -9,8 +9,7 @@ export interface ProviderSlot {
 
 interface Props {
   slots: ProviderSlot[];
-  // Set on a provider page (/aws etc.): `slots` holds just that provider,
-  // whose card starts expanded.
+  // Set on a provider page (/aws etc.): `slots` holds just that provider.
   focusProvider?: Provider | null;
 }
 
@@ -25,11 +24,7 @@ export function ProviderGrid({ slots, focusProvider }: Props) {
         slot.status === null
           ? <ProviderCardSkeleton key={slot.provider} provider={slot.provider} />
           : (
-            <ProviderPanel
-              key={slot.provider}
-              provider={slot.status}
-              isFocused={slot.provider === focusProvider}
-            />
+            <ProviderPanel key={slot.provider} provider={slot.status} />
           )
       )}
     </section>

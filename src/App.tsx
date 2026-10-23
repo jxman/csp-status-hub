@@ -368,7 +368,10 @@ export default function App() {
             </div>
           )}
           <StatsBanner providers={loadedProviders} focusProvider={focusProvider} />
-          <ProviderGrid slots={slots} focusProvider={focusProvider} />
+          {/* Keyed by filter so every switch starts with all cards and region
+              rows closed, the same as a fresh page load, rather than keeping
+              whatever was opened under the previous filter. */}
+          <ProviderGrid key={focusProvider ?? 'all'} slots={slots} focusProvider={focusProvider} />
           <IncidentList
             providers={loadedProviders}
             deepLinkTarget={deepLinkTarget}
