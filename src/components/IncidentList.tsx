@@ -25,7 +25,7 @@ export function IncidentList({ providers, deepLinkTarget, onSubscribe }: Props) 
 
   return (
     <div className="incidents-section">
-      <h3>Active incidents{active.length > 0 ? ` · ${active.length}` : ''}</h3>
+      <h2>Active incidents{active.length > 0 ? ` · ${active.length}` : ''}</h2>
       {active.length === 0 ? (
         <div className="all-clear-msg">
           No active incidents — all systems operational.
@@ -52,7 +52,7 @@ export function IncidentList({ providers, deepLinkTarget, onSubscribe }: Props) 
 
       {resolved.length > 0 && (
         <>
-          <h3 style={{ marginTop: 24 }}>Recently resolved · {resolved.length}</h3>
+          <h2 style={{ marginTop: 24 }}>Recently resolved · {resolved.length}</h2>
           {resolved.map(({ incident, provider }) => (
             <IncidentCard
               key={`${provider}-${incident.id}`}

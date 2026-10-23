@@ -62,11 +62,13 @@ export function PastIncidents({ excludeKeys }: Props) {
 
   return (
     <div className="past-incidents">
-      <button type="button" className="past-toggle" onClick={toggle} aria-expanded={open}>
-        <span className={`past-chevron${open ? ' open' : ''}`} aria-hidden="true">▸</span>
-        Past incidents · last {retentionDays} days
-        {state === 'loaded' && ` · ${visible.length}${nextCursor ? '+' : ''}`}
-      </button>
+      <h2 className="past-heading">
+        <button type="button" className="past-toggle" onClick={toggle} aria-expanded={open}>
+          <span className={`past-chevron${open ? ' open' : ''}`} aria-hidden="true">▸</span>
+          Past incidents · last {retentionDays} days
+          {state === 'loaded' && ` · ${visible.length}${nextCursor ? '+' : ''}`}
+        </button>
+      </h2>
 
       {open && (
         <div className="past-list">

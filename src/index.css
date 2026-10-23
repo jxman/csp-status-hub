@@ -318,7 +318,7 @@ body {
 .pcard-titlerow {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
-.pcard-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.pcard-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin: 0; font-size: inherit; font-weight: inherit; }
 .pcard-name .short {
   font-weight: 600; font-size: 17px; letter-spacing: -0.01em;
   color: var(--ink); white-space: nowrap;
@@ -413,7 +413,7 @@ body {
 
 /* ===== Incidents section ===== */
 .incidents-section { padding: 12px 32px 32px; }
-.incidents-section h3 {
+.incidents-section > h2 {
   font-family: 'Geist Mono', monospace; font-size: 11px;
   color: var(--ink-3); letter-spacing: 0.12em; text-transform: uppercase;
   font-weight: 500; margin: 8px 0 12px;
@@ -426,6 +426,7 @@ body {
 
 /* Past incidents (collapsed by default) */
 .past-incidents { margin-top: 24px; }
+.past-heading { margin: 0; font: inherit; }
 .past-toggle {
   display: flex; align-items: center; gap: 8px;
   background: none; border: none; padding: 4px 0; cursor: pointer;
@@ -550,7 +551,6 @@ body {
 .sb-status { font-size: 11.5px; padding: 2px 8px; border-radius: 5px; background: var(--chip-bg); color: var(--ink-2); text-transform: capitalize; }
 
 .sb-sec { display: grid; gap: 9px; }
-/* .sb-sec > .sb-h outranks .incidents-section h3 (the page's own mono section headers) */
 .sb-sec > .sb-h {
   display: flex; align-items: baseline; gap: 10px; margin: 0; padding: 0; font-family: inherit;
   font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink);
@@ -731,7 +731,8 @@ body {
 .theme-terminal .brand-dot.bad { box-shadow: 0 0 8px var(--red); }
 
 /* Section headers read like comments */
-.theme-terminal .incidents-section h3::before { content: '// '; color: var(--ink-4); }
+.theme-terminal .incidents-section > h2::before,
+.theme-terminal .incidents-section .sb-h::before { content: '// '; color: var(--ink-4); }
 
 /* Status pills as bracketed tags */
 .theme-terminal .pill { background: transparent; border: 1px solid currentColor; text-transform: uppercase; }

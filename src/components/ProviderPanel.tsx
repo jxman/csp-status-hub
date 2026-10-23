@@ -86,10 +86,10 @@ export function ProviderPanel({ provider }: Props) {
         style={isExpandable ? { cursor: 'pointer', userSelect: 'none' } : undefined}
       >
         <div className="pcard-titlerow">
-          <div className="pcard-name">
+          <h2 className="pcard-name">
             <span className="short">{SHORT_NAMES[provider.provider] ?? provider.provider.toUpperCase()}</span>
             <span className="long">{provider.displayName}</span>
-          </div>
+          </h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             <StatusBadge status={provider.overallStatus} />
             {isExpandable && <ChevronIcon open={expanded} />}
