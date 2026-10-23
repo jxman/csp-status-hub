@@ -9,9 +9,12 @@ export interface ProviderSlot {
 
 interface Props {
   slots: ProviderSlot[];
+  // Set on a provider landing page (/aws etc.): that card opens by default
+  // and drops its link to its own page.
+  focusProvider?: Provider | null;
 }
 
-export function ProviderGrid({ slots }: Props) {
+export function ProviderGrid({ slots, focusProvider }: Props) {
   const allHealthy = slots.every(
     (s) => s.status !== null && (s.status.overallStatus === 'operational' || !!s.status.fetchError)
   );
@@ -21,7 +24,13 @@ export function ProviderGrid({ slots }: Props) {
       {slots.map((slot) =>
         slot.status === null
           ? <ProviderCardSkeleton key={slot.provider} provider={slot.provider} />
-          : <ProviderPanel key={slot.provider} provider={slot.status} />
+          : (
+            <ProviderPanel
+              key={slot.provider}
+              provider={slot.status}
+              isFocused={slot.provider === focusProvider}
+            />
+          )
       )}
     </section>
   );

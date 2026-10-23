@@ -409,6 +409,7 @@ body {
   font-size: 12px; color: var(--ink-3); gap: 8px;
 }
 .pcard-foot a { color: var(--blue); text-decoration: none; }
+.pcard-links { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 12px; }
 .pcard-foot a:hover { text-decoration: underline; }
 
 /* ===== Incidents section ===== */

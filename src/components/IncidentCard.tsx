@@ -81,7 +81,7 @@ export function IncidentCard({ incident, provider, autoExpand, briefId, historic
             rel="noopener noreferrer"
             onClick={() => trackEvent('outbound_status_click', { provider, incident_id: incident.id })}
           >
-            View timeline →
+            Official status page →
           </a>
         )}
         </span>

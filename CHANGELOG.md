@@ -101,6 +101,16 @@ Oldest first.
 - Settings menu now closes after picking a theme
 - About and Subscribe popups scroll on short phone screens instead of spilling off the top (the Close button was unreachable on a 375×667 screen, worst in the Terminal theme)
 
+### 2026-10-23 — SEO
+
+- Unknown paths now return a real 404 instead of the homepage (`vercel.json` rewrites only `/admin`, `/manage` and the provider pages)
+- Section titles and provider names are `<h2>` headings (were `<h3>` or plain text); no visual change
+- Social preview image is a 59 KB JPEG instead of a 648 KB PNG (the PNG stays for links already shared)
+- `sitemap.xml` is generated at build time with the build date as `lastmod`
+- Longer static fallback in `index.html` for crawlers that don't run JavaScript: what the site shows, data sources, alerts, a short FAQ
+- Per-provider landing pages `/aws`, `/azure`, `/gcp`, `/oci`, each with its own title, description, canonical URL and crawler text. They show the full dashboard with that provider first; each card footer links to its provider's page, and its official-page link is shortened to "Official ↗" so the footer stays on one line
+- Incident cards' "View timeline →" link renamed "Official status page →": for AWS and Azure it opens the provider's general status page, not an incident timeline
+
 ---
 
 ## Design history

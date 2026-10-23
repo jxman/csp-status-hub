@@ -7,9 +7,11 @@ interface Props {
   providers: ProviderStatus[];
   deepLinkTarget?: { provider: Provider; incidentId: string } | null;
   onSubscribe?: (source: SubscribeSource, provider?: Provider) => void;
+  // On a provider landing page, that provider's incidents are listed first.
+  focusProvider?: Provider | null;
 }
 
-export function IncidentList({ providers, deepLinkTarget, onSubscribe }: Props) {
+export function IncidentList({ providers, deepLinkTarget, onSubscribe, focusProvider }: Props) {
   const allIncidents = providers.flatMap((p) =>
     p.activeIncidents.map((inc) => ({ incident: inc, provider: p.provider }))
   );
@@ -17,8 +19,11 @@ export function IncidentList({ providers, deepLinkTarget, onSubscribe }: Props) 
   const active = allIncidents.filter(({ incident }) => incident.status !== 'resolved');
   const resolved = allIncidents.filter(({ incident }) => incident.status === 'resolved');
 
-  active.sort((a, b) => new Date(b.incident.updatedAt).getTime() - new Date(a.incident.updatedAt).getTime());
-  resolved.sort((a, b) => new Date(b.incident.updatedAt).getTime() - new Date(a.incident.updatedAt).getTime());
+  const byFocusThenRecency = (a: (typeof allIncidents)[number], b: (typeof allIncidents)[number]) =>
+    Number(b.provider === focusProvider) - Number(a.provider === focusProvider) ||
+    new Date(b.incident.updatedAt).getTime() - new Date(a.incident.updatedAt).getTime();
+  active.sort(byFocusThenRecency);
+  resolved.sort(byFocusThenRecency);
 
   const isDeepLinkTarget = (provider: Provider, incidentId: string) =>
     deepLinkTarget?.provider === provider && deepLinkTarget?.incidentId === incidentId;
@@ -32,7 +37,7 @@ export function IncidentList({ providers, deepLinkTarget, onSubscribe }: Props) 
           {onSubscribe && (
             <>
               {' '}
-              <button type="button" className="link-btn" onClick={() => onSubscribe('all_clear')}>
+              <button type="button" className="link-btn" onClick={() => onSubscribe('all_clear', focusProvider ?? undefined)}>
                 Get an email the moment that changes →
               </button>
             </>

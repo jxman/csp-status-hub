@@ -14,6 +14,7 @@ import { SubscribeModal, type SubscribeSource } from './components/SubscribeModa
 import { AboutModal } from './components/AboutModal';
 import { SynephoLogo } from './components/SynephoLogo';
 import { formatRelative } from './utils/formatters';
+import { getFocusProvider } from './utils/providerPages';
 import type { Provider, ProviderStatus } from './types/status';
 
 type UrlBanner =
@@ -162,6 +163,9 @@ function LoadingSkeleton() {
 }
 
 export default function App() {
+  // Set on a provider landing page (/aws, /azure, /gcp, /oci): that provider's
+  // card goes first and opens, its incidents list first, and sign-up pre-ticks it.
+  const [focusProvider] = useState(getFocusProvider);
   const {
     providers,
     isRefreshing,
@@ -205,7 +209,10 @@ export default function App() {
     window.history.replaceState({}, '', window.location.pathname + (next ? `?${next}` : ''));
   }, [openAlerts]);
 
-  const slots: ProviderSlot[] = PROVIDER_ORDER.map((id) => ({ provider: id, status: providers[id] }));
+  const providerOrder = focusProvider
+    ? [focusProvider, ...PROVIDER_ORDER.filter((id) => id !== focusProvider)]
+    : PROVIDER_ORDER;
+  const slots: ProviderSlot[] = providerOrder.map((id) => ({ provider: id, status: providers[id] }));
   const loadedProviders: ProviderStatus[] = slots
     .map((s) => s.status)
     .filter((p): p is ProviderStatus => p != null);
@@ -281,7 +288,7 @@ export default function App() {
         themeMode={themeMode}
         onThemeModeChange={setThemeMode}
         onShowAbout={() => setShowAboutModal(true)}
-        onSubscribe={() => openAlerts('header')}
+        onSubscribe={() => openAlerts('header', focusProvider ?? undefined)}
       />
 
       {/* Offline banner */}
@@ -325,8 +332,13 @@ export default function App() {
             </div>
           )}
           <StatsBanner providers={loadedProviders} />
-          <ProviderGrid slots={slots} />
-          <IncidentList providers={loadedProviders} deepLinkTarget={deepLinkTarget} onSubscribe={openAlerts} />
+          <ProviderGrid slots={slots} focusProvider={focusProvider} />
+          <IncidentList
+            providers={loadedProviders}
+            deepLinkTarget={deepLinkTarget}
+            onSubscribe={openAlerts}
+            focusProvider={focusProvider}
+          />
           <footer style={{
             padding: '16px 32px 24px', fontSize: 11,
             color: 'var(--ink-4)', borderTop: '1px solid var(--border)',

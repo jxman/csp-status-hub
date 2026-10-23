@@ -196,6 +196,26 @@ e.g. the network is down — the last good data stays on screen.
 | Stale data indicator | Yellow banner if the last fetch failed but cached data is available |
 | Stale app bundle | `useVersionCheck` polls `/version.json` every 5 min and on tab focus; a banner offers Reload when a new deploy is live |
 
+### Provider pages and SEO
+
+`/aws`, `/azure`, `/gcp` and `/oci` are landing pages for searches like "is AWS
+down". Each one loads the normal dashboard with that provider moved first: its
+card opens, its incidents sort first, and "Get alerts" pre-ticks it. Each card's
+footer links to its provider's page.
+
+```mermaid
+flowchart LR
+    data["src/seo/providerPages.ts<br/>title, description, crawler text"] --> plugin
+    built["dist/index.html<br/>(built homepage)"] --> plugin["vite.config.ts<br/>providerPagesPlugin"]
+    plugin --> pages["dist/aws.html, azure.html,<br/>gcp.html, oci.html"]
+    pages --> rewrite["vercel.json rewrite<br/>/aws → /aws.html"]
+    rewrite --> app["Same JS bundle<br/>getFocusProvider() reads the path"]
+```
+
+- **Static HTML per page:** the build copies the built `index.html` for each provider and swaps in that page's title, description, canonical URL, Open Graph/Twitter tags and the `<main>` fallback that crawlers without JavaScript read. The build fails if any of those tags can't be found, so a page can't ship with the homepage's canonical URL.
+- **Sitemap:** generated at build time with all five URLs and the build date as `lastmod`.
+- **Unknown paths 404:** `vercel.json` only rewrites `/admin`, `/manage` and the four provider paths; anything else returns 404 rather than the homepage.
+
 ---
 
 ## Email alerts
@@ -616,8 +636,9 @@ csp-status-hub/
 │   │   └── …                         StatusBadge, ServiceRow, ErrorState, SettingsMenu, AboutModal, …
 │   ├── fetchers/                     aws, azure, oci, gcp, analysis, history
 │   ├── hooks/                        useStatusPolling, useIncidentBrief, useIncidentDeepLink, useTheme, useVersionCheck
+│   ├── seo/providerPages.ts          Per-provider page titles and crawler text (build-time only)
 │   ├── types/status.ts               Unified schema
-│   └── utils/                        Per-provider service lists, structuredBrief, formatters, withTimeout, analytics, …
+│   └── utils/                        Per-provider service lists, providerPages, structuredBrief, formatters, withTimeout, analytics, …
 │
 ├── scripts/
 │   ├── db/*.sql                      Migrations (001–008)
@@ -638,7 +659,7 @@ csp-status-hub/
 ├── claude.md                         Original architecture handoff + data source research
 ├── CHANGELOG.md                      Shipped work and design history
 ├── vercel.json                       Redirects, rewrites, function config, crons
-└── vite.config.ts                    Build constants + dist/version.json
+└── vite.config.ts                    Build constants, dist/version.json, sitemap.xml, provider pages
 ```
 
 ---

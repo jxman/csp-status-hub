@@ -14,7 +14,8 @@
     { "source": "/api/subscribe", "destination": "/api/subscribe/[action]" },
     { "source": "/api/subscribe/:action", "destination": "/api/subscribe/[action]" },
     { "source": "/api/:path*", "destination": "/api/:path*" },
-    { "source": "/(admin|manage)", "destination": "/index.html" }
+    { "source": "/(admin|manage)", "destination": "/index.html" },
+    { "source": "/:provider(aws|azure|gcp|oci)", "destination": "/:provider.html" }
   ],
   "headers": [
     {

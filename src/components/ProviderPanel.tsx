@@ -8,9 +8,12 @@ import { OCI_CRITICAL_SERVICES } from '../utils/ociServices';
 import { GCP_CRITICAL_SERVICES } from '../utils/gcpServices';
 import { AZURE_CRITICAL_SERVICES } from '../utils/azureServices';
 import { AWS_CRITICAL_SERVICE_IDS, AWS_SERVICE_NAMES } from '../utils/awsServices';
+import { providerPagePath } from '../utils/providerPages';
 
 interface Props {
   provider: ProviderStatus;
+  // True on this provider's own landing page (/aws etc.).
+  isFocused?: boolean;
 }
 
 const SHORT_NAMES: Record<string, string> = { aws: 'AWS', azure: 'Azure', gcp: 'GCP', oci: 'OCI' };
@@ -53,13 +56,13 @@ const ChevronIcon = ({ open }: { open: boolean }) => (
   </svg>
 );
 
-export function ProviderPanel({ provider }: Props) {
+export function ProviderPanel({ provider, isFocused = false }: Props) {
   const hasRegions = provider.regions.length > 0;
   const hasActiveIncidents = provider.activeIncidents.filter((i) => i.status !== 'resolved').length > 0;
   // Cards with regions or active incidents are always expanded (rows collapse individually).
   // Flat-service cards (healthy providers) are collapsible at the card level.
   const isExpandable = !hasRegions && !hasActiveIncidents;
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(isFocused);
 
   if (provider.fetchError && provider.regions.length === 0 && provider.activeIncidents.length === 0 && !provider.coverageNote) {
     return <ErrorState provider={provider.provider} error={provider.fetchError} sourceUrl={provider.sourceUrl} />;
@@ -139,9 +142,16 @@ export function ProviderPanel({ provider }: Props) {
             ? `${incidentCount} active incident${incidentCount !== 1 ? 's' : ''}`
             : 'No active incidents'}
         </span>
-        <a href={officialUrl} target="_blank" rel="noopener noreferrer">
-          Official status page →
-        </a>
+        <span className="pcard-links">
+          {!isFocused && (
+            <a href={providerPagePath(provider.provider)}>
+              {SHORT_NAMES[provider.provider] ?? provider.provider.toUpperCase()} status
+            </a>
+          )}
+          <a href={officialUrl} target="_blank" rel="noopener noreferrer" aria-label="Official status page">
+            Official ↗
+          </a>
+        </span>
       </div>
     </div>
   );
