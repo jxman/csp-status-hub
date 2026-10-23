@@ -653,7 +653,14 @@ body {
   .a-summary .stat b { font-size: 9px; color: var(--ink-3); line-height: 1.25; }
 
   .a-grid { grid-template-columns: 1fr !important; gap: 12px; padding: 14px 16px; }
-  .provider-filter { padding: 12px 16px; gap: 6px; }
+  /* One row that scrolls sideways instead of wrapping onto two lines */
+  .provider-filter {
+    padding: 12px 16px; gap: 6px;
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .provider-filter::-webkit-scrollbar { display: none; }
+  .provider-filter a { flex: 0 0 auto; white-space: nowrap; }
 
   .footer-full { display: none; }
   .footer-short { display: inline; }
