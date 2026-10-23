@@ -14,7 +14,8 @@ import { SubscribeModal, type SubscribeSource } from './components/SubscribeModa
 import { AboutModal } from './components/AboutModal';
 import { SynephoLogo } from './components/SynephoLogo';
 import { formatRelative } from './utils/formatters';
-import { getFocusProvider } from './utils/providerPages';
+import { HOME_TITLE, PROVIDER_LABELS, PROVIDER_PAGE_TITLES, getFocusProvider, providerPagePath } from './utils/providerPages';
+import { ProviderFilter } from './components/ProviderFilter';
 import type { Provider, ProviderStatus } from './types/status';
 
 type UrlBanner =
@@ -91,7 +92,7 @@ const CheckCircleIcon = () => (
   </svg>
 );
 
-function StatsBanner({ providers }: { providers: ProviderStatus[] }) {
+function StatsBanner({ providers, focusProvider }: { providers: ProviderStatus[]; focusProvider: Provider | null }) {
   const live = providers.filter((p) => !p.fetchError);
   const degradedProviders = live.filter(
     (p) => p.overallStatus === 'degraded' || p.overallStatus === 'outage'
@@ -108,7 +109,11 @@ function StatsBanner({ providers }: { providers: ProviderStatus[] }) {
         <CheckCircleIcon />
         <div>
           <b>All systems operational</b>
-          <span className="all-clear-sub">No active incidents across AWS, Azure, GCP &amp; OCI</span>
+          <span className="all-clear-sub">
+            {focusProvider
+              ? `No active ${PROVIDER_LABELS[focusProvider]} incidents`
+              : 'No active incidents across AWS, Azure, GCP & OCI'}
+          </span>
         </div>
       </div>
     );
@@ -133,10 +138,13 @@ function StatsBanner({ providers }: { providers: ProviderStatus[] }) {
           <span className="num red">{activeIncidents}</span>
           <br /><b>active incident{activeIncidents !== 1 ? 's' : ''}</b>
         </span>
-        <span>
-          <span className={`num${degradedProviders > 0 ? ' red' : ''}`}>{degradedProviders}</span>
-          <br /><b>provider{degradedProviders !== 1 ? 's' : ''} degraded</b>
-        </span>
+        {/* A count of degraded providers says nothing on a one-provider page */}
+        {!focusProvider && (
+          <span>
+            <span className={`num${degradedProviders > 0 ? ' red' : ''}`}>{degradedProviders}</span>
+            <br /><b>provider{degradedProviders !== 1 ? 's' : ''} degraded</b>
+          </span>
+        )}
         <span>
           <span className={`num${affectedRegions > 0 ? ' red' : ''}`}>
             {affectedRegions}{hasGlobalRegion ? '+' : ''}
@@ -154,18 +162,18 @@ function StatsBanner({ providers }: { providers: ProviderStatus[] }) {
   );
 }
 
-function LoadingSkeleton() {
+function LoadingSkeleton({ order }: { order: Provider[] }) {
   return (
-    <div className="a-grid" style={{ paddingTop: 20 }}>
-      {PROVIDER_ORDER.map((id) => <ProviderCardSkeleton key={id} provider={id} />)}
+    <div className={`a-grid${order.length === 1 ? ' single' : ''}`} style={{ paddingTop: 20 }}>
+      {order.map((id) => <ProviderCardSkeleton key={id} provider={id} />)}
     </div>
   );
 }
 
 export default function App() {
-  // Set on a provider landing page (/aws, /azure, /gcp, /oci): that provider's
-  // card goes first and opens, its incidents list first, and sign-up pre-ticks it.
-  const [focusProvider] = useState(getFocusProvider);
+  // Set on a provider page (/aws, /azure, /gcp, /oci): the dashboard shows only
+  // that provider, and sign-up pre-ticks it. null = all providers (/).
+  const [focusProvider, setFocusProvider] = useState(() => getFocusProvider(window.location.pathname));
   const {
     providers,
     isRefreshing,
@@ -209,22 +217,43 @@ export default function App() {
     window.history.replaceState({}, '', window.location.pathname + (next ? `?${next}` : ''));
   }, [openAlerts]);
 
-  const providerOrder = focusProvider
-    ? [focusProvider, ...PROVIDER_ORDER.filter((id) => id !== focusProvider)]
-    : PROVIDER_ORDER;
-  const slots: ProviderSlot[] = providerOrder.map((id) => ({ provider: id, status: providers[id] }));
+  // Switching the filter swaps the URL in place (no reload); polling keeps
+  // all four providers fresh either way, so the switch is instant.
+  const selectProvider = useCallback((next: Provider | null) => {
+    if (next === focusProvider) return;
+    window.history.pushState({}, '', providerPagePath(next));
+    setFocusProvider(next);
+    trackEvent('provider_filter', { provider: next ?? 'all' });
+  }, [focusProvider]);
+
+  useEffect(() => {
+    const onPopState = () => setFocusProvider(getFocusProvider(window.location.pathname));
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  useEffect(() => {
+    document.title = focusProvider ? PROVIDER_PAGE_TITLES[focusProvider] : HOME_TITLE;
+  }, [focusProvider]);
+
+  const visibleOrder = focusProvider ? [focusProvider] : PROVIDER_ORDER;
+  const slots: ProviderSlot[] = visibleOrder.map((id) => ({ provider: id, status: providers[id] }));
   const loadedProviders: ProviderStatus[] = slots
     .map((s) => s.status)
     .filter((p): p is ProviderStatus => p != null);
   const hasAnyData = loadedProviders.length > 0;
-  const pendingCount = PROVIDER_ORDER.length - loadedProviders.length;
+  const pendingCount = visibleOrder.length - loadedProviders.length;
+  const allLoadedProviders = PROVIDER_ORDER
+    .map((id) => providers[id])
+    .filter((p): p is ProviderStatus => p != null);
 
   useEffect(() => {
     if (hasAnyData) consumeDeepLink(loadedProviders);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasAnyData]);
 
-  const hasDegradedProvider = loadedProviders.some(
+  // The header's live dot reflects every provider, even on a filtered page.
+  const hasDegradedProvider = allLoadedProviders.some(
     (p) => p.overallStatus === 'degraded' || p.overallStatus === 'outage'
   );
 
@@ -315,8 +344,15 @@ export default function App() {
         </div>
       )}
 
+      <ProviderFilter
+        order={PROVIDER_ORDER}
+        focusProvider={focusProvider}
+        providers={providers}
+        onSelect={selectProvider}
+      />
+
       {!hasAnyData ? (
-        <LoadingSkeleton />
+        <LoadingSkeleton order={visibleOrder} />
       ) : (
         <>
           {pendingCount > 0 && (
@@ -331,7 +367,7 @@ export default function App() {
               Loading {pendingCount} more provider{pendingCount !== 1 ? 's' : ''}…
             </div>
           )}
-          <StatsBanner providers={loadedProviders} />
+          <StatsBanner providers={loadedProviders} focusProvider={focusProvider} />
           <ProviderGrid slots={slots} focusProvider={focusProvider} />
           <IncidentList
             providers={loadedProviders}

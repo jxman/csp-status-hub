@@ -1,3 +1,5 @@
+import { PROVIDER_PAGE_TITLES } from '../utils/providerPages';
+
 // Head tags and static fallback content for the per-provider landing pages.
 // Only imported by vite.config.ts, which writes dist/<slug>.html from the
 // built index.html with these swapped in — none of this ships in the JS bundle.
@@ -6,9 +8,11 @@
 
 export const SITE_URL = 'https://cloudstatus.synepho.com';
 
+const escapeHtml = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
 export interface ProviderPage {
   slug: 'aws' | 'azure' | 'gcp' | 'oci';
-  title: string;
+  title: string; // HTML-escaped
   description: string;
   fallbackHtml: string;
 }
@@ -41,7 +45,7 @@ const commonFooter = (slug: ProviderPage['slug'], providerName: string) => `
 export const PROVIDER_PAGES: ProviderPage[] = [
   {
     slug: 'aws',
-    title: 'Is AWS Down? Live AWS Status &amp; Outages | Cloud Status Hub',
+    title: escapeHtml(PROVIDER_PAGE_TITLES.aws),
     description:
       'Is AWS down right now? Live Amazon Web Services status with active outages by region and service, refreshed every minute, plus free email alerts.',
     fallbackHtml: `
@@ -72,7 +76,7 @@ ${commonFooter('aws', 'AWS')}`,
   },
   {
     slug: 'azure',
-    title: 'Is Azure Down? Live Azure Status &amp; Outages | Cloud Status Hub',
+    title: escapeHtml(PROVIDER_PAGE_TITLES.azure),
     description:
       'Is Microsoft Azure down right now? Live Azure status with active outages by region and service, refreshed every minute, plus free email alerts.',
     fallbackHtml: `
@@ -102,7 +106,7 @@ ${commonFooter('azure', 'Azure')}`,
   },
   {
     slug: 'gcp',
-    title: 'Is Google Cloud Down? Live GCP Status | Cloud Status Hub',
+    title: escapeHtml(PROVIDER_PAGE_TITLES.gcp),
     description:
       'Is Google Cloud down right now? Live GCP status with active outages by product and location, refreshed every minute, plus free email alerts.',
     fallbackHtml: `
@@ -133,7 +137,7 @@ ${commonFooter('gcp', 'Google Cloud')}`,
   },
   {
     slug: 'oci',
-    title: 'Is Oracle Cloud Down? Live OCI Status | Cloud Status Hub',
+    title: escapeHtml(PROVIDER_PAGE_TITLES.oci),
     description:
       'Is Oracle Cloud (OCI) down right now? Live OCI status with active outages by region and service, refreshed every minute, plus free email alerts.',
     fallbackHtml: `

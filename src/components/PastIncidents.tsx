@@ -2,17 +2,20 @@ import { useState } from 'react';
 import { fetchPastIncidents, type PastIncident } from '../fetchers/historyFetcher';
 import { trackEvent } from '../utils/analytics';
 import { IncidentCard } from './IncidentCard';
+import type { Provider } from '../types/status';
 
 interface Props {
   // "provider:id" keys already shown under Recently resolved — skipped here so
   // an incident near the 24h boundary (or behind the 1h edge cache) never
   // appears twice.
   excludeKeys: Set<string>;
+  // On a provider page, only that provider's past incidents are fetched.
+  provider?: Provider | null;
 }
 
 type LoadState = 'idle' | 'loading' | 'loaded' | 'error';
 
-export function PastIncidents({ excludeKeys }: Props) {
+export function PastIncidents({ excludeKeys, provider = null }: Props) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<LoadState>('idle');
   const [items, setItems] = useState<PastIncident[]>([]);
@@ -23,7 +26,7 @@ export function PastIncidents({ excludeKeys }: Props) {
 
   const loadFirstPage = () => {
     setState('loading');
-    fetchPastIncidents()
+    fetchPastIncidents(null, provider)
       .then((page) => {
         setItems(page.incidents);
         setNextCursor(page.nextCursor);
@@ -49,7 +52,7 @@ export function PastIncidents({ excludeKeys }: Props) {
   const loadMore = () => {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
-    fetchPastIncidents(nextCursor)
+    fetchPastIncidents(nextCursor, provider)
       .then((page) => {
         setItems((prev) => [...prev, ...page.incidents]);
         setNextCursor(page.nextCursor);

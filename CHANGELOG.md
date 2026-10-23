@@ -108,7 +108,8 @@ Oldest first.
 - Social preview image is a 59 KB JPEG instead of a 648 KB PNG (the PNG stays for links already shared)
 - `sitemap.xml` is generated at build time with the build date as `lastmod`
 - Longer static fallback in `index.html` for crawlers that don't run JavaScript: what the site shows, data sources, alerts, a short FAQ
-- Per-provider landing pages `/aws`, `/azure`, `/gcp`, `/oci`, each with its own title, description, canonical URL and crawler text. They show the full dashboard with that provider first; each card footer links to its provider's page, and its official-page link is shortened to "Official ↗" so the footer stays on one line
+- Per-provider pages `/aws`, `/azure`, `/gcp`, `/oci`, each with its own title, description, canonical URL and crawler text. Each filters the dashboard to that provider (card, summary, incidents, past incidents); a filter bar with live status dots switches between them and `/` without a reload. A first version that only moved the provider's card first, with links in each card footer, was replaced the same day because it read as confusing
+- Provider card footers' official link shortened to "Official ↗"
 - Incident cards' "View timeline →" link renamed "Official status page →": for AWS and Azure it opens the provider's general status page, not an incident timeline
 
 ---

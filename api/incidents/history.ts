@@ -13,12 +13,14 @@
 // making a per-card pointer request to /api/analysis/latest.
 //
 // ?cursor=<opaque> pages backwards through older incidents.
+// ?provider=aws|azure|gcp|oci limits the list to one provider (the /aws etc. pages).
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql } from '../_lib/db.js';
 import { HISTORY_RETENTION_DAYS } from '../_lib/incidentHistory.js';
 import type { Incident, Provider } from '../../src/types/status.js';
 
 const PAGE_SIZE = 50;
+const PROVIDERS: Provider[] = ['aws', 'azure', 'gcp', 'oci'];
 
 interface Cursor {
   resolvedAt: string;
@@ -54,6 +56,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
+  const rawProvider = req.query.provider;
+  const provider = typeof rawProvider === 'string' ? rawProvider : null;
+  if (provider !== null && !PROVIDERS.includes(provider as Provider)) {
+    res.status(400).json({ error: 'Invalid provider' });
+    return;
+  }
+
   try {
     // The cursor tuple comparison keeps paging stable when several incidents
     // share a resolved_at (e.g. Azure incidents detected in the same tick).
@@ -69,6 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ) b ON true
       WHERE h.resolved_at < now() - INTERVAL '24 hours'
         AND h.resolved_at > now() - make_interval(days => ${HISTORY_RETENTION_DAYS})
+        AND (${provider === null} OR h.provider = ${provider ?? ''})
         AND (
           ${cursor === null}
           OR (h.resolved_at, h.provider, h.incident_id) < (${cursor?.resolvedAt ?? null}::timestamptz, ${cursor?.provider ?? ''}, ${cursor?.incidentId ?? ''})

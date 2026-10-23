@@ -8,11 +8,10 @@ import { OCI_CRITICAL_SERVICES } from '../utils/ociServices';
 import { GCP_CRITICAL_SERVICES } from '../utils/gcpServices';
 import { AZURE_CRITICAL_SERVICES } from '../utils/azureServices';
 import { AWS_CRITICAL_SERVICE_IDS, AWS_SERVICE_NAMES } from '../utils/awsServices';
-import { providerPagePath } from '../utils/providerPages';
 
 interface Props {
   provider: ProviderStatus;
-  // True on this provider's own landing page (/aws etc.).
+  // True on this provider's own page (/aws etc.): the card starts expanded.
   isFocused?: boolean;
 }
 
@@ -142,16 +141,9 @@ export function ProviderPanel({ provider, isFocused = false }: Props) {
             ? `${incidentCount} active incident${incidentCount !== 1 ? 's' : ''}`
             : 'No active incidents'}
         </span>
-        <span className="pcard-links">
-          {!isFocused && (
-            <a href={providerPagePath(provider.provider)}>
-              {SHORT_NAMES[provider.provider] ?? provider.provider.toUpperCase()} status
-            </a>
-          )}
-          <a href={officialUrl} target="_blank" rel="noopener noreferrer" aria-label="Official status page">
-            Official ↗
-          </a>
-        </span>
+        <a href={officialUrl} target="_blank" rel="noopener noreferrer" aria-label="Official status page">
+          Official ↗
+        </a>
       </div>
     </div>
   );

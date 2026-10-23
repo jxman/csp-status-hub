@@ -198,10 +198,17 @@ e.g. the network is down — the last good data stays on screen.
 
 ### Provider pages and SEO
 
-`/aws`, `/azure`, `/gcp` and `/oci` are landing pages for searches like "is AWS
-down". Each one loads the normal dashboard with that provider moved first: its
-card opens, its incidents sort first, and "Get alerts" pre-ticks it. Each card's
-footer links to its provider's page.
+`/aws`, `/azure`, `/gcp` and `/oci` filter the dashboard to one provider, and
+double as landing pages for searches like "is AWS down". `/` shows all four. A
+filter bar (All providers · AWS · Azure · OCI · GCP) switches between them; each
+entry is a real link with a live status dot, so a filtered page still shows when
+another provider is having problems.
+
+On a provider page the card, summary banner, active and recently resolved
+incidents, and past incidents (`/api/incidents/history?provider=`) are all
+limited to that provider, and "Get alerts" pre-ticks it. Clicking the filter
+swaps the URL with `pushState` and updates the page title without a reload;
+the back button works, and all four providers keep polling either way.
 
 ```mermaid
 flowchart LR
@@ -209,7 +216,7 @@ flowchart LR
     built["dist/index.html<br/>(built homepage)"] --> plugin["vite.config.ts<br/>providerPagesPlugin"]
     plugin --> pages["dist/aws.html, azure.html,<br/>gcp.html, oci.html"]
     pages --> rewrite["vercel.json rewrite<br/>/aws → /aws.html"]
-    rewrite --> app["Same JS bundle<br/>getFocusProvider() reads the path"]
+    rewrite --> app["Same JS bundle<br/>getFocusProvider() reads the path,<br/>ProviderFilter switches it"]
 ```
 
 - **Static HTML per page:** the build copies the built `index.html` for each provider and swaps in that page's title, description, canonical URL, Open Graph/Twitter tags and the `<main>` fallback that crawlers without JavaScript read. The build fails if any of those tags can't be found, so a page can't ship with the homepage's canonical URL.
@@ -622,6 +629,7 @@ csp-status-hub/
 │   │   ├── StatusHeader.tsx          Title, live dot, refresh, Get alerts, Settings
 │   │   ├── ProviderGrid.tsx          4-column grid with per-provider skeletons
 │   │   ├── ProviderPanel.tsx         Expandable provider card
+│   │   ├── ProviderFilter.tsx        All / AWS / Azure / OCI / GCP filter bar
 │   │   ├── RegionTable.tsx           Region → top-10 service rows
 │   │   ├── FlatServiceList.tsx       Top-10 list when no incident is active
 │   │   ├── IncidentList.tsx          Active + recently resolved incidents

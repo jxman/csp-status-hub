@@ -2,12 +2,13 @@ import type { Provider, ProviderStatus } from '../types/status';
 import type { SubscribeSource } from './SubscribeModal';
 import { IncidentCard } from './IncidentCard';
 import { PastIncidents } from './PastIncidents';
+import { PROVIDER_LABELS } from '../utils/providerPages';
 
 interface Props {
   providers: ProviderStatus[];
   deepLinkTarget?: { provider: Provider; incidentId: string } | null;
   onSubscribe?: (source: SubscribeSource, provider?: Provider) => void;
-  // On a provider landing page, that provider's incidents are listed first.
+  // Set on a provider page (/aws etc.); `providers` is already filtered to it.
   focusProvider?: Provider | null;
 }
 
@@ -19,11 +20,8 @@ export function IncidentList({ providers, deepLinkTarget, onSubscribe, focusProv
   const active = allIncidents.filter(({ incident }) => incident.status !== 'resolved');
   const resolved = allIncidents.filter(({ incident }) => incident.status === 'resolved');
 
-  const byFocusThenRecency = (a: (typeof allIncidents)[number], b: (typeof allIncidents)[number]) =>
-    Number(b.provider === focusProvider) - Number(a.provider === focusProvider) ||
-    new Date(b.incident.updatedAt).getTime() - new Date(a.incident.updatedAt).getTime();
-  active.sort(byFocusThenRecency);
-  resolved.sort(byFocusThenRecency);
+  active.sort((a, b) => new Date(b.incident.updatedAt).getTime() - new Date(a.incident.updatedAt).getTime());
+  resolved.sort((a, b) => new Date(b.incident.updatedAt).getTime() - new Date(a.incident.updatedAt).getTime());
 
   const isDeepLinkTarget = (provider: Provider, incidentId: string) =>
     deepLinkTarget?.provider === provider && deepLinkTarget?.incidentId === incidentId;
@@ -33,7 +31,9 @@ export function IncidentList({ providers, deepLinkTarget, onSubscribe, focusProv
       <h2>Active incidents{active.length > 0 ? ` · ${active.length}` : ''}</h2>
       {active.length === 0 ? (
         <div className="all-clear-msg">
-          No active incidents — all systems operational.
+          {focusProvider
+            ? `No active ${PROVIDER_LABELS[focusProvider]} incidents — all ${PROVIDER_LABELS[focusProvider]} services operational.`
+            : 'No active incidents — all systems operational.'}
           {onSubscribe && (
             <>
               {' '}
@@ -69,7 +69,12 @@ export function IncidentList({ providers, deepLinkTarget, onSubscribe, focusProv
         </>
       )}
 
-      <PastIncidents excludeKeys={new Set(resolved.map(({ provider, incident }) => `${provider}:${incident.id}`))} />
+      {/* Keyed by provider so switching the filter starts a fresh, collapsed list */}
+      <PastIncidents
+        key={focusProvider ?? 'all'}
+        excludeKeys={new Set(resolved.map(({ provider, incident }) => `${provider}:${incident.id}`))}
+        provider={focusProvider}
+      />
     </div>
   );
 }

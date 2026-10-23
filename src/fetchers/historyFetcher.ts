@@ -15,8 +15,12 @@ export interface PastIncidentsPage {
 
 // Incidents resolved 24h–90d ago (see api/incidents/history.ts). Only called
 // when the "Past incidents" section is expanded — never on page load or poll.
-export async function fetchPastIncidents(cursor?: string | null): Promise<PastIncidentsPage> {
-  const url = cursor ? `/api/incidents/history?cursor=${encodeURIComponent(cursor)}` : '/api/incidents/history';
+export async function fetchPastIncidents(cursor?: string | null, provider?: Provider | null): Promise<PastIncidentsPage> {
+  const params = new URLSearchParams();
+  if (provider) params.set('provider', provider);
+  if (cursor) params.set('cursor', cursor);
+  const query = params.toString();
+  const url = `/api/incidents/history${query ? `?${query}` : ''}`;
   const response = await fetch(url);
   const text = await response.text();
 

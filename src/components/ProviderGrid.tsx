@@ -9,8 +9,8 @@ export interface ProviderSlot {
 
 interface Props {
   slots: ProviderSlot[];
-  // Set on a provider landing page (/aws etc.): that card opens by default
-  // and drops its link to its own page.
+  // Set on a provider page (/aws etc.): `slots` holds just that provider,
+  // whose card starts expanded.
   focusProvider?: Provider | null;
 }
 
@@ -20,7 +20,7 @@ export function ProviderGrid({ slots, focusProvider }: Props) {
   );
 
   return (
-    <section className={`a-grid${allHealthy ? ' all-healthy' : ''}`}>
+    <section className={`a-grid${allHealthy ? ' all-healthy' : ''}${focusProvider ? ' single' : ''}`}>
       {slots.map((slot) =>
         slot.status === null
           ? <ProviderCardSkeleton key={slot.provider} provider={slot.provider} />
