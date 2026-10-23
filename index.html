@@ -74,7 +74,7 @@
   <body>
     <!-- Static fallback for crawlers that don't run JavaScript; React replaces it on mount -->
     <div id="root">
-      <main style="max-width: 720px; margin: 48px auto; padding: 0 16px;">
+      <main style="max-width: 720px; margin: 48px auto; padding: 0 16px; line-height: 1.6;">
         <h1>Cloud Status Hub</h1>
         <p>
           Live status for AWS, Microsoft Azure, Google Cloud (GCP), and Oracle Cloud
@@ -82,6 +82,52 @@
           see active outages and incidents by region and service, and get email alerts
           when a new incident starts or resolves. Updates automatically every minute.
         </p>
+
+        <h2>What it shows</h2>
+        <ul>
+          <li>Current status for each provider: operational, degraded, or outage.</li>
+          <li>Active incidents with the affected regions and services and the provider's latest update.</li>
+          <li>A region-by-service view of where each provider is having problems.</li>
+          <li>An AI-generated technical and executive brief for each active incident, downloadable as a PDF.</li>
+          <li>Incidents resolved in the last 24 hours, plus a 90-day history of past incidents.</li>
+        </ul>
+
+        <h2>Where the data comes from</h2>
+        <p>
+          Everything comes from each provider's official public status feed. Cloud Status Hub
+          is not affiliated with Amazon, Microsoft, Google, or Oracle.
+        </p>
+        <ul>
+          <li><strong>AWS:</strong> the AWS Health Dashboard RSS feed (<a href="https://health.aws.amazon.com/health/status">AWS Health Dashboard</a>)</li>
+          <li><strong>Microsoft Azure:</strong> the Azure status RSS feed (<a href="https://azure.status.microsoft/">Azure status</a>)</li>
+          <li><strong>Google Cloud:</strong> the Google Cloud incidents feed (<a href="https://status.cloud.google.com/">Google Cloud Service Health</a>)</li>
+          <li><strong>Oracle Cloud (OCI):</strong> the OCI status page and incident feed (<a href="https://ocistatus.oraclecloud.com/">OCI status</a>)</li>
+        </ul>
+
+        <h2>Email alerts</h2>
+        <p>
+          <a href="/?subscribe=1">Sign up for free email alerts</a> for any or all of the four
+          providers. You get one email when a new incident is posted and another when it
+          resolves. Each email links to the incident on the dashboard, where its AI brief opens,
+          and to a page where you can change providers or unsubscribe.
+        </p>
+
+        <h2>Common questions</h2>
+        <h3>How do I check if AWS, Azure, Google Cloud, or OCI is down right now?</h3>
+        <p>
+          Open this page. It loads each provider's current status as soon as you open it and
+          refreshes every minute, so a new incident shows up without reloading.
+        </p>
+        <h3>Why does a provider show operational while I'm having problems?</h3>
+        <p>
+          Public status pages only list incidents the provider chooses to announce, usually
+          widespread ones. AWS and Azure in particular often leave smaller, single-service or
+          single-account problems off their public pages. For issues specific to your own
+          account, check AWS Health in the AWS console or Azure Service Health in the Azure
+          portal.
+        </p>
+        <h3>Is it free?</h3>
+        <p>Yes. The dashboard and the email alerts are free, and you don't need an account.</p>
       </main>
     </div>
     <script type="module" src="/src/main.tsx"></script>
