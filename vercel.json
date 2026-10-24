@@ -5,7 +5,8 @@
       "has": [{ "type": "host", "value": "csp-status-hub.vercel.app" }],
       "destination": "https://cloudstatus.synepho.com/$1",
       "permanent": true
-    }
+    },
+    { "source": "/:provider(aws|azure|gcp|oci)/", "destination": "/:provider", "permanent": true }
   ],
   "rewrites": [
     { "source": "/api/admin/subscribers", "destination": "/api/admin/subscribers/[id]" },

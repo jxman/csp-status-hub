@@ -223,6 +223,7 @@ flowchart LR
 - **Static HTML per page:** the build copies the built `index.html` for each provider and swaps in that page's title, description, canonical URL, Open Graph/Twitter tags and the `<main>` fallback that crawlers without JavaScript read. The build fails if any of those tags can't be found, so a page can't ship with the homepage's canonical URL.
 - **Sitemap:** generated at build time with all five URLs and the build date as `lastmod`.
 - **Unknown paths 404:** `vercel.json` only rewrites `/admin`, `/manage` and the four provider paths; anything else returns 404 rather than the homepage.
+- **Trailing slashes:** `/aws/` (and the other three) permanently redirect (308) to the slash-less path, so hand-typed or mis-linked URLs don't hit the 404.
 
 ---
 
@@ -773,7 +774,6 @@ Shipped work is listed in [CHANGELOG.md](./CHANGELOG.md).
 - SMS alerts (deferred pending Twilio A2P 10DLC registration)
 - Escalation notices and per-subscriber severity thresholds
 - SEO: a server-rendered page per past incident (e.g. `/incidents/aws/…`) for outage searches, which would also mean keeping incident history past 90 days
-- SEO: redirect `/aws/` (trailing slash) to `/aws`; it currently returns 404
 
 ---
 

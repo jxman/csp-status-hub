@@ -59,10 +59,13 @@ us-east-1 outage October 2026". Needs: a Vercel function rendering from
 cap matters); `noindex` on thin incidents with no brief; and keeping history longer than
 90 days, since `cleanup.ts` would otherwise delete pages just as they start ranking.
 
-### `/aws/` trailing slash returns 404
+### ✅ `/aws/` trailing slash returned 404
 
-`vercel.json` only rewrites `/aws` (no slash). A redirect from `/:provider(aws|azure|gcp|oci)/`
-to the slash-less path would cover hand-typed or mis-linked URLs.
+_Completed 2026-10-24_
+
+`vercel.json` only rewrites `/aws` (no slash), so `/aws/` was a 404. A permanent redirect
+from `/:provider(aws|azure|gcp|oci)/` to the slash-less path now covers hand-typed or
+mis-linked URLs.
 
 ---
 

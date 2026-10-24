@@ -116,6 +116,10 @@ Oldest first.
 - Provider card footers' official link was briefly shortened to "Official ↗" to fit next to the per-card provider links; restored to "Official status page →" once the filter bar replaced those links
 - Incident cards' "View timeline →" link renamed "Official status page →": for AWS and Azure it opens the provider's general status page, not an incident timeline
 
+### 2026-10-24
+
+- `/aws/`, `/azure/`, `/gcp/`, `/oci/` (trailing slash) permanently redirect to the slash-less provider page instead of returning 404
+
 ---
 
 ## Design history
