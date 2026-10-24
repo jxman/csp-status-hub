@@ -49,10 +49,13 @@ const checkboxStyle: React.CSSProperties = {
 export function SubscribeModal({ onClose, source, initialProvider }: Props) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const hasInitialProvider = !!initialProvider && PROVIDERS.some((p) => p.id === initialProvider);
   const [selected, setSelected] = useState<Set<string>>(
-    () => new Set(initialProvider && PROVIDERS.some((p) => p.id === initialProvider) ? [initialProvider] : [])
+    () => new Set(hasInitialProvider ? [initialProvider] : [])
   );
-  const [allProviders, setAllProviders] = useState(false);
+  // Opened without a specific provider (the all-providers view, or a shared
+  // link that names none): start on "All providers" rather than nothing ticked.
+  const [allProviders, setAllProviders] = useState(!hasInitialProvider);
   const [status, setStatus] = useState<'idle' | 'submitting' | 'done' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
   // Honeypot — hidden from people, so only bots fill it (see api/_lib/signupLimits.ts).

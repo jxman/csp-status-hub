@@ -110,6 +110,7 @@ Oldest first.
 - Longer static fallback in `index.html` for crawlers that don't run JavaScript: what the site shows, data sources, alerts, a short FAQ
 - Per-provider pages `/aws`, `/azure`, `/gcp`, `/oci`, each with its own title, description, canonical URL and crawler text. Each filters the dashboard to that provider (card, summary, incidents, past incidents); a filter bar with live status dots switches between them and `/` without a reload. A first version that only moved the provider's card first, with links in each card footer, was replaced the same day because it read as confusing
 - On phones the filter bar is one row that scrolls sideways rather than wrapping
+- "Get alerts" opens with "All providers" ticked when no specific provider applies (the all-providers view, or a `/?subscribe=1` link without `&provider=`); provider pages and "Alert me about …" still pre-tick just that provider
 - Switching filters resets every card and region row to closed, the same as a fresh page load (cards had kept whatever was opened under the previous filter, and a healthy provider's card started open on its own page)
 - Provider card footers' official link was briefly shortened to "Official ↗" to fit next to the per-card provider links; restored to "Official status page →" once the filter bar replaced those links
 - Incident cards' "View timeline →" link renamed "Official status page →": for AWS and Azure it opens the provider's general status page, not an incident timeline
