@@ -61,7 +61,15 @@ export function SubscribeModal({ onClose, source, initialProvider }: Props) {
   // Honeypot — hidden from people, so only bots fill it (see api/_lib/signupLimits.ts).
   const [hpField, setHpField] = useState('');
 
+  // "All providers" and the individual boxes are exclusive, but neither locks
+  // the other: picking a provider while "All" is ticked switches to just that
+  // provider, and ticking "All" clears any individual picks.
   function toggleProvider(id: string) {
+    if (allProviders) {
+      setAllProviders(false);
+      setSelected(new Set([id]));
+      return;
+    }
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -183,17 +191,19 @@ export function SubscribeModal({ onClose, source, initialProvider }: Props) {
                       type="checkbox"
                       style={checkboxStyle}
                       checked={allProviders}
-                      onChange={(e) => setAllProviders(e.target.checked)}
+                      onChange={(e) => {
+                        setAllProviders(e.target.checked);
+                        if (e.target.checked) setSelected(new Set());
+                      }}
                     />
                     All providers
                   </label>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px 28px', opacity: allProviders ? 0.5 : 1 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px 28px' }}>
                     {PROVIDERS.map((p) => (
-                      <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 17, color: 'var(--ink)', cursor: allProviders ? 'default' : 'pointer' }}>
+                      <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 17, color: 'var(--ink)', cursor: 'pointer' }}>
                         <input
                           type="checkbox"
                           style={checkboxStyle}
-                          disabled={allProviders}
                           checked={selected.has(p.id)}
                           onChange={() => toggleProvider(p.id)}
                         />
