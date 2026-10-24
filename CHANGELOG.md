@@ -101,7 +101,7 @@ Oldest first.
 - Settings menu now closes after picking a theme
 - About and Subscribe popups scroll on short phone screens instead of spilling off the top (the Close button was unreachable on a 375×667 screen, worst in the Terminal theme)
 
-### 2026-10-23 — SEO
+### 2026-10-23 — v1.4.0
 
 - Unknown paths now return a real 404 instead of the homepage (`vercel.json` rewrites only `/admin`, `/manage` and the provider pages)
 - Section titles and provider names are `<h2>` headings (were `<h3>` or plain text); no visual change

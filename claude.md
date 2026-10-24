@@ -58,6 +58,22 @@
 >   PDF links now go through an id-based redirect
 >   (`/api/admin/analysis-admin?resource=pdf`). Workspace-wide dependency
 >   and code scans report 0 open issues.
+>
+> **Scope update (2026-10-23, v1.4.0):** SEO work and provider pages; see
+> `README.md`'s **Provider pages and SEO** section and the v1.4.0 entry in
+> `CHANGELOG.md`.
+> - **Provider pages:** `/aws`, `/azure`, `/gcp`, `/oci` filter the whole
+>   dashboard to one provider (card, summary, incidents, past incidents via
+>   `/api/incidents/history?provider=`). A filter bar switches between them
+>   and `/` with `pushState`. The build writes `dist/<slug>.html` per provider
+>   with its own head tags and crawler text (`src/seo/providerPages.ts`,
+>   `providerPagesPlugin` in `vite.config.ts`); `vercel.json` rewrites only
+>   `/admin`, `/manage` and these four paths, so anything else is a real 404.
+> - **Sign-up form:** starts on "All providers" unless opened for a specific
+>   provider; the individual boxes switch away from All instead of being
+>   locked by it.
+> - **SEO basics:** `<h2>` section headings, 59 KB JPEG social image,
+>   build-time `sitemap.xml`, and a longer static fallback in `index.html`.
 
 ---
 

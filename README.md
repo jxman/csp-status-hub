@@ -17,6 +17,7 @@ Real-time operational status dashboard for AWS, Azure, OCI, and GCP in a single 
 **What it does**
 
 - **Live dashboard** — current status of all four providers, refreshed every 60 seconds, with a region × service breakdown, active and recently resolved incidents, and links to each official status page.
+- **Provider pages** — `/aws`, `/azure`, `/gcp` and `/oci` filter the dashboard to one provider, with a filter bar to switch between them; each page has its own title and text for search engines.
 - **Email alerts** — opt in (double opt-in) to hear when a provider you follow reports a new incident, and again when it resolves.
 - **AI Insight** — each incident gets an AI-generated technical brief and executive brief (AWS Bedrock, Claude), shown on the dashboard and downloadable as a branded PDF.
 - **Past incidents** — resolved incidents are kept for 90 days, with links to their AI briefs.
@@ -262,6 +263,7 @@ sequenceDiagram
   Over-limit requests get a 429 with a plain-language message. A Redis error fails open, and double opt-in still applies. There is deliberately **no per-IP limit**: Zscaler-style corporate proxies send a whole company's traffic out through a few shared IPs.
 
   **Why not Vercel BotID (removed 2026-10-01):** its browser challenge was blocked by Zscaler, so sign-ups from Zscaler-managed corporate laptops got a 403 "Request blocked". Many cloud engineers work behind proxies like this. Double opt-in already stops bots from subscribing anyone; the only remaining risk is the form being used to send email, which the limits above bound directly.
+- **Form defaults:** opened from the all-providers view (or a `/?subscribe=1` link without `&provider=`), the form starts with "All providers" ticked; opened from a provider page or an incident card's "Alert me about …", it starts with just that provider. "All providers" and the individual boxes are exclusive but never locked: clicking a provider while All is ticked switches to that provider, and ticking All clears individual picks. "All providers" is stored as `all`, so it also covers any provider added later.
 - **Re-confirmation:** new sign-ups *and* any provider change made through the public form need a click on a confirmation link before taking effect, since that form is unauthenticated. Resubmitting an email that's still `pending_confirmation` reissues the same link; resubmitting an `unsubscribed` email starts a fresh sign-up.
 - **Welcome email:** sent once after first confirmation and carries the `/manage` and unsubscribe links (`manage_token` doesn't exist until then).
 - **Manage:** edits via `/manage?token=...` apply immediately — the token already proves inbox ownership.
@@ -738,6 +740,7 @@ Vercel's native cron from `vercel.json`.
 | Function logs | ✅ Live | `vercel logs <url> --follow` or the Logs tab |
 | Notification log | ✅ Live (data only) | `notification_log` records every send attempt; no admin UI reads it yet |
 | Sign-up funnel | ✅ Live | GA4 events (production host only): `subscribe_open` {source, provider} when the form opens, and `subscribe_success` {providers, source} on submit. `source` is `header`, `all_clear`, `incident_card` or `shared_link` |
+| Provider filter | ✅ Live | GA4 `provider_filter` {provider} when the filter bar is clicked (`all`, `aws`, `azure`, `gcp`, `oci`). Provider pages also show up as their own paths (`/aws` etc.) in page views |
 | GA4 health check | ✅ Live | Daily GitHub Action (`verify-ga.yml`, 13:00 UTC) loads the live site in a clean headless browser and fails unless a GA4 `page_view` reaches `/g/collect`. GitHub emails on failure. Catches silent breakage that a loaded gtag.js hides |
 
 ---
@@ -769,6 +772,8 @@ Shipped work is listed in [CHANGELOG.md](./CHANGELOG.md).
 - Top-level React error boundary
 - SMS alerts (deferred pending Twilio A2P 10DLC registration)
 - Escalation notices and per-subscriber severity thresholds
+- SEO: a server-rendered page per past incident (e.g. `/incidents/aws/…`) for outage searches, which would also mean keeping incident history past 90 days
+- SEO: redirect `/aws/` (trailing slash) to `/aws`; it currently returns 404
 
 ---
 

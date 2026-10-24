@@ -15,8 +15,9 @@
 _Reverted — `bc48584` → reverted_
 
 Dynamic tab title (`⚠️ N Active Incidents — Cloud Status Hub`) was implemented but
-reverted by user preference. Title is now the static "Cloud Status Hub" defined in
-`index.html`.
+reverted by user preference. Titles are static per page: the homepage's and each
+provider page's (`/aws` etc.) are set at build time, and switching the provider filter
+swaps to that page's fixed title — never a status-based one.
 
 ### ✅ Favicon and meta tags (`index.html`)
 
@@ -31,6 +32,37 @@ _Completed — `bc48584`_
 
 `@vercel/speed-insights` installed and `<SpeedInsights />` wired into `App.tsx`.
 Enable in the Vercel dashboard under Speed Insights to start collecting Core Web Vitals.
+
+---
+
+## SEO
+
+### ✅ Search basics (2026-10-23, v1.4.0)
+
+Unknown paths return a real 404 instead of the homepage; section titles and provider
+names are `<h2>`; the social image is a 59 KB JPEG; `sitemap.xml` is generated at build
+time; `index.html`'s static fallback covers what the site shows, data sources, alerts and
+a short FAQ for crawlers that don't run JavaScript.
+
+### ✅ Provider pages (2026-10-23, v1.4.0)
+
+`/aws`, `/azure`, `/gcp`, `/oci` filter the dashboard to one provider, each with its own
+title, description, canonical URL and crawler text (`src/seo/providerPages.ts`). See
+README → Provider pages and SEO.
+
+### Past-incident pages
+
+A server-rendered HTML page per resolved incident (title, timeline, affected regions and
+services, AI brief summary), listed in a dynamic sitemap, to rank for searches like "AWS
+us-east-1 outage October 2026". Needs: a Vercel function rendering from
+`incident_history` with long edge caching (resolved incidents don't change, and Neon's CU
+cap matters); `noindex` on thin incidents with no brief; and keeping history longer than
+90 days, since `cleanup.ts` would otherwise delete pages just as they start ranking.
+
+### `/aws/` trailing slash returns 404
+
+`vercel.json` only rewrites `/aws` (no slash). A redirect from `/:provider(aws|azure|gcp|oci)/`
+to the slash-less path would cover hand-typed or mis-linked URLs.
 
 ---
 
