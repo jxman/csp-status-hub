@@ -139,8 +139,8 @@ export function ProviderPanel({ provider }: Props) {
             ? `${incidentCount} active incident${incidentCount !== 1 ? 's' : ''}`
             : 'No active incidents'}
         </span>
-        <a href={officialUrl} target="_blank" rel="noopener noreferrer" aria-label="Official status page">
-          Official ↗
+        <a href={officialUrl} target="_blank" rel="noopener noreferrer">
+          Official status page →
         </a>
       </div>
     </div>
