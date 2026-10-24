@@ -16,9 +16,12 @@
   },
   "overrides": {
     "@vercel/node": {
-      "undici": "^6.29.0",
+      "undici": "^6.29.1",
       "esbuild": "^0.28.1",
       "path-to-regexp": "^6.3.0"
+    },
+    "@vercel/cli-config": {
+      "zod": "^4.6.6"
     },
     "@vercel/static-config": {
       "ajv": "^8.20.0"
