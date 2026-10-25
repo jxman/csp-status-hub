@@ -574,6 +574,68 @@ Preview, Development); pull them with `vercel env pull .env.local`.
 | `ANALYSIS_DEBOUNCE_MINUTES` | Optional, default `30`; the Redis setting overrides it |
 | `BLOB_READ_WRITE_TOKEN` | Auto-injected once a Vercel Blob store is connected |
 
+### Rotating secrets
+
+`scripts/rotate-secrets.sh` audits and rotates the secrets above
+([#4](https://github.com/jxman/csp-status-hub/issues/4)). It is a **dry run
+by default**: it prints the plan and changes nothing in Vercel or AWS until
+`--apply` is passed.
+
+```bash
+npm run secrets:audit                                  # read-only; exits 1 if anything needs attention
+scripts/rotate-secrets.sh --rotate resend              # print the plan
+scripts/rotate-secrets.sh --rotate resend --secure --apply
+scripts/rotate-secrets.sh --secure RESEND_API_KEY --apply
+```
+
+| Target | Variables | How |
+| --- | --- | --- |
+| `cron` | `CRON_SECRET` | Automatic: new value → Vercel production → redeploy → EventBridge connection, then waits for a successful run in CloudWatch |
+| `session` | `SESSION_SECRET` | Automatic: new value → redeploy. Signs you out of `/admin` |
+| `resend` | `RESEND_API_KEY` | Guided |
+| `blob` | `BLOB_READ_WRITE_TOKEN` | Guided |
+| `upstash` | `KV_*`, `REDIS_URL` | Guided. The old token stops working immediately |
+| `neon` | `DATABASE_URL`, `POSTGRES_*`, `PG*` | Guided. The old password stops working immediately |
+
+Connected services (Resend, Blob, Upstash, Neon) have no public API for their
+"Rotate Secrets" button, so the script opens the dashboard and waits for the
+click, then handles everything after it:
+
+```mermaid
+flowchart TD
+    plan["Dry run<br/>prints the plan"] -->|"--apply"| open["Open dashboard<br/>wait for Rotate Secrets click"]
+    open --> changed{"Variable's updatedAt<br/>changed in Vercel?"}
+    changed -->|yes| redeploy["Redeploy production"]
+    changed -->|"no: confirm first"| redeploy
+    redeploy --> build["Wait for new buildDate<br/>in /version.json"]
+    build --> pull["Back up and re-pull .env.local"]
+    pull --> check["Credential check<br/>rotate-secrets-check.mjs"]
+    check --> secure{"--secure?"}
+    secure -->|yes| split["Sensitive Production + Preview<br/>readable Development copy"]
+    secure -->|no| done["Done"]
+    split --> done
+```
+
+- **Order matters for `cron`.** Vercel is updated and redeployed before the
+  EventBridge connection, so at most one 5-minute status check gets a 401.
+  The Development copy of `CRON_SECRET` is left alone; if you re-run
+  `setup-eventbridge-cron.sh`, give it the production value.
+- **Upstash and Neon:** DB or Redis requests fail from the click until the
+  redeploy is live (about a minute). The page stays up.
+- **Credential checks have no side effects:** Neon `select 1`, Redis `PING`,
+  Blob `list`, Resend `GET /domains`. No data is written and no email is sent.
+- **`--secure`** clears Vercel's "Needs Attention" badge. Sensitive values
+  can't target Development, so the script keeps a readable Development copy for
+  `vercel env pull`. After the change, the production value can't be read
+  back from Vercel. Whether Vercel allows this on service-owned variables is
+  unverified; try one `KEY` first. If Vercel refuses, nothing changes.
+- **Not covered:** `VERCEL_OAUTH_CLIENT_SECRET` comes from the Sign in with
+  Vercel app settings, so rotate it there and set it with
+  `vercel env update VERCEL_OAUTH_CLIENT_SECRET production --sensitive`. The
+  audit still reports its age.
+- Secrets never appear on a command line: values go through stdin or mode-600
+  temp files deleted on exit.
+
 ### Database migrations
 
 Migrations live in `scripts/db/*.sql` and run in filename order:
@@ -657,6 +719,8 @@ csp-status-hub/
 │   ├── setup-eventbridge-cron.sh     EventBridge cron trigger
 │   ├── setup-bedrock-oidc.sh         Bedrock OIDC provider + role
 │   ├── setup-resend-dns.sh           Resend DNS records in Route 53
+│   ├── rotate-secrets.sh             Secret audit and rotation (dry run by default)
+│   ├── rotate-secrets-check.mjs      Side-effect-free credential checks for it
 │   ├── deploy.sh                     Deploy wrapper
 │   ├── verify-gcp-services.mjs       Re-validate GCP productIds
 │   └── verify-ga.mjs                 Confirm GA4 hits leave the live site
@@ -774,7 +838,7 @@ Shipped work is listed in [CHANGELOG.md](./CHANGELOG.md).
 - SMS alerts (deferred pending Twilio A2P 10DLC registration)
 - Escalation notices and per-subscriber severity thresholds
 - SEO: a server-rendered page per past incident (e.g. `/incidents/aws/…`) for outage searches, which would also mean keeping incident history past 90 days
-- Secret rotation: `scripts/rotate-secrets.sh` (dry run by default; `npm run secrets:audit` for the read-only audit) is written but its `--apply` paths haven't had a first real run yet. Still to do: that first run (Resend or Blob first, Neon last), a "Rotating secrets" section here, and an optional monthly audit GitHub Action ([#4](https://github.com/jxman/csp-status-hub/issues/4))
+- Secret rotation: first real `--apply` run of [`scripts/rotate-secrets.sh`](#rotating-secrets) (Resend or Blob first, Neon last), then an optional monthly audit GitHub Action ([#4](https://github.com/jxman/csp-status-hub/issues/4))
 
 ---
 
