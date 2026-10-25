@@ -12,6 +12,7 @@
     "deploy:preview": "npm run lint && npm run build && bash scripts/deploy.sh",
     "verify:gcp": "node scripts/verify-gcp-services.mjs",
     "verify:ga": "node scripts/verify-ga.mjs",
+    "secrets:audit": "bash scripts/rotate-secrets.sh --audit",
     "prepare": "husky"
   },
   "overrides": {

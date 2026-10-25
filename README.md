@@ -774,6 +774,7 @@ Shipped work is listed in [CHANGELOG.md](./CHANGELOG.md).
 - SMS alerts (deferred pending Twilio A2P 10DLC registration)
 - Escalation notices and per-subscriber severity thresholds
 - SEO: a server-rendered page per past incident (e.g. `/incidents/aws/…`) for outage searches, which would also mean keeping incident history past 90 days
+- Secret rotation: `scripts/rotate-secrets.sh` (dry run by default; `npm run secrets:audit` for the read-only audit) is written but its `--apply` paths haven't had a first real run yet. Still to do: that first run (Resend or Blob first, Neon last), a "Rotating secrets" section here, and an optional monthly audit GitHub Action ([#4](https://github.com/jxman/csp-status-hub/issues/4))
 
 ---
 
