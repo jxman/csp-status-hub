@@ -6,11 +6,11 @@ if [ -n "$conflict_files" ]; then
   exit 1
 fi
 
-# Scan staged changes for secrets
-if ! command -v gitleaks >/dev/null 2>&1; then
-  echo "gitleaks not found. Install with: brew install gitleaks"
+# Scan staged changes for secrets (GitGuardian)
+if ! command -v ggshield >/dev/null 2>&1; then
+  echo "ggshield not found. Install with: brew install ggshield (then: ggshield auth login)"
   exit 1
 fi
-gitleaks protect --staged --redact -v
+ggshield secret scan pre-commit
 
 npx lint-staged

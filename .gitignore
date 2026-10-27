@@ -37,3 +37,6 @@ tmp/
 # Tool working files
 .playwright-mcp/
 .claude/
+
+# GitGuardian ggshield local cache
+.cache_ggshield
