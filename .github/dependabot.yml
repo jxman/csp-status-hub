@@ -1,0 +1,16 @@
+# Dependabot version updates: opens a PR when an action used in .github/workflows has a new
+# release (e.g. actions/checkout, ludeeus/action-shellcheck). Separate from Dependabot
+# security alerts, which are enabled in the repo settings.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    # One PR for all action updates instead of one per action
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: ci
