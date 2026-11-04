@@ -25,12 +25,25 @@ ignore:
         expires: 2026-12-31T00:00:00.000Z
         created: 2026-10-01T00:00:00.000Z
   SNYK-JS-BRACES-19963945:
-    - '@vercel/node > @vercel/static-config > ts-morph > @ts-morph/common > fast-glob > micromatch > braces':
+    - 'tailwindcss > micromatch > braces':
         reason: >-
-          No fixed braces release exists; dev-only via @vercel/node, which this
-          project imports for TypeScript types only. Not shipped to production.
+          No fixed braces release exists; dev-only via Tailwind's build-time
+          file watching and globbing. Not shipped to production. (Previously
+          also reached through @vercel/node, removed 2026-11-04.)
         expires: 2026-12-31T00:00:00.000Z
         created: 2026-10-01T00:00:00.000Z
+    - 'tailwindcss > chokidar > braces':
+        reason: >-
+          No fixed braces release exists; dev-only via Tailwind's build-time
+          file watcher. Not shipped to production.
+        expires: 2026-12-31T00:00:00.000Z
+        created: 2026-11-04T00:00:00.000Z
+    - 'tailwindcss > fast-glob > micromatch > braces':
+        reason: >-
+          No fixed braces release exists; dev-only via Tailwind's content
+          globbing. Not shipped to production.
+        expires: 2026-12-31T00:00:00.000Z
+        created: 2026-11-04T00:00:00.000Z
 patch: {}
 # Local build output from `vercel build` bundles a frozen copy of each
 # function's node_modules; it's gitignored and never deployed, so scanning

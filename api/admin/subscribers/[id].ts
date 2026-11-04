@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest, VercelResponse } from '../../_lib/vercel.js';
 import { randomBytes } from 'node:crypto';
 import { requireAdmin } from '../../_lib/auth.js';
 import { sql } from '../../_lib/db.js';

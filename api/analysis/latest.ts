@@ -23,7 +23,7 @@
 // visitor, any reload, for the rest of that incident's life) resolves from
 // cache with no Postgres query at all — see the "Pointer/content split"
 // entry in README.md's Alerts & Admin section for why this split exists.
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest, VercelResponse } from '../_lib/vercel.js';
 import { sql } from '../_lib/db.js';
 import type { Provider } from '../../src/types/status.js';
 import type { StructuredBriefs } from '../../src/utils/structuredBrief.js';

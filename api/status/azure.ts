@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest, VercelResponse } from '../_lib/vercel.js';
 import type { ProviderStatus } from '../../src/types/status.js';
 import { fetchAzure } from '../_lib/azureFetcher.js';
 import { getRecentlyResolvedIncidents } from '../_lib/resolvedIncidents.js';

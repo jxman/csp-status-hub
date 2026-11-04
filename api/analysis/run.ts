@@ -6,7 +6,7 @@
 // pipeline lives in api/_lib/analysisPipeline.ts, shared with the admin
 // retry action (api/admin/analysis-runs/[id].ts) — this handler is just
 // the CRON_SECRET-gated HTTP entrypoint.
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest, VercelResponse } from '../_lib/vercel.js';
 import { runIncidentAnalysis } from '../_lib/analysisPipeline.js';
 import type { Incident, Provider } from '../../src/types/status.js';
 

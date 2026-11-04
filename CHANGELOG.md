@@ -120,6 +120,12 @@ Oldest first.
 
 - `/aws/`, `/azure/`, `/gcp/`, `/oci/` (trailing slash) permanently redirect to the slash-less provider page instead of returning 404
 
+### 2026-11-04
+
+- AWS: an empty or broken `all.rss` response (HTTP 200 with no feed items) now counts as a failed fetch. It used to read as "all operational", which sent subscribers a false "resolved" email and then a false "new incident" email five minutes later for the still-active me-central-1 / me-south-1 disruptions
+- `minimatch` moved to 11.0.4 under ESLint and typescript-eslint (Dependabot #15)
+- Removed `@vercel/node`: `api/` only used its `VercelRequest`/`VercelResponse` types, now in `api/_lib/vercel.ts`. This drops ts-morph, the last old `minimatch`, and the npm overrides that only existed for its dependencies
+
 ---
 
 ## Design history

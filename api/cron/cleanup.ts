@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest, VercelResponse } from '../_lib/vercel.js';
 import { sql } from '../_lib/db.js';
 import { HISTORY_RETENTION_DAYS } from '../_lib/incidentHistory.js';
 

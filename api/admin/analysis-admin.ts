@@ -6,7 +6,7 @@
 // one function instead of three (all admin_-gated, all part of the same
 // "Incident Briefing Engine admin" concern, so the merge doesn't blur
 // unrelated responsibilities together).
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest, VercelResponse } from '../_lib/vercel.js';
 import { del } from '@vercel/blob';
 import { requireAdmin } from '../_lib/auth.js';
 import { sql } from '../_lib/db.js';

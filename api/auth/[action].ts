@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest, VercelResponse } from '../_lib/vercel.js';
 import { randomBytes, createHash } from 'node:crypto';
 import { parseCookies } from '../_lib/cookies.js';
 import { createSessionCookie } from '../_lib/session.js';

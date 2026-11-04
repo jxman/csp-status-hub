@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest, VercelResponse } from '../_lib/vercel.js';
 import { createHash } from 'node:crypto';
 import { waitUntil } from '@vercel/functions';
 import { sql } from '../_lib/db.js';

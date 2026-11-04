@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest, VercelResponse } from './vercel.js';
 import { parseCookies } from './cookies.js';
 import { verifySessionCookie } from './session.js';
 

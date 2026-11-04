@@ -14,7 +14,7 @@
 //
 // ?cursor=<opaque> pages backwards through older incidents.
 // ?provider=aws|azure|gcp|oci limits the list to one provider (the /aws etc. pages).
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest, VercelResponse } from '../_lib/vercel.js';
 import { sql } from '../_lib/db.js';
 import { HISTORY_RETENTION_DAYS } from '../_lib/incidentHistory.js';
 import type { Incident, Provider } from '../../src/types/status.js';
