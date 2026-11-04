@@ -170,6 +170,15 @@ export async function fetchAws(): Promise<ProviderStatus> {
 
   const items = parseRssXml(await response.text());
 
+  // all.rss keeps months of history, so a real response is never empty. A
+  // 200 with no items (empty body, HTML error page, truncated XML) must be a
+  // fetch failure, not "all operational" — otherwise check-status.ts reads
+  // every active incident as resolved and emails subscribers, then emails
+  // them again as "new" on the next good poll (seen 2026-11-04 11:27 UTC).
+  if (items.length === 0) {
+    throw new Error('AWS fetch returned no feed items (empty or malformed RSS)');
+  }
+
   // Keep only the most recent update per incident; split into active vs recently resolved
   const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
   const allDeduplicated = deduplicateItems(items);
