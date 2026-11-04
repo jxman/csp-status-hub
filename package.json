@@ -30,6 +30,18 @@
     "tsx": "^4.23.15",
     "tailwindcss": {
       "postcss-selector-parser": "^7.1.6"
+    },
+    "eslint": {
+      "minimatch": "^11.0.1"
+    },
+    "@eslint/config-array": {
+      "minimatch": "^11.0.1"
+    },
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.1"
+    },
+    "@vercel/nft": {
+      "minimatch": "^11.0.1"
     }
   },
   "lint-staged": {
