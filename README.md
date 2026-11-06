@@ -746,7 +746,8 @@ csp-status-hub/
 ```bash
 npm install
 npm run dev          # Vite frontend only, http://localhost:5173
-npm run build        # type-check + build
+npm run build        # type-check (src/, api/, vite.config.ts) + build
+npm run typecheck    # type-check only; also runs in the pre-commit hook when .ts/.tsx files are staged
 npm run lint
 npm run verify:gcp   # check GCP service IDs against the live product catalog
 npm run verify:ga    # confirm GA4 page_view hits leave the live site (needs: npm i --no-save playwright && npx playwright install chromium)

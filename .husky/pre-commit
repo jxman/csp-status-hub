@@ -13,4 +13,11 @@ if ! command -v ggshield >/dev/null 2>&1; then
 fi
 ggshield secret scan pre-commit
 
+# Type-check src/, api/ and vite.config.ts when TypeScript is staged, so a
+# type error is caught here rather than by a failed Vercel build.
+staged_ts=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(ts|tsx)$' || true)
+if [ -n "$staged_ts" ]; then
+  npm run --silent typecheck
+fi
+
 npx lint-staged

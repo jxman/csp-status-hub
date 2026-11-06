@@ -85,7 +85,7 @@ async function servePointer(req: VercelRequest, res: VercelResponse) {
   }
 }
 
-async function serveContent(req: VercelRequest, res: VercelResponse, id: string) {
+async function serveContent(res: VercelResponse, id: string) {
   if (!UUID_RE.test(id)) {
     res.status(400).json({ error: 'Invalid id' });
     return;
@@ -139,7 +139,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { id } = req.query;
   if (typeof id === 'string') {
-    await serveContent(req, res, id);
+    await serveContent(res, id);
     return;
   }
 

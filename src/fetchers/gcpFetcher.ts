@@ -95,7 +95,7 @@ export async function fetchGcp(): Promise<ProviderStatus> {
     throw new Error(`GCP fetch failed: ${response.status} ${response.statusText}`);
   }
 
-  const allIncidents: GcpIncident[] = await response.json();
+  const allIncidents = (await response.json()) as GcpIncident[];
   // An open end (null or absent) is the primary active flag; also exclude incidents where
   // the latest update is AVAILABLE — service restored but GCP hasn't formally closed the incident yet
   const active = allIncidents.filter((inc) => {

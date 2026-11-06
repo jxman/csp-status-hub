@@ -126,6 +126,11 @@ Oldest first.
 - `minimatch` moved to 11.0.4 under ESLint and typescript-eslint (Dependabot #15)
 - Removed `@vercel/node`: `api/` only used its `VercelRequest`/`VercelResponse` types, now in `api/_lib/vercel.ts`. This drops ts-morph, the last old `minimatch`, and the npm overrides that only existed for its dependencies
 
+### 2026-11-06
+
+- `api/` is now type-checked. `tsconfig.api.json` is referenced from `tsconfig.json`, so `npm run build` (locally and in Vercel's build) fails on a type error in a serverless function; before, only `src/` and `vite.config.ts` were checked. The pre-commit hook also runs `npm run typecheck` when `.ts`/`.tsx` files are staged
+- Fixed the type errors this turned up: an unused `req` parameter in `api/analysis/latest.ts`, and the GCP/OCI fetchers' `response.json()` results, which are `unknown` under Node's types (the cron runs these fetchers server-side) and are now cast explicitly
+
 ---
 
 ## Design history

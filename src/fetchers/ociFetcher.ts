@@ -211,7 +211,7 @@ export async function fetchOci(): Promise<ProviderStatus> {
     throw new Error(`OCI fetch failed: ${statusResponse.status} ${statusResponse.statusText}`);
   }
 
-  const data: OciStatusJson = await statusResponse.json();
+  const data = (await statusResponse.json()) as OciStatusJson;
   const overallStatus = mapIndicatorToStatus(data.status?.indicator ?? 'none');
   const description = data.status?.description ?? 'Status unavailable';
 
