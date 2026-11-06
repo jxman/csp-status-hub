@@ -60,7 +60,7 @@ async function create(req: VercelRequest, res: VercelResponse) {
   // Counted after validation, so a mistyped form doesn't use up an
   // address's daily allowance (see signupLimits.ts).
   const limit = await checkSignupLimits(normalizedEmail);
-  if (!limit.allowed) {
+  if (limit.allowed === false) {
     console.log(`[subscribe] sign-up limited (${limit.reason})`);
     res.status(429).json({
       error:
