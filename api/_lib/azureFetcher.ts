@@ -258,6 +258,16 @@ function extractEntries(parsed: Record<string, unknown>): { entries: RawEntry[];
   return { entries: [] };
 }
 
+// Thrown when the feed answers with a non-2xx status. Carries the status as a
+// number so api/status/azure.ts can tell visitors what happened without
+// sending them any error text (see the catch block there).
+export class AzureFeedHttpError extends Error {
+  constructor(readonly status: number, statusText: string) {
+    super(`Azure feed returned ${status} ${statusText}`);
+    this.name = 'AzureFeedHttpError';
+  }
+}
+
 export async function fetchAzure(): Promise<ProviderStatus> {
   const fetchedAt = new Date().toISOString();
 
@@ -266,7 +276,7 @@ export async function fetchAzure(): Promise<ProviderStatus> {
   });
 
   if (!response.ok) {
-    throw new Error(`Azure feed returned ${response.status} ${response.statusText}`);
+    throw new AzureFeedHttpError(response.status, response.statusText);
   }
 
   const xml = await response.text();

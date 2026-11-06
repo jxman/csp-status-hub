@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '../_lib/vercel.js';
 import type { ProviderStatus } from '../../src/types/status.js';
-import { fetchAzure } from '../_lib/azureFetcher.js';
+import { AzureFeedHttpError, fetchAzure } from '../_lib/azureFetcher.js';
 import { getRecentlyResolvedIncidents } from '../_lib/resolvedIncidents.js';
 
 const AZURE_DASHBOARD_URL = 'https://azure.status.microsoft/';
@@ -22,7 +22,14 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
     res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=30');
     res.json(result);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    // Full detail goes to the function logs only. Visitors get a message
+    // built here, never the error's own text, which for parse failures can
+    // be an internal TypeError ("Cannot read properties of undefined ...").
+    console.error('[status/azure] Azure fetch failed', err);
+    const message =
+      err instanceof AzureFeedHttpError
+        ? `Azure's status feed returned HTTP ${Number(err.status)}`
+        : "Couldn't read Azure's status feed";
     const errorResult: ProviderStatus = {
       provider: 'azure',
       displayName: 'Microsoft Azure',
