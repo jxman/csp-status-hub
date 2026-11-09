@@ -774,7 +774,22 @@ total. Calling `check-status` locally can send real emails — see
 The site runs on Vercel at [cloudstatus.synepho.com](https://cloudstatus.synepho.com). The old `csp-status-hub.vercel.app` URL permanently redirects there (see [docs/CUSTOM-DOMAIN-PLAN.md](./docs/CUSTOM-DOMAIN-PLAN.md)).
 
 Pushing to `main` deploys to production automatically through Vercel's Git
-integration. Check the live build with:
+integration, gated by a **Vercel Deployment Check**:
+
+1. Vercel builds the production deployment as soon as `main` is pushed.
+2. GitHub Actions runs the `ci-checks` job (`.github/workflows/ci.yml`:
+   `npm ci`, `npm run lint`, `npm run build`, about 20s).
+3. Vercel assigns `cloudstatus.synepho.com` to the deployment only after
+   `ci-checks` passes. If it fails, the deployment shows "Running Checks"
+   and the site keeps serving the previous build.
+
+The required check is set in Vercel under **Settings → Build and Deployment
+→ Deployment Checks**, and must be exactly `ci-checks` (GitHub). Don't add
+the scheduled workflows' `verify` jobs: they never run on a push, so a
+deployment would wait on them forever. To ship a deployment stuck behind the
+gate, use `vercel promote <deployment-url>`.
+
+Check the live build with:
 
 ```bash
 curl https://cloudstatus.synepho.com/version.json

@@ -131,6 +131,11 @@ Oldest first.
 - `api/` is now type-checked. `tsconfig.api.json` is referenced from `tsconfig.json`, so `npm run build` (locally and in Vercel's build) fails on a type error in a serverless function; before, only `src/` and `vite.config.ts` were checked. The pre-commit hook also runs `npm run typecheck` when `.ts`/`.tsx` files are staged
 - Fixed the type errors this turned up: an unused `req` parameter in `api/analysis/latest.ts`, and the GCP/OCI fetchers' `response.json()` results, which are `unknown` under Node's types (the cron runs these fetchers server-side) and are now cast explicitly
 
+### 2026-11-09
+
+- Production deploys are now gated: a new GitHub Actions workflow (`ci.yml`, job `ci-checks`) runs lint and build on every push to `main` and on pull requests, and a Vercel Deployment Check holds the production domain until it passes. Tested with a deliberate lint error (the deployment never went live) and a clean empty commit (live about 35s after the push)
+- The gate was first set to require `verify`, the job name of the scheduled GCP-catalog and GA4 workflows. Those never run on a push, so deployments sat in "Running Checks" indefinitely; the required check is now `ci-checks` only
+
 ---
 
 ## Design history
