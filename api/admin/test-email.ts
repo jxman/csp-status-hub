@@ -21,7 +21,7 @@ const PROVIDER_NAMES: Record<string, string> = {
 };
 
 const SAMPLE_INCIDENTS: EmailIncident[] = [
-  { id: 'sample-incident-1', title: 'Increased error rates for API requests', regions: ['US East (N. Virginia)'] },
+  { id: 'sample-incident-1', title: 'Increased error rates for API requests', regions: ['us-east-1 – US East (N. Virginia)'] },
 ];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

@@ -8,6 +8,7 @@ import { getDisabledProviders } from '../_lib/analysisSettings.js';
 import { matchRenamedIncidents, type IncidentRename } from '../_lib/incidentRenames.js';
 import { recordResolvedIncidents } from '../_lib/resolvedIncidents.js';
 import { buildResolvedIncident, recordIncidentHistory } from '../_lib/incidentHistory.js';
+import { regionLabels } from '../_lib/regionLabels.js';
 import { fetchAws } from '../../src/fetchers/awsFetcher.js';
 import { fetchGcp } from '../../src/fetchers/gcpFetcher.js';
 import { fetchOci } from '../../src/fetchers/ociFetcher.js';
@@ -186,8 +187,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const activeIncidentTitles: Record<string, string> = Object.fromEntries(
         status.activeIncidents.filter((i) => activeIds.includes(i.id)).map((i) => [i.id, i.title])
       );
+      // Stored as email-ready labels ("ap-northeast-1 – Asia Pacific (Tokyo)"),
+      // not raw codes, so a resolution email can still show the name after the
+      // incident (and its RegionStatus entry) has left the feed.
       const activeIncidentRegions: Record<string, string[]> = Object.fromEntries(
-        status.activeIncidents.filter((i) => activeIds.includes(i.id)).map((i) => [i.id, i.affectedRegions])
+        status.activeIncidents
+          .filter((i) => activeIds.includes(i.id))
+          .map((i) => [i.id, regionLabels(status.provider, i.affectedRegions, status.regions)])
       );
       const newIncidents = newIncidentIds.map((id) => ({
         id,
@@ -197,7 +203,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const resolvedIncidents = resolvedIncidentIds.map((id) => ({
         id,
         title: previousTitles[id] ?? id,
-        regions: previousRegions[id] ?? [],
+        // Re-labelled because snapshots written before labels were added hold raw codes.
+        regions: regionLabels(status.provider, previousRegions[id] ?? []),
       }));
 
       // Incident Briefing Engine trigger classification (see README.md's

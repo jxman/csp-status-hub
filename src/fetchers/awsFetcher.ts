@@ -1,5 +1,6 @@
 import { XMLParser } from 'fast-xml-parser';
 import type { Incident, ProviderStatus, RegionStatus, ServiceStatus, StatusLevel } from '../types/status.js';
+import { AWS_REGION_NAMES } from '../utils/awsRegions.js';
 import { AWS_CRITICAL_SERVICE_IDS, AWS_SERVICE_NAMES, AWS_SERVICE_RSS_SLUGS, type AwsServiceRssConfig } from '../utils/awsServices.js';
 
 const AWS_RSS_URL = 'https://status.aws.amazon.com/rss/all.rss';
@@ -124,40 +125,7 @@ function awsRegionToGeo(region: string): string {
 
 function friendlyRegionName(regionId: string): string {
   if (regionId === 'global') return 'Global';
-  const names: Record<string, string> = {
-    'us-east-1': 'US East (N. Virginia)',
-    'us-east-2': 'US East (Ohio)',
-    'us-west-1': 'US West (N. California)',
-    'us-west-2': 'US West (Oregon)',
-    'eu-west-1': 'Europe (Ireland)',
-    'eu-west-2': 'Europe (London)',
-    'eu-west-3': 'Europe (Paris)',
-    'eu-central-1': 'Europe (Frankfurt)',
-    'eu-central-2': 'Europe (Zurich)',
-    'eu-north-1': 'Europe (Stockholm)',
-    'eu-south-1': 'Europe (Milan)',
-    'eu-south-2': 'Europe (Spain)',
-    'ap-southeast-1': 'Asia Pacific (Singapore)',
-    'ap-southeast-2': 'Asia Pacific (Sydney)',
-    'ap-southeast-3': 'Asia Pacific (Jakarta)',
-    'ap-southeast-4': 'Asia Pacific (Melbourne)',
-    'ap-northeast-1': 'Asia Pacific (Tokyo)',
-    'ap-northeast-2': 'Asia Pacific (Seoul)',
-    'ap-northeast-3': 'Asia Pacific (Osaka)',
-    'ap-south-1': 'Asia Pacific (Mumbai)',
-    'ap-south-2': 'Asia Pacific (Hyderabad)',
-    'ap-east-1': 'Asia Pacific (Hong Kong)',
-    'sa-east-1': 'South America (São Paulo)',
-    'ca-central-1': 'Canada (Central)',
-    'ca-west-1': 'Canada West (Calgary)',
-    'me-south-1': 'Middle East (Bahrain)',
-    'me-central-1': 'Middle East (UAE)',
-    'af-south-1': 'Africa (Cape Town)',
-    'il-central-1': 'Israel (Tel Aviv)',
-    'us-gov-east-1': 'AWS GovCloud (US-East)',
-    'us-gov-west-1': 'AWS GovCloud (US-West)',
-  };
-  return names[regionId] ?? regionId;
+  return AWS_REGION_NAMES[regionId] ?? regionId;
 }
 
 export async function fetchAws(): Promise<ProviderStatus> {
